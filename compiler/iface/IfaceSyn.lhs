@@ -760,24 +760,17 @@ pprIfaceDecl ss (IfaceSyn { ifName = tycon, ifTyVars = tyvars
     pp_branches _ = Outputable.empty
 
 pprIfaceDecl _ (IfacePatSyn { ifName = name, ifPatWorker = worker,
-                              ifPatIsInfix = is_infix,
-                              ifPatUnivTvs = _univ_tvs, ifPatExTvs = _ex_tvs,
+                              ifPatUnivTvs = univ_tvs, ifPatExTvs = ex_tvs,
                               ifPatProvCtxt = prov_ctxt, ifPatReqCtxt = req_ctxt,
-                              ifPatArgs = args,
                               ifPatTy = ty })
-  = pprPatSynSig name is_bidirectional args' ty' (pprCtxt prov_ctxt) (pprCtxt req_ctxt)
+  = pprPatSynSig name is_bidirectional
+                 (pprIfaceForAll tvs)
+                 (pprIfaceContextMaybe prov_ctxt)
+                 (pprIfaceContextMaybe req_ctxt)
+                 (pprParendIfaceType ty)
   where
     is_bidirectional = isJust worker
-    args' = case (is_infix, args) of
-        (True, [left_ty, right_ty]) ->
-            InfixPatSyn (pprParendIfaceType left_ty) (pprParendIfaceType right_ty)
-        (_, tys) ->
-            PrefixPatSyn (map pprParendIfaceType tys)
-
-    ty' = pprParendIfaceType ty
-
-    pprCtxt [] = Nothing
-    pprCtxt ctxt = Just $ pprIfaceContext ctxt
+    tvs = univ_tvs ++ ex_tvs
 
 pprIfaceDecl ss (IfaceId { ifName = var, ifType = ty,
                               ifIdDetails = details, ifIdInfo = info })
