@@ -846,8 +846,16 @@ renameSig ctxt sig@(PatSynSig v (flag, qtvs) prov req ty)
         ; let doc = TypeSigCtx $ quotes (ppr v)
         ; loc <- getSrcSpanM
 
-        ; let (tv_kvs, tvs) = extractHsTysRdrTyVars (ty:unLoc prov ++ unLoc req)
-        ; let tv_bndrs = mkHsQTvs . userHsTyVarBndrs loc $ tvs
+        ; let (tv_kvs, mentioned) = extractHsTysRdrTyVars (ty:unLoc prov ++ unLoc req)
+        ; tv_bndrs <- case flag of
+            Implicit ->
+                return $ mkHsQTvs . userHsTyVarBndrs loc $ mentioned
+            Explicit ->
+                do { let heading = ptext (sLit "In the pattern synonym type signature")
+                                   <+> quotes (ppr sig)
+                   ; warnUnusedForAlls (heading $$ docOfHsDocContext doc) qtvs mentioned
+                   ; return qtvs }
+            Qualified -> panic "renameSig: Qualified"
 
         ; bindHsTyVars doc Nothing tv_kvs tv_bndrs $ \ tyvars -> do
         { (prov', fvs1) <- rnContext doc prov
