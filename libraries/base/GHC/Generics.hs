@@ -560,7 +560,7 @@ module GHC.Generics  (
 
   -- * Meta-information
   , Datatype(..), Constructor(..), Selector(..), NoSelector
-  , Fixity(..), Associativity(..), prec
+  , Fixity(..), FixityI(..), Associativity(..), prec
   , Meta(..)
 
   -- * Generic type classes
@@ -686,6 +686,8 @@ instance (KnownSymbol n, SingI f, SingI r) => Constructor (MetaCons n f r) where
 -- | declaration directly corresponds to an application of 'Infix'.
 data Fixity = Prefix | Infix Associativity Int
   deriving (Eq, Show, Ord, Read, Generic)
+
+-- | This variant of 'Fixity' appears at the type level.
 data FixityI = PrefixI | InfixI Associativity Nat
 
 -- | Get the precedence of a fixity value.
