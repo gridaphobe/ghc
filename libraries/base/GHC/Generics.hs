@@ -18,7 +18,7 @@
 -----------------------------------------------------------------------------
 -- |
 -- Module      :  GHC.Generics
--- Copyright   :  (c) Universiteit Utrecht 2010-2011, University of Oxford 2012-2013
+-- Copyright   :  (c) Universiteit Utrecht 2010-2011, University of Oxford 2012-2014
 -- License     :  see libraries/base/LICENSE
 --
 -- Maintainer  :  libraries@haskell.org
@@ -560,7 +560,7 @@ module GHC.Generics  (
 
   -- * Meta-information
   , Datatype(..), Constructor(..), Selector(..), NoSelector
-  , Fixity(..), Associativity(..), prec -- Arity(..),
+  , Fixity(..), Associativity(..), prec
   , Meta(..)
 
   -- * Generic type classes
@@ -571,13 +571,13 @@ module GHC.Generics  (
 -- We use some base types
 import GHC.Integer ( Integer, integerToInt )
 import GHC.Types
-import Data.Maybe ( Maybe(..) )
+import Data.Maybe  ( Maybe(..) )
 import Data.Either ( Either(..) )
 
 -- Needed for instances
 import GHC.Classes ( Eq, Ord )
-import GHC.Read ( Read )
-import GHC.Show ( Show )
+import GHC.Read    ( Read )
+import GHC.Show    ( Show )
 
 -- Needed for metadata
 import Data.Proxy   ( Proxy(..), KProxy(..) )
@@ -682,11 +682,10 @@ instance (KnownSymbol n, SingI f, SingI r) => Constructor (MetaCons n f r) where
   conFixity   _ = fromSing  (sing  :: Sing f)
   conIsRecord _ = fromSing  (sing  :: Sing r)
 
-
 -- | Datatype to represent the fixity of a constructor. An infix
 -- | declaration directly corresponds to an application of 'Infix'.
 data Fixity = Prefix | Infix Associativity Int
-  -- deriving (Eq, Show, Ord, Read, Generic)
+  deriving (Eq, Show, Ord, Read, Generic)
 data FixityI = PrefixI | InfixI Associativity Nat
 
 -- | Get the precedence of a fixity value.
@@ -694,12 +693,11 @@ prec :: Fixity -> Int
 prec Prefix      = 10
 prec (Infix _ n) = n
 
-
 -- | Datatype to represent the associativity of a constructor
 data Associativity = LeftAssociative
                    | RightAssociative
                    | NotAssociative
-  -- deriving (Eq, Show, Ord, Read, Generic)
+  deriving (Eq, Show, Ord, Read, Generic)
 
 -- | Class for datatypes that represent records
 class Selector s where
@@ -712,9 +710,6 @@ class Selector s where
 data NoSelector
 instance Selector NoSelector        where selName _ = ""
 
--- instance Selector (MetaSel Nothing) where selName _ = ""
--- instance (KnownSymbol s) => Selector (MetaSel (Just s)) where
-  -- selName _ = symbolVal (Proxy :: Proxy s)
 instance (KnownSymbol s) => Selector (MetaSel s) where
   selName _ = symbolVal (Proxy :: Proxy s)
 
@@ -745,7 +740,6 @@ class Generic1 f where
 
 data Meta = MetaData Symbol Symbol Bool
           | MetaCons Symbol FixityI Bool
-          -- | MetaSel  (Maybe Symbol)
           | MetaSel  Symbol
 
 --------------------------------------------------------------------------------
@@ -757,6 +751,7 @@ deriving instance Generic (Maybe a)
 deriving instance Generic (Either a b)
 deriving instance Generic Bool
 deriving instance Generic Ordering
+deriving instance Generic (Proxy t)
 deriving instance Generic ()
 deriving instance Generic ((,) a b)
 deriving instance Generic ((,,) a b c)
@@ -768,6 +763,7 @@ deriving instance Generic ((,,,,,,) a b c d e f g)
 deriving instance Generic1 []
 deriving instance Generic1 Maybe
 deriving instance Generic1 (Either a)
+deriving instance Generic1 Proxy
 deriving instance Generic1 ((,) a)
 deriving instance Generic1 ((,,) a b)
 deriving instance Generic1 ((,,,) a b c)
@@ -776,86 +772,8 @@ deriving instance Generic1 ((,,,,,) a b c d e)
 deriving instance Generic1 ((,,,,,,) a b c d e f)
 
 --------------------------------------------------------------------------------
--- Primitive representations
---------------------------------------------------------------------------------
-{-
--- Int
-data D_Int
-data C_Int
-
-instance Datatype D_Int where
-  datatypeName _ = "Int"
-  moduleName   _ = "GHC.Int"
-
-instance Constructor C_Int where
-  conName _ = "" -- JPM: I'm not sure this is the right implementation...
-
-instance Generic Int where
-  type Rep Int = D1 D_Int (C1 C_Int (S1 NoSelector (Rec0 Int)))
-  from x = M1 (M1 (M1 (K1 x)))
-  to (M1 (M1 (M1 (K1 x)))) = x
-
-
--- Float
-data D_Float
-data C_Float
-
-instance Datatype D_Float where
-  datatypeName _ = "Float"
-  moduleName   _ = "GHC.Float"
-
-instance Constructor C_Float where
-  conName _ = "" -- JPM: I'm not sure this is the right implementation...
-
-instance Generic Float where
-  type Rep Float = D1 D_Float (C1 C_Float (S1 NoSelector (Rec0 Float)))
-  from x = M1 (M1 (M1 (K1 x)))
-  to (M1 (M1 (M1 (K1 x)))) = x
-
-
--- Double
-data D_Double
-data C_Double
-
-instance Datatype D_Double where
-  datatypeName _ = "Double"
-  moduleName   _ = "GHC.Float"
-
-instance Constructor C_Double where
-  conName _ = "" -- JPM: I'm not sure this is the right implementation...
-
-instance Generic Double where
-  type Rep Double = D1 D_Double (C1 C_Double (S1 NoSelector (Rec0 Double)))
-  from x = M1 (M1 (M1 (K1 x)))
-  to (M1 (M1 (M1 (K1 x)))) = x
-
-
--- Char
-data D_Char
-data C_Char
-
-instance Datatype D_Char where
-  datatypeName _ = "Char"
-  moduleName   _ = "GHC.Base"
-
-instance Constructor C_Char where
-  conName _ = "" -- JPM: I'm not sure this is the right implementation...
-
-instance Generic Char where
-  type Rep Char = D1 D_Char (C1 C_Char (S1 NoSelector (Rec0 Char)))
-  from x = M1 (M1 (M1 (K1 x)))
-  to (M1 (M1 (M1 (K1 x)))) = x
--}
--- deriving instance Generic (Proxy t)
-
-
---------------------------------------------------------------------------------
 -- Copied from the singletons package
 --------------------------------------------------------------------------------
-
--- | Convenient synonym to refer to the kind of a type variable:
--- @type KindOf (a :: k) = ('KProxy :: KProxy k)@
--- type KindOf (a :: k) = ('KProxy :: KProxy k)
 
 -- | The singleton kind-indexed data family.
 data family Sing (a :: k)
@@ -878,24 +796,6 @@ class (kparam ~ 'KProxy) => SingKind (kparam :: KProxy k) where
 
   -- | Convert a singleton to its unrefined version.
   fromSing :: Sing (a :: k) -> DemoteRep kparam
-
-  -- Convert an unrefined type to an existentially-quantified singleton type.
-  -- toSing   :: DemoteRep kparam -> SomeSing kparam
-
--- | Convenient abbreviation for 'DemoteRep':
--- @type Demote (a :: k) = DemoteRep ('KProxy :: KProxy k)@
--- type Demote (a :: k) = DemoteRep ('KProxy :: KProxy k)
-
--- | An /existentially-quantified/ singleton. This type is useful when you want a
--- singleton type, but there is no way of knowing, at compile-time, what the type
--- index will be. To make use of this type, you will generally have to use a
--- pattern-match:
---
--- > foo :: Bool -> ...
--- > foo b = case toSing b of
--- >           SomeSing sb -> {- fancy dependently-typed code with sb -}
---
--- An example like the one above may be easier to write using 'withSomeSing'.
 
 -- Singleton booleans
 data instance Sing (a :: Bool) where

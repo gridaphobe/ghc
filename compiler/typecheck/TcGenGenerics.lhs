@@ -474,7 +474,6 @@ tc_mkRepTy gk_ tycon =
     d1    <- tcLookupTyCon d1TyConName
     c1    <- tcLookupTyCon c1TyConName
     s1    <- tcLookupTyCon s1TyConName
-    -- nS1   <- tcLookupTyCon noSelTyConName
     rec0  <- tcLookupTyCon rec0TyConName
     rec1  <- tcLookupTyCon rec1TyConName
     par1  <- tcLookupTyCon par1TyConName
@@ -495,31 +494,20 @@ tc_mkRepTy gk_ tycon =
     pRA     <- tcLookupPromDataCon rightAssociativeDataConName
     pNA     <- tcLookupPromDataCon notAssociativeDataConName
 
-    -- pJust    <- tcLookupPromDataCon justDataConName
-    -- pNothing <- tcLookupPromDataCon nothingDataConName
-
     fix_env <- getFixityEnv
 
-    let -- mkTyConApp tc = applyTys (mkTyConTy tc)
-        mkSum' a b = mkTyConApp plus  [a,b]
+    let mkSum' a b = mkTyConApp plus  [a,b]
         mkProd a b = mkTyConApp times [a,b]
         mkComp a b = mkTyConApp comp  [a,b]
         mkRec0 a   = mkTyConApp rec0  [a]
         mkRec1 a   = mkTyConApp rec1  [a]
         mkPar1     = mkTyConTy  par1
-        mkD    a   = mkTyConApp d1 [ {- typeKind metaDataTy, -} metaDataTy, sumP (tyConDataCons a) ]
-        mkC      a = mkTyConApp c1 [ {- typeKind (metaConsTy a), -} metaConsTy a
+        mkD    a   = mkTyConApp d1 [ metaDataTy, sumP (tyConDataCons a) ]
+        mkC      a = mkTyConApp c1 [ metaConsTy a
                                    , prod (dataConInstOrigArgTys a
                                             . mkTyVarTys . tyConTyVars $ tycon)
                                           (dataConFieldLabels a)]
-        -- This field has no label
-        -- mkS Nothing  _ a = mkTyConApp s1 [mkTyConApp ms [mkTyConTy pNothing], a]
-        mkS Nothing  a = mkTyConApp s1 [msel, a]
-          where msel = mkTyConApp ms [mkStrLitTy (mkFastString "")]
-        -- This field has a  label
-        -- mkS (Just l) _ a = mkTyConApp s1 [mkTyConApp ms [mkTyConApp pJust [selName l]], a]
-        mkS (Just l) a = mkTyConApp s1 [msel, a]
-          where msel = mkTyConApp ms [selName l]
+        mkS mlbl a = mkTyConApp s1 [metaSelTy mlbl, a]
 
         -- Sums and products are done in the same way for both Rep and Rep1
         sumP [] = mkTyConTy v1
@@ -564,7 +552,8 @@ tc_mkRepTy gk_ tycon =
                     Just (Fixity n InfixR) -> buildFix n pRA
                     Just (Fixity n InfixN) -> buildFix n pNA
                     Nothing                -> mkTyConTy pPrefix
-        buildFix n assoc = mkTyConApp pInfix [mkTyConTy assoc, mkNumLitTy (fromIntegral n)]
+        buildFix n assoc = mkTyConApp pInfix [ mkTyConTy assoc
+                                             , mkNumLitTy (fromIntegral n)]
 
         myLookupFixity :: FixityEnv -> Name -> Maybe Fixity
         myLookupFixity env n = case lookupNameEnv env n of
@@ -579,7 +568,8 @@ tc_mkRepTy gk_ tycon =
 
         metaDataTy   = mkTyConApp md [dtName, mdName, isNT]
         metaConsTy c = mkTyConApp mc [ctName c, ctFix c, isRec c]
-        -- metaSelTy  s = mkTyConApp mc [ctName c, ctFix c, isRec c]
+        metaSelTy ml = mkTyConApp ms
+                         [maybe (mkStrLitTy (mkFastString "")) selName ml]
 
     return (mkD tycon)
 

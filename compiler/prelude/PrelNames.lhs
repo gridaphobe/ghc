@@ -778,11 +778,6 @@ eitherTyConName   = tcQual  dATA_EITHER (fsLit "Either") eitherTyConKey
 leftDataConName   = conName dATA_EITHER (fsLit "Left")   leftDataConKey
 rightDataConName  = conName dATA_EITHER (fsLit "Right")  rightDataConKey
 
-maybeTyConName, justDataConName, nothingDataConName :: Name
-maybeTyConName      = tcQual  gHC_BASE (fsLit "Maybe")    maybeTyConKey
-justDataConName     = conName gHC_BASE (fsLit "Just")     justDataConKey
-nothingDataConName  = conName gHC_BASE (fsLit "Nothing")  nothingDataConKey
-
 -- Generics (types)
 v1TyConName, u1TyConName, rec1TyConName, par1TyConName,
   k1TyConName, m1TyConName, sumTyConName, prodTyConName,
@@ -1442,10 +1437,7 @@ v1TyConKey, u1TyConKey, par1TyConKey, rec1TyConKey,
   compTyConKey, rTyConKey, pTyConKey, dTyConKey,
   cTyConKey, sTyConKey, rec0TyConKey,
   d1TyConKey, c1TyConKey, s1TyConKey, noSelTyConKey,
-  repTyConKey, rep1TyConKey,
-  prefixIDataConKey, infixIDataConKey, leftAssociativeDataConKey,
-  rightAssociativeDataConKey, notAssociativeDataConKey,
-  metaDataDataConKey, metaConsDataConKey, metaSelDataConKey :: Unique
+  repTyConKey, rep1TyConKey :: Unique
 
 v1TyConKey    = mkPreludeTyConUnique 135
 u1TyConKey    = mkPreludeTyConUnique 136
@@ -1472,16 +1464,6 @@ noSelTyConKey = mkPreludeTyConUnique 154
 
 repTyConKey  = mkPreludeTyConUnique 155
 rep1TyConKey = mkPreludeTyConUnique 156
-
-prefixIDataConKey          = mkPreludeDataConUnique 35
-infixIDataConKey           = mkPreludeDataConUnique 36
-leftAssociativeDataConKey  = mkPreludeDataConUnique 37
-rightAssociativeDataConKey = mkPreludeDataConUnique 38
-notAssociativeDataConKey   = mkPreludeDataConUnique 39
-
-metaDataDataConKey   = mkPreludeDataConUnique 40
-metaConsDataConKey   = mkPreludeDataConUnique 41
-metaSelDataConKey    = mkPreludeDataConUnique 42
 
 -- Type-level naturals
 typeNatKindConNameKey, typeSymbolKindConNameKey,
@@ -1513,9 +1495,6 @@ specTyConKey = mkPreludeTyConUnique 177
 smallArrayPrimTyConKey        = mkPreludeTyConUnique  178
 smallMutableArrayPrimTyConKey = mkPreludeTyConUnique  179
 
-maybeTyConKey :: Unique
-maybeTyConKey = mkPreludeTyConUnique 180
-
 ---------------- Template Haskell -------------------
 --      USES TyConUniques 200-299
 -----------------------------------------------------
@@ -1540,7 +1519,11 @@ unitTyConKey = mkTupleTyConUnique BoxedTuple 0
 charDataConKey, consDataConKey, doubleDataConKey, falseDataConKey,
     floatDataConKey, intDataConKey, integerSDataConKey, nilDataConKey,
     ratioDataConKey, stableNameDataConKey, trueDataConKey, wordDataConKey,
-    ioDataConKey, integerDataConKey, eqBoxDataConKey, coercibleDataConKey :: Unique
+    ioDataConKey, integerDataConKey, eqBoxDataConKey, coercibleDataConKey,
+    prefixIDataConKey, infixIDataConKey, leftAssociativeDataConKey,
+    rightAssociativeDataConKey, notAssociativeDataConKey,
+    metaDataDataConKey, metaConsDataConKey, metaSelDataConKey :: Unique
+
 charDataConKey                          = mkPreludeDataConUnique  1
 consDataConKey                          = mkPreludeDataConUnique  2
 doubleDataConKey                        = mkPreludeDataConUnique  3
@@ -1579,9 +1562,14 @@ gtDataConKey                            = mkPreludeDataConUnique 29
 
 coercibleDataConKey                     = mkPreludeDataConUnique 32
 
-justDataConKey, nothingDataConKey :: Unique
-justDataConKey                          = mkPreludeDataConUnique 33
-nothingDataConKey                       = mkPreludeDataConUnique 34
+prefixIDataConKey          = mkPreludeDataConUnique 33
+infixIDataConKey           = mkPreludeDataConUnique 34
+leftAssociativeDataConKey  = mkPreludeDataConUnique 35
+rightAssociativeDataConKey = mkPreludeDataConUnique 36
+notAssociativeDataConKey   = mkPreludeDataConUnique 37
+metaDataDataConKey         = mkPreludeDataConUnique 38
+metaConsDataConKey         = mkPreludeDataConUnique 39
+metaSelDataConKey          = mkPreludeDataConUnique 40
 \end{code}
 
 %************************************************************************
