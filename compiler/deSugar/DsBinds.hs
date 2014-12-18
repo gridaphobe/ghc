@@ -36,16 +36,15 @@ import CoreArity ( etaExpand )
 import CoreUnfold
 import CoreFVs
 import UniqSupply
-import Unique( Unique )
 import Digraph
 
-
+import PrelNames
 import TyCon      ( isTupleTyCon, tyConDataCons_maybe )
 import TcEvidence
 import TcType
 import Type
 import Coercion hiding (substCo)
-import TysWiredIn ( eqBoxDataCon, coercibleDataCon, tupleCon )
+import TysWiredIn ( eqBoxDataCon, coercibleDataCon, tupleCon, mkListTy )
 import Id
 import Class
 import DataCon  ( dataConWorkId )
@@ -57,6 +56,7 @@ import VarSet
 import Rules
 import VarEnv
 import Outputable
+import Module
 import SrcLoc
 import Maybes
 import OrdList
@@ -911,6 +911,46 @@ dsEvTerm (EvLit l) =
   case l of
     EvNum n -> mkIntegerExpr n
     EvStr s -> mkStringExprFS s
+
+dsEvTerm (EvLoc l) = do
+  df              <- getDynFlags
+  srcLocDataCon   <- dsLookupDataCon srcLocDataConName
+  srcLocTyCon     <- dsLookupTyCon srcLocTyConName
+  let srcLocTy     = mkTyConTy srcLocTyCon
+  let mkSrcLoc m l =
+        liftM (mkCoreConApps srcLocDataCon)
+              (sequence [ mkStringExprFS (packageKeyFS $ modulePackageKey m)
+                        , mkStringExprFS (moduleNameFS $ moduleName m)
+                        , mkStringExprFS (srcSpanFile l)
+                        , return $ mkIntExprInt df (srcSpanStartLine l)
+                        , return $ mkIntExprInt df (srcSpanStartCol l)
+                        , return $ mkIntExprInt df (srcSpanEndLine l)
+                        , return $ mkIntExprInt df (srcSpanEndCol l)
+                        ])
+
+  matchId         <- newSysLocalDs $ mkListTy srcLocTy
+
+  locationDataCon <- dsLookupDataCon locationDataConName
+  locationTyCon   <- dsLookupTyCon locationTyConName
+  let locationTy   = mkTyConTy locationTyCon
+  let emptyLoc     = mkCoreConApps locationDataCon [mkNilExpr srcLocTy]
+  let pushLoc loc rest =
+        mkWildCase rest locationTy locationTy
+                   [( DataAlt locationDataCon
+                    , [matchId]
+                    , mkCoreConApps locationDataCon
+                       [mkConsExpr srcLocTy loc (Var matchId)]
+                    )]
+
+  case l of
+    EvLocRoot (m, RealSrcSpan l) -> do
+      locExpr <- mkSrcLoc m l
+      return (pushLoc locExpr emptyLoc)
+    EvLocPush (m, RealSrcSpan l) tm -> do
+      locExpr <- mkSrcLoc m l
+      tmExpr  <- dsEvTerm tm
+      return (pushLoc locExpr tmExpr)
+    _ -> panic "dsEvTerm: expected good SrcSpan"
 
 ---------------------------------------
 dsTcCoercion :: TcCoercion -> (Coercion -> CoreExpr) -> DsM CoreExpr

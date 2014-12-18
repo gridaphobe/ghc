@@ -16,6 +16,7 @@ module TcEvidence (
   EvBind(..), emptyTcEvBinds, isEmptyTcEvBinds, mkGivenEvBind, mkWantedEvBind,
   EvTerm(..), mkEvCast, evVarsOfTerm,
   EvLit(..), evTermCoercion,
+  EvLoc(..),
 
   -- TcCoercion
   TcCoercion(..), LeftOrRight(..), pickLR,
@@ -54,6 +55,8 @@ import Data.Traversable (traverse, sequenceA)
 import qualified Data.Data as Data
 import Outputable
 import FastString
+import Module
+import SrcLoc
 import Data.IORef( IORef )
 
 {-
@@ -722,13 +725,21 @@ data EvTerm
   | EvLit EvLit       -- Dictionary for KnownNat and KnownSymbol classes.
                       -- Note [KnownNat & KnownSymbol and EvLit]
 
-  deriving( Data.Data, Data.Typeable)
+  | EvLoc EvLoc -- Dictionary for Location implicit parameters
+
+  deriving( Data.Data, Data.Typeable )
 
 
 data EvLit
   = EvNum Integer
   | EvStr FastString
-    deriving( Data.Data, Data.Typeable)
+    deriving( Data.Data, Data.Typeable )
+
+data EvLoc
+  = EvLocRoot (Module, SrcSpan)
+  | EvLocPush (Module, SrcSpan) EvTerm
+                                -- the EvTerm must be the Location, not the dict
+  deriving( Data.Data, Data.Typeable )
 
 {-
 Note [Coercion evidence terms]
@@ -853,6 +864,7 @@ evVarsOfTerm (EvCast tm co)       = evVarsOfTerm tm `unionVarSet` coVarsOfTcCo c
 evVarsOfTerm (EvTupleMk evs)      = evVarsOfTerms evs
 evVarsOfTerm (EvDelayedError _ _) = emptyVarSet
 evVarsOfTerm (EvLit _)            = emptyVarSet
+evVarsOfTerm (EvLoc _)            = emptyVarSet
 
 evVarsOfTerms :: [EvTerm] -> VarSet
 evVarsOfTerms = mapUnionVarSet evVarsOfTerm
@@ -920,9 +932,16 @@ instance Outputable EvTerm where
   ppr (EvSuperClass d n) = ptext (sLit "sc") <> parens (ppr (d,n))
   ppr (EvDFunApp df tys ts) = ppr df <+> sep [ char '@' <> ppr tys, ppr ts ]
   ppr (EvLit l)          = ppr l
+  ppr (EvLoc l)          = ppr l
   ppr (EvDelayedError ty msg) =     ptext (sLit "error")
                                 <+> sep [ char '@' <> ppr ty, ppr msg ]
 
 instance Outputable EvLit where
   ppr (EvNum n) = integer n
   ppr (EvStr s) = text (show s)
+
+instance Outputable EvLoc where
+  ppr (EvLocRoot loc)
+    = angleBrackets (ppr loc)
+  ppr (EvLocPush loc tm)
+    = angleBrackets (ppr loc <+> ptext (sLit ":") <+> ppr tm)

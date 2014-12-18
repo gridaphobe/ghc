@@ -18,7 +18,8 @@ import CoAxiom(sfInteractTop, sfInteractInert)
 
 import Var
 import TcType
-import PrelNames (knownNatClassName, knownSymbolClassName, ipClassNameKey )
+import PrelNames ( knownNatClassName, knownSymbolClassName, ipClassNameKey,
+                   locationTyConKey )
 import Id( idType )
 import Class
 import TyCon
@@ -34,7 +35,7 @@ import TcErrors
 import TcSMonad
 import Bag
 
-import Data.List( partition, foldl', deleteFirstsBy )
+import Data.List( partition, foldl', deleteFirstsBy, find )
 
 import VarEnv
 
@@ -606,6 +607,12 @@ interactIrred _ wi = pprPanic "interactIrred" (ppr wi)
 
 interactDict :: InertCans -> Ct -> TcS (StopOrContinue Ct)
 interactDict inerts workItem@(CDictCan { cc_ev = ev_w, cc_class = cls, cc_tyargs = tys })
+  -- don't ever try to solve dicts for `IP Location`s from other dicts,
+  -- we always build new dicts in matchClassInst
+  | isLocationIP cls tys
+  , isWanted ev_w
+  = continueWith workItem
+
   | Just ctev_i <- lookupInertDict inerts (ctEvLoc ev_w) cls tys
   = do { (inert_effect, stop_now) <- solveOneFromTheOther ctev_i ev_w
        ; case inert_effect of
@@ -1612,6 +1619,38 @@ matchClassInst _ clas [ ty ] _
     = panicTcS (text "Unexpected evidence for" <+> ppr (className clas)
                      $$ vcat (map (ppr . idType) (classMethods clas)))
 
+matchClassInst (IS cans _ _) clas tys@[ ip, ty ] loc
+  | isLocationIP clas tys
+  = do gbl_env <- getGblEnv
+       -- we don't use lookupInertDict here because we want to find ANY IP dict
+       -- for a Location, disregarding the name of the IP
+       let ipDicts = bagToList $ findDictsByClass (inert_dicts cans) clas
+       let forTy ct
+             | [_, t] <- cc_tyargs ct = t == ty
+             | otherwise              = False
+       let evLoc =
+             case find forTy ipDicts of
+               Nothing -> EvLocRoot (tcg_mod gbl_env, ctLocSpan loc)
+               Just ct -> EvLocPush (tcg_mod gbl_env, ctLocSpan loc)
+                                    (mkEvCast (ctEvTerm $ cc_ev ct)
+                                              -- the evidence for the other
+                                              -- Location is a dictionary so we
+                                              -- need to coerce it back to a
+                                              -- Location
+                                              (unDict (cc_class ct)
+                                                      (cc_tyargs ct)))
+       return $ GenInst [] $ mkEvCast (EvLoc evLoc) (toDict clas [ip,ty])
+  where
+  -- Coerces a `t` into a dictionary for `IP "x" t`.
+  -- co : t -> IP "x" t
+  toDict cls tys = mkTcSymCo (unDict cls tys)
+  -- Coerces a dictionary for `IP "x" t` into a `t`.
+  -- co : IP "x" t -> t
+  unDict cls tys =
+    case unwrapNewTyCon_maybe (classTyCon cls) of
+      Just (_,_,ax) -> mkTcUnbranchedAxInstCo Representational ax tys
+      Nothing       -> panic "The dictionary for `IP` is not a newtype?"
+
 matchClassInst inerts clas tys loc
    = do { dflags <- getDynFlags
         ; tclvl <- getTcLevel
@@ -1734,3 +1773,11 @@ overlapping checks. There we are interested in validating the following principl
 But for the Given Overlap check our goal is just related to completeness of
 constraint solving.
 -}
+
+-- | Is the constraint for an implicit location parameter?
+isLocationIP :: Class -> [Type] -> Bool
+isLocationIP cls [ _, ty ]
+  | Just (tc, []) <- splitTyConApp_maybe ty
+  = cls `hasKey` ipClassNameKey && tc `hasKey` locationTyConKey
+isLocationIP _ _
+  = False

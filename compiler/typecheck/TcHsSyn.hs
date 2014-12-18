@@ -1244,6 +1244,7 @@ zonkEvTerm env (EvTupleSel tm n)  = do { tm' <- zonkEvTerm env tm
 zonkEvTerm env (EvTupleMk tms)    = do { tms' <- mapM (zonkEvTerm env) tms
                                        ; return (EvTupleMk tms') }
 zonkEvTerm _   (EvLit l)          = return (EvLit l)
+zonkEvTerm _   (EvLoc l)          = return (EvLoc l)
 zonkEvTerm env (EvSuperClass d n) = do { d' <- zonkEvTerm env d
                                        ; return (EvSuperClass d' n) }
 zonkEvTerm env (EvDFunApp df tys tms)

@@ -323,6 +323,10 @@ basicKnownKeyNames
         -- Implicit parameters
         ipClassName,
 
+        -- Source locations
+        locationDataConName, locationTyConName,
+        srcLocDataConName, srcLocTyConName,
+
         -- Annotation type checking
         toAnnotationWrapperName
 
@@ -454,6 +458,9 @@ gHC_IP          = mkBaseModule (fsLit "GHC.IP")
 
 gHC_PARR' :: Module
 gHC_PARR' = mkBaseModule (fsLit "GHC.PArr")
+
+gHC_LOCATION :: Module
+gHC_LOCATION = mkBaseModule (fsLit "GHC.Location")
 
 gHC_STATICPTR :: Module
 gHC_STATICPTR = mkBaseModule (fsLit "GHC.StaticPtr")
@@ -1167,6 +1174,14 @@ knownSymbolClassName  = clsQual gHC_TYPELITS (fsLit "KnownSymbol") knownSymbolCl
 ipClassName :: Name
 ipClassName         = clsQual gHC_IP (fsLit "IP")      ipClassNameKey
 
+-- Source Locations
+locationDataConName, locationTyConName,
+  srcLocDataConName, srcLocTyConName :: Name
+locationDataConName = conName gHC_LOCATION (fsLit "Location") locationDataConKey
+locationTyConName   = tcQual  gHC_LOCATION (fsLit "Location") locationTyConKey
+srcLocDataConName   = conName gHC_LOCATION (fsLit "SrcLoc")   srcLocDataConKey
+srcLocTyConName     = tcQual  gHC_LOCATION (fsLit "SrcLoc")   srcLocTyConKey
+
 -- plugins
 pLUGINS :: Module
 pLUGINS = mkThisGhcModule (fsLit "Plugins")
@@ -1517,6 +1532,10 @@ staticPtrTyConKey  = mkPreludeTyConUnique 180
 staticPtrInfoTyConKey :: Unique
 staticPtrInfoTyConKey = mkPreludeTyConUnique 181
 
+locationTyConKey, srcLocTyConKey :: Unique
+locationTyConKey   = mkPreludeTyConUnique 182
+srcLocTyConKey     = mkPreludeTyConUnique 183
+
 ---------------- Template Haskell -------------------
 --      USES TyConUniques 200-299
 -----------------------------------------------------
@@ -1588,6 +1607,10 @@ staticPtrInfoDataConKey                 = mkPreludeDataConUnique 34
 
 fingerprintDataConKey :: Unique
 fingerprintDataConKey                   = mkPreludeDataConUnique 35
+
+locationDataConKey, srcLocDataConKey :: Unique
+locationDataConKey                      = mkPreludeDataConUnique 36
+srcLocDataConKey                        = mkPreludeDataConUnique 37
 
 {-
 ************************************************************************

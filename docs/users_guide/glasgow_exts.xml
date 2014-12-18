@@ -7662,6 +7662,41 @@ inner binding of <literal>?x</literal>, so <literal>(f 9)</literal> will return
 <literal>14</literal>.
 </para>
 </sect3>
+
+<sect3><title>Special implicit parameters</title>
+<para>
+GHC treats implicit parameters of type <literal>GHC.Location.Location</literal>
+specially, by resolving them to the current location in the program. Consider:
+<programlisting>
+  f :: String
+  f = show (?loc :: Location)
+</programlisting>
+GHC will automatically resolve <literal>?loc</literal> to its source
+location. If another implicit parameter with type <literal>Location</literal> is
+in scope, GHC will append the two locations, creating an explicit call-stack. For example:
+<programlisting>
+  f :: (?call_site :: Location) => String
+  f = show (?loc :: Location)
+</programlisting>
+will produce the location of <literal>?loc</literal>, followed by the location
+where <literal>f</literal> is called. Note that the names of the implicit
+parameters differ, GHC only checks the type of the implicit parameter, not the
+name.
+</para>
+<para>
+Since <literal>Location</literal> actually describes a call-stack,
+GHC provides a function
+<programlisting>
+  getLocation :: Location -> [SrcLoc]
+</programlisting>
+to access the individual source locations in the stack, from which you can
+extract the package, module, and file name, as well as the line and column
+numbers. The stack will never be empty, as the first <literal>SrcLoc</literal>
+will be the location at which the implicit parameter was used. GHC will also
+never infer <literal>?loc :: Location</literal> as a type constraint, which
+means that functions must explicitly ask to be told about their call-sites.
+</para>
+</sect3>
 </sect2>
 
 <sect2 id="kinding">

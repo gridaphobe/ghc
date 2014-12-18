@@ -244,6 +244,7 @@ Library
         GHC.IP
         GHC.Int
         GHC.List
+        GHC.Location
         GHC.MVar
         GHC.Natural
         GHC.Num
