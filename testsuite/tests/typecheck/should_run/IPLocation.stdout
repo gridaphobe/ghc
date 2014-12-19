@@ -1,22 +1,30 @@
 IPLocation.hs:7:30 in main:Main
 
 IPLocation.hs:11:30 in main:Main
-  IPLocation.hs:33:11 in main:Main
+  IPLocation.hs:40:11 in main:Main
 
 IPLocation.hs:15:33 in main:Main
-  IPLocation.hs:34:11 in main:Main
+  IPLocation.hs:41:11 in main:Main
 
 IPLocation.hs:16:33 in main:Main
-  IPLocation.hs:34:11 in main:Main
+  IPLocation.hs:41:11 in main:Main
 
-IPLocation.hs:35:47 in main:Main
+IPLocation.hs:42:47 in main:Main
   IPLocation.hs:21:8 in main:Main
 
-IPLocation.hs:36:47 in main:Main
-  IPLocation.hs:25:8 in main:Main
-  IPLocation.hs:36:11 in main:Main
+IPLocation.hs:43:47 in main:Main
+  IPLocation.hs:26:8 in main:Main
+  IPLocation.hs:43:11 in main:Main
 
-IPLocation.hs:37:47 in main:Main
-  IPLocation.hs:29:8 in main:Main
-  IPLocation.hs:37:11 in main:Main
+IPLocation.hs:44:47 in main:Main
+  IPLocation.hs:30:8 in main:Main
+  IPLocation.hs:44:11 in main:Main
+
+IPLocation.hs:35:32 in main:Main
+  IPLocation.hs:36:8 in main:Main
+  IPLocation.hs:36:8 in main:Main
+  IPLocation.hs:36:8 in main:Main
+  IPLocation.hs:36:8 in main:Main
+  IPLocation.hs:36:8 in main:Main
+  IPLocation.hs:45:11 in main:Main
 

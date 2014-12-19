@@ -31,9 +31,15 @@ f5 x = x ()
        -- furthermore, we ignore the *name* of the IP,
        -- and only care about the type
 
+f6 :: (?loc :: Location) => Int -> IO ()
+f6 0 = putStrLn $ showLocation ?loc
+f6 n = f6 (n-1)
+       -- recursive functions add a SrcLoc for each recursive call
+
 main = do f0
           f1
           f2
           f3 (\ () -> putStrLn $ showLocation ?loc)
           f4 (\ () -> putStrLn $ showLocation ?loc)
           f5 (\ () -> putStrLn $ showLocation ?loc3)
+          f6 5
