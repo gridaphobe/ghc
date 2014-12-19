@@ -943,10 +943,10 @@ dsEvTerm (EvLoc l) = do
                     )]
 
   case l of
-    EvLocRoot (m, RealSrcSpan l) -> do
+    EvLocRoot (m, l) -> do
       locExpr <- mkSrcLoc m l
       return (pushLoc locExpr emptyLoc)
-    EvLocPush (m, RealSrcSpan l) tm -> do
+    EvLocPush (m, l) tm -> do
       locExpr <- mkSrcLoc m l
       tmExpr  <- dsEvTerm tm
       return (pushLoc locExpr tmExpr)

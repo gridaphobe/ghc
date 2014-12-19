@@ -736,9 +736,10 @@ data EvLit
     deriving( Data.Data, Data.Typeable )
 
 data EvLoc
-  = EvLocRoot (Module, SrcSpan)
-  | EvLocPush (Module, SrcSpan) EvTerm
-                                -- the EvTerm must be the Location, not the dict
+  = EvLocRoot (Module, RealSrcSpan)
+  | EvLocPush (Module, RealSrcSpan) EvTerm
+                                    -- the EvTerm must be the Location,
+                                    -- not the dictionary
   deriving( Data.Data, Data.Typeable )
 
 {-

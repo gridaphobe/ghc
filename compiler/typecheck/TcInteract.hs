@@ -45,6 +45,7 @@ import Pair (Pair(..))
 import Unique( hasKey )
 import FastString ( sLit )
 import DynFlags
+import SrcLoc
 import Util
 
 {-
@@ -1630,8 +1631,8 @@ matchClassInst (IS cans _ _) clas tys@[ ip, ty ] loc
              | otherwise              = False
        let evLoc =
              case find forTy ipDicts of
-               Nothing -> EvLocRoot (tcg_mod gbl_env, ctLocSpan loc)
-               Just ct -> EvLocPush (tcg_mod gbl_env, ctLocSpan loc)
+               Nothing -> EvLocRoot (tcg_mod gbl_env, locSpan)
+               Just ct -> EvLocPush (tcg_mod gbl_env, locSpan)
                                     (mkEvCast (ctEvTerm $ cc_ev ct)
                                               -- the evidence for the other
                                               -- Location is a dictionary so we
@@ -1641,6 +1642,9 @@ matchClassInst (IS cans _ _) clas tys@[ ip, ty ] loc
                                                       (cc_tyargs ct)))
        return $ GenInst [] $ mkEvCast (EvLoc evLoc) (toDict clas [ip,ty])
   where
+  locSpan = case ctLocSpan loc of
+              RealSrcSpan s -> s
+              _ -> panic "Can't create location evidence from a bad SrcSpan!"
   -- Coerces a `t` into a dictionary for `IP "x" t`.
   -- co : t -> IP "x" t
   toDict cls tys = mkTcSymCo (unDict cls tys)
