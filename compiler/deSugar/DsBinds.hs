@@ -950,7 +950,6 @@ dsEvTerm (EvLoc l) = do
       locExpr <- mkSrcLoc m l
       tmExpr  <- dsEvTerm tm
       return (pushLoc locExpr tmExpr)
-    _ -> panic "dsEvTerm: expected good SrcSpan"
 
 ---------------------------------------
 dsTcCoercion :: TcCoercion -> (Coercion -> CoreExpr) -> DsM CoreExpr
