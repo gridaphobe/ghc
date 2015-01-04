@@ -1175,11 +1175,13 @@ ipClassName :: Name
 ipClassName         = clsQual gHC_IP (fsLit "IP")      ipClassNameKey
 
 -- Source Locations
-callStackDataConName, callStackTyConName,
-  srcLocDataConName :: Name
-callStackDataConName = conName gHC_LOCATION (fsLit "CallStack") callStackDataConKey
-callStackTyConName   = tcQual  gHC_LOCATION (fsLit "CallStack") callStackTyConKey
-srcLocDataConName    = conName gHC_LOCATION (fsLit "SrcLoc")   srcLocDataConKey
+callStackDataConName, callStackTyConName, srcLocDataConName :: Name
+callStackDataConName
+  = conName gHC_LOCATION (fsLit "CallStack") callStackDataConKey
+callStackTyConName
+  = tcQual  gHC_LOCATION (fsLit "CallStack") callStackTyConKey
+srcLocDataConName
+  = conName gHC_LOCATION (fsLit "SrcLoc")   srcLocDataConKey
 
 -- plugins
 pLUGINS :: Module
