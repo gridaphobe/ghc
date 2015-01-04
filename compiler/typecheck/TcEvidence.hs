@@ -55,7 +55,6 @@ import Data.Traversable (traverse, sequenceA)
 import qualified Data.Data as Data
 import Outputable
 import FastString
-import Module
 import SrcLoc
 import Data.IORef( IORef )
 
@@ -736,10 +735,10 @@ data EvLit
     deriving( Data.Data, Data.Typeable )
 
 data EvLoc
-  = EvLocRoot (Module, RealSrcSpan)
-  | EvLocPush (Module, RealSrcSpan) EvTerm
-                                    -- the EvTerm must be the Location,
-                                    -- not the dictionary
+  = EvLocRoot RealSrcSpan
+  | EvLocPush RealSrcSpan EvTerm
+      -- the EvTerm must be the Location, not the dictionary
+      -- see Note [Location evidence terms]
   deriving( Data.Data, Data.Typeable )
 
 {-
@@ -831,6 +830,62 @@ The story for kind `Symbol` is analogous:
   * class KnownSymbol
   * newtype SSymbol
   * Evidence: EvLit (EvStr n)
+
+
+Note [Location evidence terms]
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+A "location evidence term" is either a single RealSrcSpan or a
+RealSrcSpan "pushed" onto another evidence term, creating an
+explicit call-stack.
+
+  loc_tm ::= EvLocRoot span
+           | EvLocPush span tm
+
+INVARIANT: In the "push" case, the other EvTerm must be of type
+'Location', not a dictionary for 'IP loc Location'.
+
+To explain the need for this invariant, consider the following
+definition:
+
+  foo :: (?loc :: Location) => String
+  foo = show ?loc
+
+When solving the wanted constraint that arises from the use of ?loc,
+we'll have a given constraint
+
+  [G] d :: IP "loc" Location
+
+in scope, corresponding to the Location being passed in from the
+call-site. We want to construct an EvTerm that will desugar into
+
+  pushLocation span loc
+
+where
+
+  pushLocation :: SrcSpan -> Location -> Location
+
+but we only have an `IP "loc" Location` in-scope! So we need to
+coerce `d` into a Location before pushing the new span onto it.
+Rather than have the desugarer construct a Coercion out of thin
+air, we will wrap `d` in a TcCoercion
+
+  ax :: IP "loc" Location ~ Location
+
+and use
+
+  EvLocPush span (d |> ax)
+
+as our new evidence term. The usual desugaring machinery will then
+produce a proper Coercion without any Location-specific logic.
+
+Notice, finally, that EvLocs will desugar into terms of type Location,
+but when solving a wanted constraint
+
+  [W] d :: IP "loc" Location
+
+e.g. from a call to `foo` above, we have to provide a *dictionary*. So
+when we solve such a constraint we will have to take care to cast the
+EvLoc back to a dictionary.
 -}
 
 mkEvCast :: EvTerm -> TcCoercion -> EvTerm

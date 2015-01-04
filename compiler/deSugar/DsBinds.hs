@@ -941,13 +941,13 @@ dsEvTerm (EvLoc l) = do
                     , mkCoreConApps locationDataCon
                        [mkConsExpr srcLocTy loc (Var matchId)]
                     )]
-
+  m <- getModule
   case l of
-    EvLocRoot (m, l) -> do
-      locExpr <- mkSrcLoc m l
+    EvLocRoot loc -> do
+      locExpr <- mkSrcLoc m loc
       return (pushLoc locExpr emptyLoc)
-    EvLocPush (m, l) tm -> do
-      locExpr <- mkSrcLoc m l
+    EvLocPush loc tm -> do
+      locExpr <- mkSrcLoc m loc
       tmExpr  <- dsEvTerm tm
       return (pushLoc locExpr tmExpr)
 

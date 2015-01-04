@@ -25,7 +25,7 @@ import Class
 import TyCon
 import FunDeps
 import FamInst
-import Inst( tyVarsOfCt )
+import Inst( mkTcFromDictCo, mkTcToDictCo, tyVarsOfCt )
 
 import TcEvidence
 import Outputable
@@ -1622,38 +1622,38 @@ matchClassInst _ clas [ ty ] _
 
 matchClassInst (IS cans _ _) clas tys@[ ip, ty ] loc
   | isLocationIP clas tys
-  = do gbl_env <- getGblEnv
-       -- we don't use lookupInertDict here because we want to find ANY IP dict
+  = do -- we don't use lookupInertDict here because we want to find ANY IP dict
        -- for a Location, disregarding the name of the IP
        let ipDicts = bagToList $ findDictsByClass (inert_dicts cans) clas
+
        let forTy ct
+             -- we can ignore the first tyvar since it is the name of the IP
+             -- i.e. we want to match
+             -- `IP "loc" Location` and `IP "myloc" Location`, but not
+             -- `IP "loc" Foo`.
              | [_, t] <- cc_tyargs ct = t == ty
              | otherwise              = False
+
        let evLoc =
              case find forTy ipDicts of
-               Nothing -> EvLocRoot (tcg_mod gbl_env, locSpan)
-               Just ct -> EvLocPush (tcg_mod gbl_env, locSpan)
+               Nothing -> EvLocRoot locSpan
+               Just ct -> EvLocPush locSpan
+                                    -- the evidence for the given Location is a
+                                    -- dictionary so we need to coerce it back
+                                    -- to a Location.
+                                    -- See Note [Location evidence terms]
                                     (mkEvCast (ctEvTerm $ cc_ev ct)
-                                              -- the evidence for the other
-                                              -- Location is a dictionary so we
-                                              -- need to coerce it back to a
-                                              -- Location
-                                              (unDict (cc_class ct)
-                                                      (cc_tyargs ct)))
-       return $ GenInst [] $ mkEvCast (EvLoc evLoc) (toDict clas [ip,ty])
+                                              (mkTcFromDictCo (cc_class ct)
+                                                              (cc_tyargs ct)))
+
+       -- now we have evLoc :: Location, but matchClassInst is supposed to
+       -- return a dictionary, so we have to coerce evLoc (back) to a
+       -- dictionary for `IP ip Location`
+       return $ GenInst [] $ mkEvCast (EvLoc evLoc) (mkTcToDictCo clas [ip,ty])
   where
   locSpan = case ctLocSpan loc of
               RealSrcSpan s -> s
               _ -> panic "Can't create location evidence from a bad SrcSpan!"
-  -- Coerces a `t` into a dictionary for `IP "x" t`.
-  -- co : t -> IP "x" t
-  toDict cls tys = mkTcSymCo (unDict cls tys)
-  -- Coerces a dictionary for `IP "x" t` into a `t`.
-  -- co : IP "x" t -> t
-  unDict cls tys =
-    case unwrapNewTyCon_maybe (classTyCon cls) of
-      Just (_,_,ax) -> mkTcUnbranchedAxInstCo Representational ax tys
-      Nothing       -> panic "The dictionary for `IP` is not a newtype?"
 
 matchClassInst inerts clas tys loc
    = do { dflags <- getDynFlags
