@@ -19,7 +19,7 @@ import CoAxiom(sfInteractTop, sfInteractInert)
 import Var
 import TcType
 import PrelNames ( knownNatClassName, knownSymbolClassName, ipClassNameKey,
-                   locationTyConKey )
+                   callStackTyConKey )
 import Id( idType )
 import Class
 import TyCon
@@ -608,9 +608,9 @@ interactIrred _ wi = pprPanic "interactIrred" (ppr wi)
 
 interactDict :: InertCans -> Ct -> TcS (StopOrContinue Ct)
 interactDict inerts workItem@(CDictCan { cc_ev = ev_w, cc_class = cls, cc_tyargs = tys })
-  -- don't ever try to solve dicts for `IP Location`s from other dicts,
+  -- don't ever try to solve dicts for `IP CallStack`s from other dicts,
   -- we always build new dicts in matchClassInst
-  | isLocationIP cls tys
+  | isCallStackIP cls tys
   , isWanted ev_w
   = continueWith workItem
 
@@ -1621,39 +1621,40 @@ matchClassInst _ clas [ ty ] _
                      $$ vcat (map (ppr . idType) (classMethods clas)))
 
 matchClassInst (IS cans _ _) clas tys@[ ip, ty ] loc
-  | isLocationIP clas tys
+  | isCallStackIP clas tys
   = do -- we don't use lookupInertDict here because we want to find ANY IP dict
-       -- for a Location, disregarding the name of the IP
+       -- for a CallStack, disregarding the name of the IP
        let ipDicts = bagToList $ findDictsByClass (inert_dicts cans) clas
 
        let forTy ct
              -- we can ignore the first tyvar since it is the name of the IP
              -- i.e. we want to match
-             -- `IP "loc" Location` and `IP "myloc" Location`, but not
+             -- `IP "loc" CallStack` and `IP "myloc" CallStack`, but not
              -- `IP "loc" Foo`.
              | [_, t] <- cc_tyargs ct = t == ty
              | otherwise              = False
 
-       let evLoc =
+       let ev_cs =
              case find forTy ipDicts of
-               Nothing -> EvLocRoot locSpan
-               Just ct -> EvLocPush locSpan
-                                    -- the evidence for the given Location is a
+               Nothing -> EvCsRoot locSpan
+               Just ct -> EvCsPush locSpan
+                                    -- the evidence for the given CallStack is a
                                     -- dictionary so we need to coerce it back
-                                    -- to a Location.
-                                    -- See Note [Location evidence terms]
+                                    -- to a CallStack.
+                                    -- See Note [CallStack evidence terms]
                                     (mkEvCast (ctEvTerm $ cc_ev ct)
                                               (mkTcFromDictCo (cc_class ct)
                                                               (cc_tyargs ct)))
 
-       -- now we have evLoc :: Location, but matchClassInst is supposed to
+       -- now we have evLoc :: CallStack, but matchClassInst is supposed to
        -- return a dictionary, so we have to coerce evLoc (back) to a
-       -- dictionary for `IP ip Location`
-       return $ GenInst [] $ mkEvCast (EvLoc evLoc) (mkTcToDictCo clas [ip,ty])
+       -- dictionary for `IP ip CallStack`
+       return $ GenInst [] $ mkEvCast (EvCallStack ev_cs)
+                                      (mkTcToDictCo clas [ip,ty])
   where
   locSpan = case ctLocSpan loc of
               RealSrcSpan s -> s
-              _ -> panic "Can't create location evidence from a bad SrcSpan!"
+              _ -> panic "Can't create CallStack evidence from a bad SrcSpan!"
 
 matchClassInst inerts clas tys loc
    = do { dflags <- getDynFlags
@@ -1778,10 +1779,10 @@ But for the Given Overlap check our goal is just related to completeness of
 constraint solving.
 -}
 
--- | Is the constraint for an implicit location parameter?
-isLocationIP :: Class -> [Type] -> Bool
-isLocationIP cls [ _, ty ]
+-- | Is the constraint for an implicit CallStack parameter?
+isCallStackIP :: Class -> [Type] -> Bool
+isCallStackIP cls [ _, ty ]
   | Just (tc, []) <- splitTyConApp_maybe ty
-  = cls `hasKey` ipClassNameKey && tc `hasKey` locationTyConKey
-isLocationIP _ _
+  = cls `hasKey` ipClassNameKey && tc `hasKey` callStackTyConKey
+isCallStackIP _ _
   = False

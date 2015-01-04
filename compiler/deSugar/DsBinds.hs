@@ -912,12 +912,13 @@ dsEvTerm (EvLit l) =
     EvNum n -> mkIntegerExpr n
     EvStr s -> mkStringExprFS s
 
-dsEvTerm (EvLoc l) = do
+dsEvTerm (EvCallStack cs) = do
   df              <- getDynFlags
+  m               <- getModule
   srcLocDataCon   <- dsLookupDataCon srcLocDataConName
   let srcLocTyCon  = dataConTyCon srcLocDataCon
   let srcLocTy     = mkTyConTy srcLocTyCon
-  let mkSrcLoc m l =
+  let mkSrcLoc l =
         liftM (mkCoreConApps srcLocDataCon)
               (sequence [ mkStringExprFS (packageKeyFS $ modulePackageKey m)
                         , mkStringExprFS (moduleNameFS $ moduleName m)
@@ -930,26 +931,25 @@ dsEvTerm (EvLoc l) = do
 
   matchId         <- newSysLocalDs $ mkListTy srcLocTy
 
-  locationDataCon <- dsLookupDataCon locationDataConName
-  let locationTyCon = dataConTyCon locationDataCon
-  let locationTy    = mkTyConTy locationTyCon
-  let emptyLoc      = mkCoreConApps locationDataCon [mkNilExpr srcLocTy]
-  let pushLoc loc rest =
-        mkWildCase rest locationTy locationTy
-                   [( DataAlt locationDataCon
+  callStackDataCon <- dsLookupDataCon callStackDataConName
+  let callStackTyCon = dataConTyCon callStackDataCon
+  let callStackTy    = mkTyConTy callStackTyCon
+  let emptyCS        = mkCoreConApps callStackDataCon [mkNilExpr srcLocTy]
+  let pushCS loc rest =
+        mkWildCase rest callStackTy callStackTy
+                   [( DataAlt callStackDataCon
                     , [matchId]
-                    , mkCoreConApps locationDataCon
+                    , mkCoreConApps callStackDataCon
                        [mkConsExpr srcLocTy loc (Var matchId)]
                     )]
-  m <- getModule
-  case l of
-    EvLocRoot loc -> do
-      locExpr <- mkSrcLoc m loc
-      return (pushLoc locExpr emptyLoc)
-    EvLocPush loc tm -> do
-      locExpr <- mkSrcLoc m loc
+  case cs of
+    EvCsRoot loc -> do
+      locExpr <- mkSrcLoc loc
+      return (pushCS locExpr emptyCS)
+    EvCsPush loc tm -> do
+      locExpr <- mkSrcLoc loc
       tmExpr  <- dsEvTerm tm
-      return (pushLoc locExpr tmExpr)
+      return (pushCS locExpr tmExpr)
 
 ---------------------------------------
 dsTcCoercion :: TcCoercion -> (Coercion -> CoreExpr) -> DsM CoreExpr

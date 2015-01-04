@@ -324,7 +324,7 @@ basicKnownKeyNames
         ipClassName,
 
         -- Source locations
-        locationDataConName, locationTyConName,
+        callStackDataConName, callStackTyConName,
         srcLocDataConName,
 
         -- Annotation type checking
@@ -1175,11 +1175,11 @@ ipClassName :: Name
 ipClassName         = clsQual gHC_IP (fsLit "IP")      ipClassNameKey
 
 -- Source Locations
-locationDataConName, locationTyConName,
+callStackDataConName, callStackTyConName,
   srcLocDataConName :: Name
-locationDataConName = conName gHC_LOCATION (fsLit "Location") locationDataConKey
-locationTyConName   = tcQual  gHC_LOCATION (fsLit "Location") locationTyConKey
-srcLocDataConName   = conName gHC_LOCATION (fsLit "SrcLoc")   srcLocDataConKey
+callStackDataConName = conName gHC_LOCATION (fsLit "CallStack") callStackDataConKey
+callStackTyConName   = tcQual  gHC_LOCATION (fsLit "CallStack") callStackTyConKey
+srcLocDataConName    = conName gHC_LOCATION (fsLit "SrcLoc")   srcLocDataConKey
 
 -- plugins
 pLUGINS :: Module
@@ -1531,8 +1531,8 @@ staticPtrTyConKey  = mkPreludeTyConUnique 180
 staticPtrInfoTyConKey :: Unique
 staticPtrInfoTyConKey = mkPreludeTyConUnique 181
 
-locationTyConKey :: Unique
-locationTyConKey   = mkPreludeTyConUnique 182
+callStackTyConKey :: Unique
+callStackTyConKey = mkPreludeTyConUnique 182
 
 ---------------- Template Haskell -------------------
 --      USES TyConUniques 200-299
@@ -1606,8 +1606,8 @@ staticPtrInfoDataConKey                 = mkPreludeDataConUnique 34
 fingerprintDataConKey :: Unique
 fingerprintDataConKey                   = mkPreludeDataConUnique 35
 
-locationDataConKey, srcLocDataConKey :: Unique
-locationDataConKey                      = mkPreludeDataConUnique 36
+callStackDataConKey, srcLocDataConKey :: Unique
+callStackDataConKey                     = mkPreludeDataConUnique 36
 srcLocDataConKey                        = mkPreludeDataConUnique 37
 
 {-

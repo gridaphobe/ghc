@@ -1,7 +1,7 @@
 {-# LANGUAGE RecordWildCards #-}
 module GHC.Location
-  ( Location
-  , getLocation
+  ( CallStack
+  , getCallStack
 
   , SrcLoc
   , srcLocPackage
@@ -13,7 +13,7 @@ module GHC.Location
   , srcLocEndCol
 
   -- * Pretty printing
-  , showLocation
+  , showCallStack
   , showSrcLoc
   ) where
 
@@ -21,19 +21,18 @@ module GHC.Location
 -- Source Locations
 --------------------------------------------------------------------------------
 
--- | A location in the source program is comprised of multiple 'SrcLoc's,
--- forming an explicit call-stack.
-data Location = Location { getLocation :: [SrcLoc] }
+-- | A CallStack is comprised of at least one 'SrcLoc'.
+data CallStack = CallStack { getCallStack :: [SrcLoc] }
   deriving (Show, Eq)
 
-showLocation :: Location -> String
-showLocation (Location (root:rest))
+showCallStack :: CallStack -> String
+showCallStack (CallStack (root:rest))
   = unlines (showSrcLoc root : map (indent . showSrcLoc) rest)
   where
   indent l = "  " ++ l
-showLocation _ = error "Location cannot be empty!"
+showCallStack _ = error "CallStack cannot be empty!"
 
--- | A single source span.
+-- | A single location in the source code.
 data SrcLoc = SrcLoc
   { srcLocPackage   :: String
   , srcLocModule    :: String

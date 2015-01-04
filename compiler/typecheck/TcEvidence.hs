@@ -16,7 +16,7 @@ module TcEvidence (
   EvBind(..), emptyTcEvBinds, isEmptyTcEvBinds, mkGivenEvBind, mkWantedEvBind,
   EvTerm(..), mkEvCast, evVarsOfTerm,
   EvLit(..), evTermCoercion,
-  EvLoc(..),
+  EvCallStack(..),
 
   -- TcCoercion
   TcCoercion(..), LeftOrRight(..), pickLR,
@@ -724,7 +724,7 @@ data EvTerm
   | EvLit EvLit       -- Dictionary for KnownNat and KnownSymbol classes.
                       -- Note [KnownNat & KnownSymbol and EvLit]
 
-  | EvLoc EvLoc -- Dictionary for Location implicit parameters
+  | EvCallStack EvCallStack -- Dictionary for CallStack implicit parameters
 
   deriving( Data.Data, Data.Typeable )
 
@@ -734,11 +734,11 @@ data EvLit
   | EvStr FastString
     deriving( Data.Data, Data.Typeable )
 
-data EvLoc
-  = EvLocRoot RealSrcSpan
-  | EvLocPush RealSrcSpan EvTerm
-      -- the EvTerm must be the Location, not the dictionary
-      -- see Note [Location evidence terms]
+data EvCallStack
+  = EvCsRoot RealSrcSpan
+  | EvCsPush RealSrcSpan EvTerm
+      -- the EvTerm must be the CallStack, not the dictionary
+      -- see Note [CallStack evidence terms]
   deriving( Data.Data, Data.Typeable )
 
 {-
@@ -832,56 +832,56 @@ The story for kind `Symbol` is analogous:
   * Evidence: EvLit (EvStr n)
 
 
-Note [Location evidence terms]
+Note [CallStack evidence terms]
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-A "location evidence term" is either a single RealSrcSpan or a
+A "CallStack evidence term" is either a single RealSrcSpan or a
 RealSrcSpan "pushed" onto another evidence term, creating an
 explicit call-stack.
 
-  loc_tm ::= EvLocRoot span
-           | EvLocPush span tm
+  cs_tm ::= EvCsRoot span
+          | EvCsPush span tm
 
 INVARIANT: In the "push" case, the other EvTerm must be of type
-'Location', not a dictionary for 'IP loc Location'.
+'CallStack', not a dictionary for 'IP loc CallStack'.
 
 To explain the need for this invariant, consider the following
 definition:
 
-  foo :: (?loc :: Location) => String
+  foo :: (?loc :: CallStack) => String
   foo = show ?loc
 
 When solving the wanted constraint that arises from the use of ?loc,
 we'll have a given constraint
 
-  [G] d :: IP "loc" Location
+  [G] d :: IP "loc" CallStack
 
-in scope, corresponding to the Location being passed in from the
+in scope, corresponding to the CallStack being passed in from the
 call-site. We want to construct an EvTerm that will desugar into
 
-  pushLocation span loc
+  pushCallStack span stack
 
 where
 
-  pushLocation :: SrcSpan -> Location -> Location
+  pushCallStack :: SrcSpan -> CallStack -> CallStack
 
-but we only have an `IP "loc" Location` in-scope! So we need to
-coerce `d` into a Location before pushing the new span onto it.
+but we only have an `IP "loc" CallStack` in-scope! So we need to
+coerce `d` into a CallStack before pushing the new span onto it.
 Rather than have the desugarer construct a Coercion out of thin
 air, we will wrap `d` in a TcCoercion
 
-  ax :: IP "loc" Location ~ Location
+  ax :: IP "loc" CallStack ~ CallStack
 
 and use
 
   EvLocPush span (d |> ax)
 
 as our new evidence term. The usual desugaring machinery will then
-produce a proper Coercion without any Location-specific logic.
+produce a proper Coercion without any CallStack-specific logic.
 
-Notice, finally, that EvLocs will desugar into terms of type Location,
+Notice, finally, that EvLocs will desugar into terms of type CallStack,
 but when solving a wanted constraint
 
-  [W] d :: IP "loc" Location
+  [W] d :: IP "loc" CallStack
 
 e.g. from a call to `foo` above, we have to provide a *dictionary*. So
 when we solve such a constraint we will have to take care to cast the
@@ -920,7 +920,7 @@ evVarsOfTerm (EvCast tm co)       = evVarsOfTerm tm `unionVarSet` coVarsOfTcCo c
 evVarsOfTerm (EvTupleMk evs)      = evVarsOfTerms evs
 evVarsOfTerm (EvDelayedError _ _) = emptyVarSet
 evVarsOfTerm (EvLit _)            = emptyVarSet
-evVarsOfTerm (EvLoc _)            = emptyVarSet
+evVarsOfTerm (EvCallStack _)      = emptyVarSet
 
 evVarsOfTerms :: [EvTerm] -> VarSet
 evVarsOfTerms = mapUnionVarSet evVarsOfTerm
@@ -988,7 +988,7 @@ instance Outputable EvTerm where
   ppr (EvSuperClass d n) = ptext (sLit "sc") <> parens (ppr (d,n))
   ppr (EvDFunApp df tys ts) = ppr df <+> sep [ char '@' <> ppr tys, ppr ts ]
   ppr (EvLit l)          = ppr l
-  ppr (EvLoc l)          = ppr l
+  ppr (EvCallStack cs)   = ppr cs
   ppr (EvDelayedError ty msg) =     ptext (sLit "error")
                                 <+> sep [ char '@' <> ppr ty, ppr msg ]
 
@@ -996,8 +996,8 @@ instance Outputable EvLit where
   ppr (EvNum n) = integer n
   ppr (EvStr s) = text (show s)
 
-instance Outputable EvLoc where
-  ppr (EvLocRoot loc)
+instance Outputable EvCallStack where
+  ppr (EvCsRoot loc)
     = angleBrackets (ppr loc)
-  ppr (EvLocPush loc tm)
+  ppr (EvCsPush loc tm)
     = angleBrackets (ppr loc <+> ptext (sLit ":") <+> ppr tm)
