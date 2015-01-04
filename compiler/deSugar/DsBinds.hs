@@ -47,7 +47,7 @@ import Coercion hiding (substCo)
 import TysWiredIn ( eqBoxDataCon, coercibleDataCon, tupleCon, mkListTy )
 import Id
 import Class
-import DataCon  ( dataConWorkId )
+import DataCon  ( dataConTyCon, dataConWorkId )
 import Name
 import MkId     ( seqId )
 import IdInfo   ( IdDetails(..) )
@@ -915,7 +915,7 @@ dsEvTerm (EvLit l) =
 dsEvTerm (EvLoc l) = do
   df              <- getDynFlags
   srcLocDataCon   <- dsLookupDataCon srcLocDataConName
-  srcLocTyCon     <- dsLookupTyCon srcLocTyConName
+  let srcLocTyCon  = dataConTyCon srcLocDataCon
   let srcLocTy     = mkTyConTy srcLocTyCon
   let mkSrcLoc m l =
         liftM (mkCoreConApps srcLocDataCon)
@@ -931,9 +931,9 @@ dsEvTerm (EvLoc l) = do
   matchId         <- newSysLocalDs $ mkListTy srcLocTy
 
   locationDataCon <- dsLookupDataCon locationDataConName
-  locationTyCon   <- dsLookupTyCon locationTyConName
-  let locationTy   = mkTyConTy locationTyCon
-  let emptyLoc     = mkCoreConApps locationDataCon [mkNilExpr srcLocTy]
+  let locationTyCon = dataConTyCon locationDataCon
+  let locationTy    = mkTyConTy locationTyCon
+  let emptyLoc      = mkCoreConApps locationDataCon [mkNilExpr srcLocTy]
   let pushLoc loc rest =
         mkWildCase rest locationTy locationTy
                    [( DataAlt locationDataCon

@@ -325,7 +325,7 @@ basicKnownKeyNames
 
         -- Source locations
         locationDataConName, locationTyConName,
-        srcLocDataConName, srcLocTyConName,
+        srcLocDataConName,
 
         -- Annotation type checking
         toAnnotationWrapperName
@@ -1176,11 +1176,10 @@ ipClassName         = clsQual gHC_IP (fsLit "IP")      ipClassNameKey
 
 -- Source Locations
 locationDataConName, locationTyConName,
-  srcLocDataConName, srcLocTyConName :: Name
+  srcLocDataConName :: Name
 locationDataConName = conName gHC_LOCATION (fsLit "Location") locationDataConKey
 locationTyConName   = tcQual  gHC_LOCATION (fsLit "Location") locationTyConKey
 srcLocDataConName   = conName gHC_LOCATION (fsLit "SrcLoc")   srcLocDataConKey
-srcLocTyConName     = tcQual  gHC_LOCATION (fsLit "SrcLoc")   srcLocTyConKey
 
 -- plugins
 pLUGINS :: Module
@@ -1532,9 +1531,8 @@ staticPtrTyConKey  = mkPreludeTyConUnique 180
 staticPtrInfoTyConKey :: Unique
 staticPtrInfoTyConKey = mkPreludeTyConUnique 181
 
-locationTyConKey, srcLocTyConKey :: Unique
+locationTyConKey :: Unique
 locationTyConKey   = mkPreludeTyConUnique 182
-srcLocTyConKey     = mkPreludeTyConUnique 183
 
 ---------------- Template Haskell -------------------
 --      USES TyConUniques 200-299
