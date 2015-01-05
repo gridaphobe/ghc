@@ -44,7 +44,8 @@ import TcEvidence
 import TcType
 import Type
 import Coercion hiding (substCo)
-import TysWiredIn ( eqBoxDataCon, coercibleDataCon, tupleCon, mkListTy )
+import TysWiredIn ( eqBoxDataCon, coercibleDataCon, tupleCon, mkListTy
+                  , mkBoxedTupleTy, stringTy )
 import Id
 import Class
 import DataCon  ( dataConTyCon, dataConWorkId )
@@ -929,27 +930,33 @@ dsEvTerm (EvCallStack cs) = do
                         , return $ mkIntExprInt df (srcSpanEndCol l)
                         ])
 
-  matchId         <- newSysLocalDs $ mkListTy srcLocTy
+  let callSiteTy = mkBoxedTupleTy [stringTy, srcLocTy]
+
+  matchId         <- newSysLocalDs $ mkListTy callSiteTy
 
   callStackDataCon <- dsLookupDataCon callStackDataConName
   let callStackTyCon = dataConTyCon callStackDataCon
   let callStackTy    = mkTyConTy callStackTyCon
-  let emptyCS        = mkCoreConApps callStackDataCon [mkNilExpr srcLocTy]
-  let pushCS loc rest =
+  let emptyCS        = mkCoreConApps callStackDataCon [mkNilExpr callSiteTy]
+  let pushCS name loc rest =
         mkWildCase rest callStackTy callStackTy
                    [( DataAlt callStackDataCon
                     , [matchId]
                     , mkCoreConApps callStackDataCon
-                       [mkConsExpr srcLocTy loc (Var matchId)]
+                       [mkConsExpr callSiteTy
+                                   (mkCoreTup [name, loc])
+                                   (Var matchId)]
                     )]
   case cs of
-    EvCsRoot loc -> do
+    EvCsRoot (name, loc) -> do
+      nameExpr <- mkStringExprFS name
       locExpr <- mkSrcLoc loc
-      return (pushCS locExpr emptyCS)
-    EvCsPush loc tm -> do
+      return (pushCS nameExpr locExpr emptyCS)
+    EvCsPush (name, loc) tm -> do
+      nameExpr <- mkStringExprFS name
       locExpr <- mkSrcLoc loc
       tmExpr  <- dsEvTerm tm
-      return (pushCS locExpr tmExpr)
+      return (pushCS nameExpr locExpr tmExpr)
 
 ---------------------------------------
 dsTcCoercion :: TcCoercion -> (Coercion -> CoreExpr) -> DsM CoreExpr

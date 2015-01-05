@@ -8,6 +8,9 @@ module TcInteract (
 #include "HsVersions.h"
 
 import BasicTypes ()
+import HsTypes ( hsIPNameFS )
+import Name ( nameOccName )
+import OccName ( occNameFS )
 import TcCanonical
 import TcFlatten
 import VarSet
@@ -612,6 +615,7 @@ interactDict inerts workItem@(CDictCan { cc_ev = ev_w, cc_class = cls, cc_tyargs
   -- we always build new dicts in matchClassInst
   | isCallStackIP cls tys
   , isWanted ev_w
+  , not (inferring (ctLocOrigin (ctLoc workItem)))
   = continueWith workItem
 
   | Just ctev_i <- lookupInertDict inerts (ctEvLoc ev_w) cls tys
@@ -634,6 +638,9 @@ interactDict inerts workItem@(CDictCan { cc_ev = ev_w, cc_class = cls, cc_tyargs
                -- Standard thing: create derived fds and keep on going. Importantly we don't
                -- throw workitem back in the worklist because this can cause loops (see #5236)
        ; continueWith workItem  }
+
+  where inferring (TypeEqOrigin _ _) = True
+        inferring _ = False
 
 interactDict _ wi = pprPanic "interactDict" (ppr wi)
 
@@ -1624,6 +1631,7 @@ matchClassInst (IS cans _ _) clas tys@[ ip, ty ] loc
   | isCallStackIP clas tys
   = do -- we don't use lookupInertDict here because we want to find ANY IP dict
        -- for a CallStack, disregarding the name of the IP
+       traceTcS "matchClassInst.loc" (pprCtOrigin (ctLocOrigin loc))
        let ipDicts = bagToList $ findDictsByClass (inert_dicts cans) clas
 
        let forTy ct
@@ -1636,8 +1644,8 @@ matchClassInst (IS cans _ _) clas tys@[ ip, ty ] loc
 
        let ev_cs =
              case find forTy ipDicts of
-               Nothing -> EvCsRoot locSpan
-               Just ct -> EvCsPush locSpan
+               Nothing -> EvCsRoot (origin, locSpan)
+               Just ct -> EvCsPush (origin, locSpan)
                                     -- the evidence for the given CallStack is a
                                     -- dictionary so we need to coerce it back
                                     -- to a CallStack.
@@ -1655,6 +1663,10 @@ matchClassInst (IS cans _ _) clas tys@[ ip, ty ] loc
   locSpan = case ctLocSpan loc of
               RealSrcSpan s -> s
               _ -> panic "Can't create CallStack evidence from a bad SrcSpan!"
+  origin = case ctLocOrigin loc of
+             OccurrenceOf name -> occNameFS (nameOccName name)
+             IPOccOrigin ip -> hsIPNameFS ip
+             _ -> panic "Can only create CallStack evidence from OccurenceOf or IPOccOrigin!"
 
 matchClassInst inerts clas tys loc
    = do { dflags <- getDynFlags

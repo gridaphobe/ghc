@@ -1,14 +1,14 @@
 {-# LANGUAGE ImplicitParams, RankNTypes #-}
-
+{-# OPTIONS_GHC -dcore-lint #-}
 module Main where
 
-import GHC.CallStack
+import GHC.Stack
 
 f0 = putStrLn $ showCallStack ?loc
      -- should just show the location of ?loc
 
 f1 :: (?loc :: CallStack) => IO ()
-f1 = putStrLn $ showCallStack ?loc
+f1 = showCallStack ?loc
      -- should show the location of ?loc *and* f1's call-site
 
 f2 :: (?loc :: CallStack) => IO ()

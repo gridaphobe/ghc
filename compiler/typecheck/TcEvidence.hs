@@ -735,8 +735,8 @@ data EvLit
     deriving( Data.Data, Data.Typeable )
 
 data EvCallStack
-  = EvCsRoot RealSrcSpan
-  | EvCsPush RealSrcSpan EvTerm
+  = EvCsRoot (FastString, RealSrcSpan)
+  | EvCsPush (FastString, RealSrcSpan) EvTerm
       -- the EvTerm must be the CallStack, not the dictionary
       -- see Note [CallStack evidence terms]
   deriving( Data.Data, Data.Typeable )
@@ -838,8 +838,8 @@ A "CallStack evidence term" is either a single RealSrcSpan or a
 RealSrcSpan "pushed" onto another evidence term, creating an
 explicit call-stack.
 
-  cs_tm ::= EvCsRoot span
-          | EvCsPush span tm
+  cs_tm ::= EvCsRoot (name, span)
+          | EvCsPush (name, span) tm
 
 INVARIANT: In the "push" case, the other EvTerm must be of type
 'CallStack', not a dictionary for 'IP loc CallStack'.
@@ -862,7 +862,7 @@ call-site. We want to construct an EvTerm that will desugar into
 
 where
 
-  pushCallStack :: SrcSpan -> CallStack -> CallStack
+  pushCallStack :: (String, SrcSpan) -> CallStack -> CallStack
 
 but we only have an `IP "loc" CallStack` in-scope! So we need to
 coerce `d` into a CallStack before pushing the new span onto it.
@@ -873,7 +873,7 @@ air, we will wrap `d` in a TcCoercion
 
 and use
 
-  EvLocPush span (d |> ax)
+  EvLocPush (name, span) (d |> ax)
 
 as our new evidence term. The usual desugaring machinery will then
 produce a proper Coercion without any CallStack-specific logic.
