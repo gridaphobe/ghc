@@ -613,9 +613,8 @@ interactDict :: InertCans -> Ct -> TcS (StopOrContinue Ct)
 interactDict inerts workItem@(CDictCan { cc_ev = ev_w, cc_class = cls, cc_tyargs = tys })
   -- don't ever try to solve dicts for `IP CallStack`s from other dicts,
   -- we always build new dicts in matchClassInst
-  | isCallStackIP cls tys
+  | isCallStackIP (ctLocOrigin (ctLoc workItem)) cls tys
   , isWanted ev_w
-  , not (inferring (ctLocOrigin (ctLoc workItem)))
   = continueWith workItem
 
   | Just ctev_i <- lookupInertDict inerts (ctEvLoc ev_w) cls tys
@@ -638,9 +637,6 @@ interactDict inerts workItem@(CDictCan { cc_ev = ev_w, cc_class = cls, cc_tyargs
                -- Standard thing: create derived fds and keep on going. Importantly we don't
                -- throw workitem back in the worklist because this can cause loops (see #5236)
        ; continueWith workItem  }
-
-  where inferring (TypeEqOrigin _ _) = True
-        inferring _ = False
 
 interactDict _ wi = pprPanic "interactDict" (ppr wi)
 
@@ -1628,7 +1624,7 @@ matchClassInst _ clas [ ty ] _
                      $$ vcat (map (ppr . idType) (classMethods clas)))
 
 matchClassInst (IS cans _ _) clas tys@[ ip, ty ] loc
-  | isCallStackIP clas tys
+  | isCallStackIP (ctLocOrigin loc) clas tys
   = do -- we don't use lookupInertDict here because we want to find ANY IP dict
        -- for a CallStack, disregarding the name of the IP
        traceTcS "matchClassInst.loc" (pprCtOrigin (ctLocOrigin loc))
@@ -1791,10 +1787,27 @@ But for the Given Overlap check our goal is just related to completeness of
 constraint solving.
 -}
 
--- | Is the constraint for an implicit CallStack parameter?
-isCallStackIP :: Class -> [Type] -> Bool
-isCallStackIP cls [ _, ty ]
+-- | Is the constraint for an implicit CallStack parameter? If so, return the
+-- name of the 'Var' that gave rise to the constraint.
+isCallStackIP :: CtOrigin -> Class -> [Type] -> Maybe FastString
+isCallStackIP orig cls [ _, ty ]
   | Just (tc, []) <- splitTyConApp_maybe ty
-  = cls `hasKey` ipClassNameKey && tc `hasKey` callStackTyConKey
-isCallStackIP _ _
+  = cls `hasKey` ipClassNameKey && tc `hasKey` callStackTyConKey && ours orig
+  where
+  -- We only want to grab constraints that arose due to the use of an IP or a
+  -- function call. In particular, when we type-check the body of a function
+  -- that uses a CallStack IP, e.g.
+  --
+  -- showLoc :: (?loc :: CallStack) => String
+  -- showLoc = showCallStack ?loc
+  --
+  -- we do NOT want to intercept the
+  --
+  --   (?loc :: CallStack) => String ~ (?loc :: CallStack) => String
+  --
+  -- constraint.
+  ours (OccurrenceOf n) = occNameFS (nameOccName name)
+  ours (IPOccOrigin n)  = '?' `consFS` hsIPNameFS ip
+  ours _                = False
+isCallStackIP _ _ _
   = False
