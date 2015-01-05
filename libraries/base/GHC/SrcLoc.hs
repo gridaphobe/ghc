@@ -1,9 +1,6 @@
 {-# LANGUAGE RecordWildCards #-}
-module GHC.Location
-  ( CallStack
-  , getCallStack
-
-  , SrcLoc
+module GHC.SrcLoc
+  ( SrcLoc
   , srcLocPackage
   , srcLocModule
   , srcLocFile
@@ -13,24 +10,8 @@ module GHC.Location
   , srcLocEndCol
 
   -- * Pretty printing
-  , showCallStack
   , showSrcLoc
   ) where
-
---------------------------------------------------------------------------------
--- Source Locations
---------------------------------------------------------------------------------
-
--- | A CallStack is comprised of at least one 'SrcLoc'.
-data CallStack = CallStack { getCallStack :: [SrcLoc] }
-  deriving (Show, Eq)
-
-showCallStack :: CallStack -> String
-showCallStack (CallStack (root:rest))
-  = unlines (showSrcLoc root : map (indent . showSrcLoc) rest)
-  where
-  indent l = "  " ++ l
-showCallStack _ = error "CallStack cannot be empty!"
 
 -- | A single location in the source code.
 data SrcLoc = SrcLoc

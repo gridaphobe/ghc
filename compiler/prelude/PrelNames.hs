@@ -459,8 +459,11 @@ gHC_IP          = mkBaseModule (fsLit "GHC.IP")
 gHC_PARR' :: Module
 gHC_PARR' = mkBaseModule (fsLit "GHC.PArr")
 
-gHC_LOCATION :: Module
-gHC_LOCATION = mkBaseModule (fsLit "GHC.Location")
+gHC_SRCLOC :: Module
+gHC_SRCLOC = mkBaseModule (fsLit "GHC.SrcLoc")
+
+gHC_STACK :: Module
+gHC_STACK = mkBaseModule (fsLit "GHC.Stack")
 
 gHC_STATICPTR :: Module
 gHC_STATICPTR = mkBaseModule (fsLit "GHC.StaticPtr")
@@ -1177,11 +1180,11 @@ ipClassName         = clsQual gHC_IP (fsLit "IP")      ipClassNameKey
 -- Source Locations
 callStackDataConName, callStackTyConName, srcLocDataConName :: Name
 callStackDataConName
-  = conName gHC_LOCATION (fsLit "CallStack") callStackDataConKey
+  = conName gHC_STACK (fsLit "CallStack") callStackDataConKey
 callStackTyConName
-  = tcQual  gHC_LOCATION (fsLit "CallStack") callStackTyConKey
+  = tcQual  gHC_STACK (fsLit "CallStack") callStackTyConKey
 srcLocDataConName
-  = conName gHC_LOCATION (fsLit "SrcLoc")   srcLocDataConKey
+  = conName gHC_SRCLOC (fsLit "SrcLoc")   srcLocDataConKey
 
 -- plugins
 pLUGINS :: Module

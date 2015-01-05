@@ -2,7 +2,7 @@
 
 module Main where
 
-import GHC.Location
+import GHC.CallStack
 
 f0 = putStrLn $ showCallStack ?loc
      -- should just show the location of ?loc
