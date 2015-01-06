@@ -960,6 +960,7 @@ dsEvTerm (EvCallStack cs) = do
       -- at this point tmExpr :: IP sym CallStack
       -- but we need the actual CallStack to pass to pushCS,
       -- so we use mkTcFromDictCo to unwrap the IP-newtype.
+      -- See Note [CallStack evidence terms]
       let (tc, tys) = splitTyConApp (exprType tmExpr)
           Just cls  = tyConClass_maybe tc
           ip_tc_co = mkTcFromDictCo cls tys

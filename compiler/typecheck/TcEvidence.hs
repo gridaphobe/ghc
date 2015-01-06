@@ -832,58 +832,83 @@ The story for kind `Symbol` is analogous:
 
 Note [CallStack evidence terms]
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-A "CallStack evidence term" is either a single RealSrcSpan or a
-RealSrcSpan "pushed" onto another evidence term, creating an
-explicit call-stack.
+The goal of CallStack evidence terms is to reify locations
+in the program source as runtime values, without any support
+from the RTS. We accomplish this by assigning a special meaning
+to implicit parameters of type GHC.Stack.CallStack. A use of
+a CallStack IP, e.g.
 
-  cs_tm ::= EvCsRoot (name, span)
-          | EvCsPush (name, span) tm
+  head []    = error (show (?loc :: CallStack))
+  head (x:_) = x
 
-INVARIANT: In the "push" case, the other EvTerm must be of type
-'CallStack', not a dictionary for 'IP loc CallStack'.
+will be solved with the source location that gave rise to the IP
+constraint (here, the use of ?loc). If there is already
+a CallStack IP in scope, e.g. passed-in as an argument
 
-To explain the need for this invariant, consider the following
-definition:
+  head :: (?loc :: CallStack) => [a] -> a
+  head []    = error (show (?loc :: CallStack))
+  head (x:_) = x
 
-  foo :: (?loc :: CallStack) => String
-  foo = show ?loc
+we will push the new location onto the CallStack that was passed
+in. These two cases are reflected by the EvCallStack evidence
+type. In the first case, we will create an evidence term
 
-When solving the wanted constraint that arises from the use of ?loc,
-we'll have a given constraint
+  EvCsRoot ("?loc", <?loc's location>)
+
+and in the second we'll have a given constraint
 
   [G] d :: IP "loc" CallStack
 
-in scope, corresponding to the CallStack being passed in from the
-call-site. We want to construct an EvTerm that will desugar into
+in scope, and will create an evidence term
 
-  pushCallStack span stack
+  EvCsPush ("?loc", <?loc's location>) d
 
-where
+This provides a lightweight mechanism for building up call-stacks
+explicitly, but is notably limited by the fact that the stack will
+stop at the first function whose type does not include a CallStack IP.
 
-  pushCallStack :: (String, SrcSpan) -> CallStack -> CallStack
+Important Details:
+- GHC should NEVER report an insoluble CallStack constraint.
 
-but we only have an `IP "loc" CallStack` in-scope! So we need to
-coerce `d` into a CallStack before pushing the new span onto it.
-Rather than have the desugarer construct a Coercion out of thin
-air, we will wrap `d` in a TcCoercion
+- A CallStack is a [(String, SrcLoc)], where the String is the
+  name of the binder that is used at the SrcLoc. SrcLoc is
+  defined in GHC.SrcLoc and contains the package/module/file name,
+  as well as the full source-span. Both CallStack and SrcLoc are
+  kept abstract so only GHC can construct new values.
 
-  ax :: IP "loc" CallStack ~ CallStack
+- Since we always want to generate new dictionaries for CallStack IPs,
+  we must take care *not* to let these wanteds interact with the inert set.
+  (See TcInteract.interactDict)
 
-and use
+- We ignore the name of the IP both when solving wanted and looking
+  up given IPs. An important consequence of this decision is
+  that in
 
-  EvLocPush (name, span) (d |> ax)
+    head :: (?loc :: CallStack) => [a] -> a
+    head []    = error (show (?myloc :: CallStack))
+    head (x:_) = x
 
-as our new evidence term. The usual desugaring machinery will then
-produce a proper Coercion without any CallStack-specific logic.
+  we will push the location of ?myloc onto the ?loc CallStack
+  that was passed in. (See TcInteract.matchClassInst)
 
-Notice, finally, that EvLocs will desugar into terms of type CallStack,
-but when solving a wanted constraint
+- In the "push" case, the given CallStack is actually an IP
+  dictionary, so the desugarer must remember to unwrap the IP in the
+  generated Core before pushing the new SrcLoc onto it.
+  (See DsBinds.dsEvTerm).
 
-  [W] d :: IP "loc" CallStack
+- We only want to intercept constraints that arose due to the use of an IP or a
+  function call. In particular, when we type-check a function that uses a
+  CallStack IP, e.g.
 
-e.g. from a call to `foo` above, we have to provide a *dictionary*. So
-when we solve such a constraint we will have to take care to cast the
-EvLoc back to a dictionary.
+  showLoc :: (?loc :: CallStack) => String
+  showLoc = showCallStack ?loc
+
+  we do NOT want to intercept the
+
+    (?loc :: CallStack) => String ~ (?loc :: CallStack) => String
+
+  constraint that arises at the end when we check that the inferred type
+  matches the expected type. (See TcEvidence.isCallStackIP)
 -}
 
 mkEvCast :: EvTerm -> TcCoercion -> EvTerm

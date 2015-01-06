@@ -612,8 +612,9 @@ interactIrred _ wi = pprPanic "interactIrred" (ppr wi)
 
 interactDict :: InertCans -> Ct -> TcS (StopOrContinue Ct)
 interactDict inerts workItem@(CDictCan { cc_ev = ev_w, cc_class = cls, cc_tyargs = tys })
-  -- don't ever try to solve dicts for `IP CallStack`s from other dicts,
-  -- we always build new dicts in matchClassInst
+  -- don't ever try to solve dicts for CallStack IPs from other dicts,
+  -- we always build new dicts in matchClassInst.
+  -- See Note [CallStack evidence terms]
   | Just _ <- isCallStackIP (ctLocOrigin (ctLoc workItem)) cls tys
   , isWanted ev_w
   = continueWith workItem
@@ -1625,6 +1626,8 @@ matchClassInst _ clas [ ty ] _
                      $$ vcat (map (ppr . idType) (classMethods clas)))
 
 matchClassInst (IS cans _ _) clas tys@[ ip, ty ] loc
+  -- always generate new dictionaries for CallStack implicit-params.
+  -- See Note [CallStack evidence terms]
   | Just name <- isCallStackIP (ctLocOrigin loc) clas tys
   = do -- we don't use lookupInertDict here because we want to find ANY IP dict
        -- for a CallStack, disregarding the name of the IP
@@ -1636,8 +1639,11 @@ matchClassInst (IS cans _ _) clas tys@[ ip, ty ] loc
              -- i.e. we want to match
              -- `IP "loc" CallStack` and `IP "myloc" CallStack`, but not
              -- `IP "loc" Foo`.
-             | [_, t] <- cc_tyargs ct = t == ty
-             | otherwise              = False
+             | [_, t] <- cc_tyargs ct
+             , isGiven ct
+             = t == ty
+             | otherwise
+             = False
 
        let ev_cs =
              case find forTy ipDicts of
@@ -1653,10 +1659,6 @@ matchClassInst (IS cans _ _) clas tys@[ ip, ty ] loc
   locSpan = case ctLocSpan loc of
               RealSrcSpan s -> s
               _ -> panic "Can't create CallStack evidence from a bad SrcSpan!"
-  -- origin = case ctLocOrigin loc of
-  --            OccurrenceOf name -> occNameFS (nameOccName name)
-  --            IPOccOrigin ip -> hsIPNameFS ip
-  --            _ -> panic "Can only create CallStack evidence from OccurenceOf or IPOccOrigin!"
 
 matchClassInst inerts clas tys loc
    = do { dflags <- getDynFlags
@@ -1787,24 +1789,12 @@ isCallStackIP :: CtOrigin -> Class -> [Type] -> Maybe FastString
 isCallStackIP orig cls [ _, ty ]
   | Just (tc, []) <- splitTyConApp_maybe ty
   , cls `hasKey` ipClassNameKey && tc `hasKey` callStackTyConKey
-  = ours orig
+  = occOrigin orig
   where
   -- We only want to grab constraints that arose due to the use of an IP or a
-  -- function call. In particular, when we type-check the body of a function
-  -- that uses a CallStack IP, e.g.
-  --
-  -- showLoc :: (?loc :: CallStack) => String
-  -- showLoc = showCallStack ?loc
-  --
-  -- we do NOT want to intercept the
-  --
-  --   (?loc :: CallStack) => String ~ (?loc :: CallStack) => String
-  --
-  -- constraint.
-  -- TODO: merge the above into the CallSTack Note and mention the issue of
-  -- solving constraints arising from :t in GHCi.
-  ours (OccurrenceOf n) = Just (occNameFS (nameOccName n))
-  ours (IPOccOrigin n)  = Just ('?' `consFS` hsIPNameFS n)
-  ours _                = Nothing
+  -- function call. See Note [CallStack evidence terms]
+  occOrigin (OccurrenceOf n) = Just (occNameFS (nameOccName n))
+  occOrigin (IPOccOrigin n)  = Just ('?' `consFS` hsIPNameFS n)
+  occOrigin _                = Nothing
 isCallStackIP _ _ _
   = Nothing
