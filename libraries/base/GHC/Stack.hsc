@@ -25,6 +25,7 @@ module GHC.Stack (
 
     -- ** Explicitly created via implicit-parameters
     CallStack,
+    getCallStack,
     showCallStack,
 
     -- * Internals
