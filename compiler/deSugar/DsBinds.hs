@@ -39,11 +39,12 @@ import UniqSupply
 import Digraph
 
 import PrelNames
-import TyCon      ( isTupleTyCon, tyConDataCons_maybe )
+import TyCon      ( isTupleTyCon, tyConClass_maybe, tyConDataCons_maybe )
 import TcEvidence
 import TcType
 import Type
 import Coercion hiding (substCo)
+import Inst
 import TysWiredIn ( eqBoxDataCon, coercibleDataCon, tupleCon, mkListTy
                   , mkBoxedTupleTy, stringTy )
 import Id
@@ -956,7 +957,14 @@ dsEvTerm (EvCallStack cs) = do
       nameExpr <- mkStringExprFS name
       locExpr <- mkSrcLoc loc
       tmExpr  <- dsEvTerm tm
-      return (pushCS nameExpr locExpr tmExpr)
+      -- at this point tmExpr :: IP sym CallStack
+      -- but we need the actual CallStack to pass to pushCS,
+      -- so we use mkTcFromDictCo to unwrap the IP-newtype.
+      let (tc, tys) = splitTyConApp (exprType tmExpr)
+          Just cls  = tyConClass_maybe tc
+          ip_tc_co = mkTcFromDictCo cls tys
+      csExpr <- dsTcCoercion ip_tc_co (mkCast tmExpr)
+      return (pushCS nameExpr locExpr csExpr)
 
 ---------------------------------------
 dsTcCoercion :: TcCoercion -> (Coercion -> CoreExpr) -> DsM CoreExpr

@@ -737,8 +737,6 @@ data EvLit
 data EvCallStack
   = EvCsRoot (FastString, RealSrcSpan)
   | EvCsPush (FastString, RealSrcSpan) EvTerm
-      -- the EvTerm must be the CallStack, not the dictionary
-      -- see Note [CallStack evidence terms]
   deriving( Data.Data, Data.Typeable )
 
 {-
