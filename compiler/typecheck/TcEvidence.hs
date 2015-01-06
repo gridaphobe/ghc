@@ -28,7 +28,8 @@ module TcEvidence (
   mkTcAxiomRuleCo, mkTcPhantomCo,
   tcCoercionKind, coVarsOfTcCo, isEqVar, mkTcCoVarCo,
   isTcReflCo, getTcCoVar_maybe,
-  tcCoercionRole, eqVarRole
+  tcCoercionRole, eqVarRole,
+  unwrapIP, wrapIP
   ) where
 #include "HsVersions.h"
 
@@ -39,6 +40,7 @@ import TypeRep  -- Knows type representation
 import TcType
 import Type
 import TyCon
+import Class
 import CoAxiom
 import PrelNames
 import VarEnv
@@ -1024,3 +1026,22 @@ instance Outputable EvCallStack where
     = angleBrackets (ppr loc)
   ppr (EvCsPush loc tm)
     = angleBrackets (ppr loc <+> ptext (sLit ":") <+> ppr tm)
+
+----------------------------------------------------------------------
+-- Helper functions for dealing with IP newtype-dictionaries
+----------------------------------------------------------------------
+
+-- | Create a 'TcCoercion' that unwraps an implicit-parameter dictionary
+-- to expose the underlying value.
+unwrapIP :: Class -> [Type] -> TcCoercion
+unwrapIP cls tys =
+  case unwrapNewTyCon_maybe (classTyCon cls) of
+    Just (_,_,ax) -> mkTcUnbranchedAxInstCo Representational ax tys
+    Nothing       -> pprPanic "unwrapIP" $
+                       text "The dictionary for" <+> quotes (ppr cls)
+                         <+> text "is not a newtype!"
+
+-- | Create a 'TcCoercion' that wraps a value in an implicit-parameter
+-- dictionary.
+wrapIP :: Class -> [Type] -> TcCoercion
+wrapIP cls tys = mkTcSymCo (unwrapIP cls tys)

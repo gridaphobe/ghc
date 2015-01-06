@@ -24,9 +24,6 @@ module Inst (
        -- Simple functions over evidence variables
        tyVarsOfWC, tyVarsOfBag,
        tyVarsOfCt, tyVarsOfCts,
-
-       -- coercing to and from dictionaries
-       mkTcToDictCo, mkTcFromDictCo,
     ) where
 
 #include "HsVersions.h"
@@ -47,8 +44,7 @@ import Type
 import Coercion ( Role(..) )
 import TcType
 import HscTypes
-import Class( Class, classTyCon )
-import TyCon( unwrapNewTyCon_maybe )
+import Class( Class )
 import MkId( mkDictFunId )
 import Id
 import Name
@@ -650,23 +646,3 @@ tyVarsOfImplic (Implic { ic_skols = skols
 
 tyVarsOfBag :: (a -> TyVarSet) -> Bag a -> TyVarSet
 tyVarsOfBag tvs_of = foldrBag (unionVarSet . tvs_of) emptyVarSet
-
-----------------------------------------------------------------------
--- Helper functions for dealing with newtype-dictionaries
-----------------------------------------------------------------------
-
--- | Create a 'TcCoercion' that converts a dictionary for a single-method
--- 'Class' to the type of the method. Panics if given a 'Class' that cannot
--- be represented as a newtype.
-mkTcFromDictCo :: Class -> [Type] -> TcCoercion
-mkTcFromDictCo cls tys =
-  case unwrapNewTyCon_maybe (classTyCon cls) of
-    Just (_,_,ax) -> mkTcUnbranchedAxInstCo Representational ax tys
-    Nothing       -> pprPanic "mkTcFromDictCo" $
-                       text "The dictionary for" <+> quotes (ppr cls)
-                       <+> text "is not a newtype!"
-
--- | Create a 'TcCoercion' that converts a method to dictionary for the
--- 'Class'. Panics if given a 'Class' that cannot be represented as a newtype.
-mkTcToDictCo :: Class -> [Type] -> TcCoercion
-mkTcToDictCo cls tys = mkTcSymCo (mkTcFromDictCo cls tys)

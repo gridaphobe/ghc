@@ -29,7 +29,7 @@ import Class
 import TyCon
 import FunDeps
 import FamInst
-import Inst( mkTcToDictCo, tyVarsOfCt )
+import Inst( tyVarsOfCt )
 
 import TcEvidence
 import Outputable
@@ -1627,10 +1627,9 @@ matchClassInst _ clas [ ty ] _
 matchClassInst (IS cans _ _) clas tys@[ ip, ty ] loc
   -- always generate new dictionaries for CallStack implicit-params.
   -- See Note [CallStack evidence terms]
-  | Just name <- isCallStackIP (ctLocOrigin loc) clas tys
+  | Just name <- isCallStackIP origin clas tys
   = do -- we don't use lookupInertDict here because we want to find ANY IP dict
        -- for a CallStack, disregarding the name of the IP
-       traceTcS "matchClassInst.loc" (pprCtOrigin (ctLocOrigin loc))
        let ipDicts = bagToList $ findDictsByClass (inert_dicts cans) clas
 
        let forTy ct
@@ -1653,11 +1652,10 @@ matchClassInst (IS cans _ _) clas tys@[ ip, ty ] loc
        -- return a dictionary, so we have to coerce evLoc to a
        -- dictionary for `IP ip CallStack`
        return $ GenInst [] $ mkEvCast (EvCallStack ev_cs)
-                                      (mkTcToDictCo clas [ip,ty])
+                                      (wrapIP clas [ip,ty])
   where
-  locSpan = case ctLocSpan loc of
-              RealSrcSpan s -> s
-              _ -> panic "Can't create CallStack evidence from a bad SrcSpan!"
+  locSpan = ctLocSpan loc
+  origin  = ctLocOrigin loc
 
 matchClassInst inerts clas tys loc
    = do { dflags <- getDynFlags

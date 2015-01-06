@@ -158,14 +158,15 @@ errorWithStackTrace x = unsafeDupablePerformIO $ do
 -- @
 -- ghci> myerror "die"
 -- *** Exception: die
--- MyError.hs:7:51 in main:MyError
---   <interactive>:2:1 in interactive:Ghci1
+-- ?loc, called at MyError.hs:7:51 in main:MyError
+--   myerror, called at <interactive>:2:1 in interactive:Ghci1
 --
 -- @CallStack@s do not interact with the RTS and do not require compilation with
 -- @-prof@. On the other hand, as they are built up explicitly using
 -- implicit-parameters, they will generally not contain as much information as the
 -- simulated call-stacks maintained by the RTS.
 --
+-- A @CallStack@ is a @[(String, SrcLoc)]@
 -- @since 4.9.0.0
 data CallStack = CallStack { getCallStack :: [(String, SrcLoc)] }
   deriving (Show, Eq)
