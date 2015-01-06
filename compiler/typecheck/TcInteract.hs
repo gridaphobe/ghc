@@ -29,7 +29,7 @@ import Class
 import TyCon
 import FunDeps
 import FamInst
-import Inst( mkTcFromDictCo, mkTcToDictCo, tyVarsOfCt )
+import Inst( mkTcToDictCo, tyVarsOfCt )
 
 import TcEvidence
 import Outputable
@@ -47,7 +47,6 @@ import Control.Monad
 import Maybes( isJust )
 import Pair (Pair(..))
 import Unique( hasKey )
-import FastString ( sLit )
 import DynFlags
 import SrcLoc
 import Util
@@ -1640,7 +1639,7 @@ matchClassInst (IS cans _ _) clas tys@[ ip, ty ] loc
              -- `IP "loc" CallStack` and `IP "myloc" CallStack`, but not
              -- `IP "loc" Foo`.
              | [_, t] <- cc_tyargs ct
-             , isGiven ct
+             , isGiven (cc_ev ct)
              = t == ty
              | otherwise
              = False
