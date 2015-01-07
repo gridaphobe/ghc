@@ -163,12 +163,17 @@ errorWithStackTrace x = unsafeDupablePerformIO $ do
 --
 -- @CallStack@s do not interact with the RTS and do not require compilation with
 -- @-prof@. On the other hand, as they are built up explicitly using
--- implicit-parameters, they will generally not contain as much information as the
--- simulated call-stacks maintained by the RTS.
+-- implicit-parameters, they will generally not contain as much information as
+-- the simulated call-stacks maintained by the RTS.
 --
--- A @CallStack@ is a @[(String, SrcLoc)]@
+-- The @CallStack@ type is abstract, but it can be converted into a
+-- @[(String, SrcLoc)]@ via 'getCallStack'. The @String@ is the name of function
+-- that was called, the 'SrcLoc' is the call-site. The list is ordered with the
+-- most recently called function at the head.
+--
 -- @since 4.9.0.0
 data CallStack = CallStack { getCallStack :: [(String, SrcLoc)] }
+  -- See Note [CallStack evidence terms]
   deriving (Show, Eq)
 
 showCallStack :: CallStack -> String

@@ -737,8 +737,9 @@ data EvLit
     deriving( Data.Data, Data.Typeable )
 
 data EvCallStack
-  = EvCsRoot (FastString, RealSrcSpan)
-  | EvCsPush (FastString, RealSrcSpan) EvTerm
+  = EvCsEmpty
+  | EvCsPushCall Name RealSrcSpan EvTerm
+  | EvCsTop FastString RealSrcSpan EvTerm
   deriving( Data.Data, Data.Typeable )
 
 {-
@@ -855,7 +856,7 @@ we will push the new location onto the CallStack that was passed
 in. These two cases are reflected by the EvCallStack evidence
 type. In the first case, we will create an evidence term
 
-  EvCsRoot ("?loc", <?loc's location>)
+  EvCsTop "?loc" <?loc's location> EvCsEmpty
 
 and in the second we'll have a given constraint
 
@@ -863,7 +864,17 @@ and in the second we'll have a given constraint
 
 in scope, and will create an evidence term
 
-  EvCsPush ("?loc", <?loc's location>) d
+  EvCsTop "?loc" <?loc's location> d
+
+When we call a function that uses a CallStack IP, e.g.
+
+  f = head xs
+
+we create an evidence term
+
+  EvCsPushCall "head" <head's location> EvCsEmpty
+
+again pushing onto a given evidence term if one exists.
 
 This provides a lightweight mechanism for building up call-stacks
 explicitly, but is notably limited by the fact that the stack will
@@ -1022,10 +1033,12 @@ instance Outputable EvLit where
   ppr (EvStr s) = text (show s)
 
 instance Outputable EvCallStack where
-  ppr (EvCsRoot loc)
-    = angleBrackets (ppr loc)
-  ppr (EvCsPush loc tm)
-    = angleBrackets (ppr loc <+> ptext (sLit ":") <+> ppr tm)
+  ppr EvCsEmpty
+    = ptext (sLit "[]")
+  ppr (EvCsTop name loc tm)
+    = angleBrackets (ppr (name,loc)) <+> ptext (sLit ":") <+> ppr tm
+  ppr (EvCsPushCall name loc tm)
+    = angleBrackets (ppr (name,loc)) <+> ptext (sLit ":") <+> ppr tm
 
 ----------------------------------------------------------------------
 -- Helper functions for dealing with IP newtype-dictionaries

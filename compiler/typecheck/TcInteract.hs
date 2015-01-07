@@ -9,8 +9,6 @@ module TcInteract (
 
 import BasicTypes ()
 import HsTypes ( hsIPNameFS )
-import Name ( nameOccName )
-import OccName ( occNameFS )
 import FastString
 import TcCanonical
 import TcFlatten
@@ -48,7 +46,6 @@ import Maybes( isJust )
 import Pair (Pair(..))
 import Unique( hasKey )
 import DynFlags
-import SrcLoc
 import Util
 
 {-
@@ -614,7 +611,7 @@ interactDict inerts workItem@(CDictCan { cc_ev = ev_w, cc_class = cls, cc_tyargs
   -- don't ever try to solve dicts for CallStack IPs from other dicts,
   -- we always build new dicts in matchClassInst.
   -- See Note [CallStack evidence terms]
-  | Just _ <- isCallStackIP (ctLocOrigin (ctLoc workItem)) cls tys
+  | isCallStackIP (ctLocOrigin (ctLoc workItem)) cls tys
   , isWanted ev_w
   = continueWith workItem
 
@@ -1627,7 +1624,7 @@ matchClassInst _ clas [ ty ] _
 matchClassInst (IS cans _ _) clas tys@[ ip, ty ] loc
   -- always generate new dictionaries for CallStack implicit-params.
   -- See Note [CallStack evidence terms]
-  | Just name <- isCallStackIP origin clas tys
+  | isCallStackIP origin clas tys
   = do -- we don't use lookupInertDict here because we want to find ANY IP dict
        -- for a CallStack, disregarding the name of the IP
        let ipDicts = bagToList $ findDictsByClass (inert_dicts cans) clas
@@ -1645,8 +1642,8 @@ matchClassInst (IS cans _ _) clas tys@[ ip, ty ] loc
 
        let ev_cs =
              case find forTy ipDicts of
-               Nothing -> EvCsRoot (name, locSpan)
-               Just ct -> EvCsPush (name, locSpan) (ctEvTerm (cc_ev ct))
+               Nothing -> mkEvCs (EvCallStack EvCsEmpty)
+               Just ct -> mkEvCs (ctEvTerm (cc_ev ct))
 
        -- now we have evLoc :: CallStack, but matchClassInst is supposed to
        -- return a dictionary, so we have to coerce evLoc to a
@@ -1656,6 +1653,11 @@ matchClassInst (IS cans _ _) clas tys@[ ip, ty ] loc
   where
   locSpan = ctLocSpan loc
   origin  = ctLocOrigin loc
+  mkEvCs  = case origin of
+              OccurrenceOf n -> EvCsPushCall n locSpan
+              IPOccOrigin n  -> EvCsTop ('?' `consFS` hsIPNameFS n) locSpan
+              _              -> panic $ "Can only build CallStack evidence "
+                                     ++ "from occurrence origins!"
 
 matchClassInst inerts clas tys loc
    = do { dflags <- getDynFlags
@@ -1780,9 +1782,8 @@ But for the Given Overlap check our goal is just related to completeness of
 constraint solving.
 -}
 
--- | Is the constraint for an implicit CallStack parameter? If so, return the
--- name of the 'Var' that gave rise to the constraint.
-isCallStackIP :: CtOrigin -> Class -> [Type] -> Maybe FastString
+-- | Is the constraint for an implicit CallStack parameter?
+isCallStackIP :: CtOrigin -> Class -> [Type] -> Bool
 isCallStackIP orig cls [ _, ty ]
   | Just (tc, []) <- splitTyConApp_maybe ty
   , cls `hasKey` ipClassNameKey && tc `hasKey` callStackTyConKey
@@ -1790,8 +1791,8 @@ isCallStackIP orig cls [ _, ty ]
   where
   -- We only want to grab constraints that arose due to the use of an IP or a
   -- function call. See Note [CallStack evidence terms]
-  occOrigin (OccurrenceOf n) = Just (occNameFS (nameOccName n))
-  occOrigin (IPOccOrigin n)  = Just ('?' `consFS` hsIPNameFS n)
-  occOrigin _                = Nothing
+  occOrigin (OccurrenceOf _) = True
+  occOrigin (IPOccOrigin _)  = True
+  occOrigin _                = False
 isCallStackIP _ _ _
-  = Nothing
+  = False

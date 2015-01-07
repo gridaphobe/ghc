@@ -947,24 +947,25 @@ dsEvTerm (EvCallStack cs) = do
                                    (mkCoreTup [name, loc])
                                    (Var matchId)]
                     )]
+  let mkPush name loc tm = do
+        nameExpr <- mkStringExprFS name
+        locExpr <- mkSrcLoc loc
+        case tm of
+          EvCallStack EvCsEmpty -> return (pushCS nameExpr locExpr emptyCS)
+          _ -> do tmExpr  <- dsEvTerm tm
+                  -- at this point tmExpr :: IP sym CallStack
+                  -- but we need the actual CallStack to pass to pushCS,
+                  -- so we use unwrapIP to strip the dictionary wrapper
+                  -- See Note [CallStack evidence terms]
+                  let (tc, tys) = splitTyConApp (exprType tmExpr)
+                      Just cls  = tyConClass_maybe tc
+                      ip_tc_co  = unwrapIP cls tys
+                  csExpr <- dsTcCoercion ip_tc_co (mkCast tmExpr)
+                  return (pushCS nameExpr locExpr csExpr)
   case cs of
-    EvCsRoot (name, loc) -> do
-      nameExpr <- mkStringExprFS name
-      locExpr <- mkSrcLoc loc
-      return (pushCS nameExpr locExpr emptyCS)
-    EvCsPush (name, loc) tm -> do
-      nameExpr <- mkStringExprFS name
-      locExpr <- mkSrcLoc loc
-      tmExpr  <- dsEvTerm tm
-      -- at this point tmExpr :: IP sym CallStack
-      -- but we need the actual CallStack to pass to pushCS,
-      -- so we use unwrapIP to strip the dictionary wrapper
-      -- See Note [CallStack evidence terms]
-      let (tc, tys) = splitTyConApp (exprType tmExpr)
-          Just cls  = tyConClass_maybe tc
-          ip_tc_co  = unwrapIP cls tys
-      csExpr <- dsTcCoercion ip_tc_co (mkCast tmExpr)
-      return (pushCS nameExpr locExpr csExpr)
+    EvCsTop name loc tm -> mkPush name loc tm
+    EvCsPushCall name loc tm -> mkPush (occNameFS $ getOccName name) loc tm
+    EvCsEmpty -> panic "Cannot have an empty CallStack"
 
 ---------------------------------------
 dsTcCoercion :: TcCoercion -> (Coercion -> CoreExpr) -> DsM CoreExpr
