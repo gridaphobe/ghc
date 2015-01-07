@@ -956,10 +956,16 @@ evVarsOfTerm (EvCast tm co)       = evVarsOfTerm tm `unionVarSet` coVarsOfTcCo c
 evVarsOfTerm (EvTupleMk evs)      = evVarsOfTerms evs
 evVarsOfTerm (EvDelayedError _ _) = emptyVarSet
 evVarsOfTerm (EvLit _)            = emptyVarSet
-evVarsOfTerm (EvCallStack _)      = emptyVarSet
+evVarsOfTerm (EvCallStack cs)     = evVarsOfCallStack cs
 
 evVarsOfTerms :: [EvTerm] -> VarSet
 evVarsOfTerms = mapUnionVarSet evVarsOfTerm
+
+evVarsOfCallStack :: EvCallStack -> VarSet
+evVarsOfCallStack cs = case cs of
+  EvCsEmpty -> emptyVarSet
+  EvCsTop _ _ tm -> evVarsOfTerm tm
+  EvCsPushCall _ _ tm -> evVarsOfTerm tm
 
 {-
 ************************************************************************
