@@ -1631,7 +1631,7 @@ matchClassInst (IS cans _ _) clas tys@[ ip, ty ] loc
                _ -> mkEvCs (EvCallStack EvCsEmpty)
 
        -- now we have ev_cs :: CallStack, but matchClassInst is supposed to
-       -- return a dictionary, so we have to coerce evLoc to a
+       -- return a dictionary, so we have to coerce ev_cs to a
        -- dictionary for `IP ip CallStack`
        let ip_ty = mkClassPred clas [ip, ty]
        return $ GenInst [] $ mkEvCast (EvCallStack ev_cs)
