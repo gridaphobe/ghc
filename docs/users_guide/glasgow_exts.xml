@@ -7675,13 +7675,20 @@ GHC will automatically resolve <literal>?loc</literal> to its source
 location. If another implicit parameter with type <literal>CallStack</literal> is
 in scope, GHC will append the two locations, creating an explicit call-stack. For example:
 <programlisting>
-  f :: (?call_site :: CallStack) => String
+  f :: (?stk :: CallStack) => String
+  f = show (?stk :: CallStack)
+</programlisting>
+will produce the location of <literal>?stk</literal>, followed by
+<literal>f</literal>'s call-site. Note that the name of the implicit parameter does not
+matter (we used <literal>?loc</literal> above), GHC will solve any implicit parameter
+with the right type. The name does, however, matter when pushing new locations onto
+existing stacks. Consider:
+<programlisting>
+  f :: (?stk :: CallStack) => String
   f = show (?loc :: CallStack)
 </programlisting>
-will produce the location of <literal>?loc</literal>, followed by
-<literal>f</literal>'s call-site. Note that the names of the implicit
-parameters differ, GHC only checks the type of the implicit parameter, not the
-name.
+When we call <literal>f</literal>, the stack will include the use of <literal>?loc</literal>,
+but not the call to <literal>f</literal>; in this case the names must match.
 </para>
 <para>
 <literal>CallStack</literal> is kept abstract, but
