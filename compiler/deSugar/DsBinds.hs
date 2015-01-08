@@ -913,7 +913,10 @@ dsEvTerm (EvLit l) =
     EvNum n -> mkIntegerExpr n
     EvStr s -> mkStringExprFS s
 
-dsEvTerm (EvCallStack cs) = do
+dsEvTerm (EvCallStack cs) = dsEvCallStack cs
+
+dsEvCallStack :: EvCallStack -> DsM CoreExpr
+dsEvCallStack cs = do
   df              <- getDynFlags
   m               <- getModule
   srcLocDataCon   <- dsLookupDataCon srcLocDataConName
@@ -956,12 +959,11 @@ dsEvTerm (EvCallStack cs) = do
                   -- at this point tmExpr :: IP sym CallStack
                   -- but we need the actual CallStack to pass to pushCS,
                   -- so we use unwrapIP to strip the dictionary wrapper
-                  -- See Note [CallStack evidence terms]
-                  let (tc, tys) = splitTyConApp (exprType tmExpr)
+                  -- See Note [Overview of implicit CallStacks]
+                  let (tc, [sym, ty]) = splitTyConApp (exprType tmExpr)
                       Just cls  = tyConClass_maybe tc
-                      ip_tc_co  = unwrapIP cls tys
-                  csExpr <- dsTcCoercion ip_tc_co (mkCast tmExpr)
-                  return (pushCS nameExpr locExpr csExpr)
+                      ip_co  = unwrapIP cls sym ty
+                  return (pushCS nameExpr locExpr (mkCast tmExpr ip_co))
   case cs of
     EvCsTop name loc tm -> mkPush name loc tm
     EvCsPushCall name loc tm -> mkPush (occNameFS $ getOccName name) loc tm

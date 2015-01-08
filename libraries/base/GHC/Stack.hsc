@@ -173,7 +173,7 @@ errorWithStackTrace x = unsafeDupablePerformIO $ do
 --
 -- @since 4.9.0.0
 data CallStack = CallStack { getCallStack :: [(String, SrcLoc)] }
-  -- See Note [CallStack evidence terms]
+  -- See Note [Overview of implicit CallStacks]
   deriving (Show, Eq)
 
 showCallStack :: CallStack -> String
@@ -181,5 +181,5 @@ showCallStack (CallStack (root:rest))
   = unlines (showCallSite root : map (indent . showCallSite) rest)
   where
   indent l = "  " ++ l
-  showCallSite (f, loc) = f ++ ", called from " ++ showSrcLoc loc
+  showCallSite (f, loc) = f ++ ", called at " ++ showSrcLoc loc
 showCallStack _ = error "CallStack cannot be empty!"

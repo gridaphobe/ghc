@@ -37,7 +37,7 @@ import TcErrors
 import TcSMonad
 import Bag
 
-import Data.List( partition, foldl', deleteFirstsBy, find )
+import Data.List( partition, foldl', deleteFirstsBy )
 
 import VarEnv
 
@@ -610,7 +610,7 @@ interactDict :: InertCans -> Ct -> TcS (StopOrContinue Ct)
 interactDict inerts workItem@(CDictCan { cc_ev = ev_w, cc_class = cls, cc_tyargs = tys })
   -- don't ever try to solve dicts for CallStack IPs from other dicts,
   -- we always build new dicts in matchClassInst.
-  -- See Note [CallStack evidence terms]
+  -- See Note [Overview of implicit CallStacks]
   | isCallStackIP (ctLocOrigin (ctLoc workItem)) cls tys
   , isWanted ev_w
   = continueWith workItem
@@ -1623,33 +1623,18 @@ matchClassInst _ clas [ ty ] _
 
 matchClassInst (IS cans _ _) clas tys@[ ip, ty ] loc
   -- always generate new dictionaries for CallStack implicit-params.
-  -- See Note [CallStack evidence terms]
+  -- See Note [Overview of implicit CallStacks]
   | isCallStackIP origin clas tys
-  = do -- we don't use lookupInertDict here because we want to find ANY IP dict
-       -- for a CallStack, disregarding the name of the IP
-       let ipDicts = bagToList $ findDictsByClass (inert_dicts cans) clas
+  = do let ev_cs =
+             case lookupInertDict cans loc clas tys of
+               Just ev | isGiven ev -> mkEvCs (ctEvTerm ev)
+               _ -> mkEvCs (EvCallStack EvCsEmpty)
 
-       let forTy ct
-             -- we can ignore the first tyvar since it is the name of the IP
-             -- i.e. we want to match
-             -- `IP "loc" CallStack` and `IP "myloc" CallStack`, but not
-             -- `IP "loc" Foo`.
-             | [_, t] <- cc_tyargs ct
-             , isGiven (cc_ev ct)
-             = t == ty
-             | otherwise
-             = False
-
-       let ev_cs =
-             case find forTy ipDicts of
-               Nothing -> mkEvCs (EvCallStack EvCsEmpty)
-               Just ct -> mkEvCs (ctEvTerm (cc_ev ct))
-
-       -- now we have evLoc :: CallStack, but matchClassInst is supposed to
+       -- now we have ev_cs :: CallStack, but matchClassInst is supposed to
        -- return a dictionary, so we have to coerce evLoc to a
        -- dictionary for `IP ip CallStack`
        return $ GenInst [] $ mkEvCast (EvCallStack ev_cs)
-                                      (wrapIP clas [ip,ty])
+                                      (TcCoercion $ wrapIP clas ip ty)
   where
   locSpan = ctLocSpan loc
   origin  = ctLocOrigin loc
@@ -1790,7 +1775,7 @@ isCallStackIP orig cls [ _, ty ]
   = occOrigin orig
   where
   -- We only want to grab constraints that arose due to the use of an IP or a
-  -- function call. See Note [CallStack evidence terms]
+  -- function call. See Note [Overview of implicit CallStacks]
   occOrigin (OccurrenceOf _) = True
   occOrigin (IPOccOrigin _)  = True
   occOrigin _                = False

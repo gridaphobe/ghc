@@ -28,8 +28,7 @@ f4 x = x ()
 
 f5 :: (?loc1 :: CallStack) => ((?loc2 :: CallStack) => () -> IO ()) -> IO ()
 f5 x = x ()
-       -- furthermore, we ignore the *name* of the IP,
-       -- and only care about the type
+       -- we only push new call-sites onto CallStacks with the name IP name
 
 f6 :: (?loc :: CallStack) => Int -> IO ()
 f6 0 = putStrLn $ showCallStack ?loc
