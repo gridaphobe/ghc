@@ -1766,9 +1766,13 @@ isCallStackIP loc cls ty
   where
   -- We only want to grab constraints that arose due to the use of an IP or a
   -- function call. See Note [Overview of implicit CallStacks]
-  occOrigin (OccurrenceOf n) = Just (EvCsPushCall n locSpan)
-  occOrigin (IPOccOrigin n)  = Just (EvCsTop ('?' `consFS` hsIPNameFS n) locSpan)
-  occOrigin _                = Nothing
-  locSpan = ctLocSpan loc
+  occOrigin (OccurrenceOf n)
+    = Just (EvCsPushCall n locSpan)
+  occOrigin (IPOccOrigin n)
+    = Just (EvCsTop ('?' `consFS` hsIPNameFS n) locSpan)
+  occOrigin _
+    = Nothing
+  locSpan
+    = ctLocSpan loc
 isCallStackIP _ _ _
   = Nothing

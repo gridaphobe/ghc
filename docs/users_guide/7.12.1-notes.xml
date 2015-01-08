@@ -164,7 +164,7 @@
                 <para>
                     A new type <literal>CallStack</literal> was added for use
                     with the new implicit callstack parameters. A
-                    <literal>CallStack</literal> is a 
+                    <literal>CallStack</literal> is a
                     <literal>[(String, SrcLoc)]</literal>, sorted by most-recent
                     call.
                </para>
