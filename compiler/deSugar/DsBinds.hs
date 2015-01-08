@@ -39,7 +39,7 @@ import UniqSupply
 import Digraph
 
 import PrelNames
-import TyCon      ( isTupleTyCon, tyConClass_maybe, tyConDataCons_maybe )
+import TyCon      ( isTupleTyCon, tyConDataCons_maybe )
 import TcEvidence
 import TcType
 import Type
@@ -960,9 +960,7 @@ dsEvCallStack cs = do
                   -- but we need the actual CallStack to pass to pushCS,
                   -- so we use unwrapIP to strip the dictionary wrapper
                   -- See Note [Overview of implicit CallStacks]
-                  let (tc, [sym, ty]) = splitTyConApp (exprType tmExpr)
-                      Just cls  = tyConClass_maybe tc
-                      ip_co  = unwrapIP cls sym ty
+                  let ip_co = unwrapIP (exprType tmExpr)
                   return (pushCS nameExpr locExpr (mkCast tmExpr ip_co))
   case cs of
     EvCsTop name loc tm -> mkPush name loc tm

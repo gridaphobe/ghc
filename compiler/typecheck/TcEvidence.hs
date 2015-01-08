@@ -40,7 +40,6 @@ import TypeRep  -- Knows type representation
 import TcType
 import Type
 import TyCon
-import Class
 import CoAxiom
 import PrelNames
 import VarEnv
@@ -1079,16 +1078,19 @@ instance Outputable EvCallStack where
 ----------------------------------------------------------------------
 
 -- | Create a 'Coercion' that unwraps an implicit-parameter dictionary
--- to expose the underlying value.
-unwrapIP :: Class -> Type -> Type -> Coercion
-unwrapIP cls sym ty =
-  case unwrapNewTyCon_maybe (classTyCon cls) of
-    Just (_,_,ax) -> mkUnbranchedAxInstCo Representational ax [sym, ty]
+-- to expose the underlying value. We expect the 'Type' to have the form
+-- `IP sym ty`, return a 'Coercion' `co :: IP sym ty ~ ty`.
+unwrapIP :: Type -> Coercion
+unwrapIP ty =
+  case unwrapNewTyCon_maybe tc of
+    Just (_,_,ax) -> mkUnbranchedAxInstCo Representational ax tys
     Nothing       -> pprPanic "unwrapIP" $
-                       text "The dictionary for" <+> quotes (ppr cls)
+                       text "The dictionary for" <+> quotes (ppr tc)
                          <+> text "is not a newtype!"
+  where
+  (tc, tys) = splitTyConApp ty
 
 -- | Create a 'Coercion' that wraps a value in an implicit-parameter
--- dictionary.
-wrapIP :: Class -> Type -> Type -> Coercion
-wrapIP cls sym ty = mkSymCo (unwrapIP cls sym ty)
+-- dictionary. See 'unwrapIP'.
+wrapIP :: Type -> Coercion
+wrapIP ty = mkSymCo (unwrapIP ty)
