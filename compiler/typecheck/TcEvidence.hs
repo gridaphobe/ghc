@@ -918,8 +918,8 @@ Important Details:
   in scope. In the interaction phase, GHC would normally solve the use of ?stk
   directly from the given, i.e. re-using the dicionary. But this is NOT what we
   want! We want to generate a *new* CallStack with ?loc's SrcLoc pushed onto
-  the given CallStack. So we must take care in TcInteract.interactDict to not
-  let wanted CallStacks interact with other dictionaries.
+  the given CallStack. So we must take care in TcInteract.interactDict to
+  prioritize solving wanted CallStacks.
 
 - We will automatically solve any wanted CallStack regardless of the name of the
   IP, i.e.
@@ -934,7 +934,7 @@ Important Details:
     head [] = error (show (?stk :: CallStack))
 
   the printed CallStack will NOT include head's call-site. This reflects the
-  standard scoping rules of implicit-parameters. (See TcInteract.matchClassInst)
+  standard scoping rules of implicit-parameters. (See TcInteract.interactDict)
 
 - An EvCallStack term desugars to a CoreExpr of type `IP "some str" CallStack`.
   The desugarer will need to unwrap the IP newtype before pushing a new

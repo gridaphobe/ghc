@@ -916,7 +916,7 @@ dsEvTerm (EvLit l) =
 dsEvTerm (EvCallStack cs) = dsEvCallStack cs
 
 dsEvCallStack :: EvCallStack -> DsM CoreExpr
--- See Note [Overview of implicit CallStacks]
+-- See Note [Overview of implicit CallStacks] in TcEvidence.hs
 dsEvCallStack cs = do
   df              <- getDynFlags
   m               <- getModule

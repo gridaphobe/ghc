@@ -608,12 +608,25 @@ interactIrred _ wi = pprPanic "interactIrred" (ppr wi)
 
 interactDict :: InertCans -> Ct -> TcS (StopOrContinue Ct)
 interactDict inerts workItem@(CDictCan { cc_ev = ev_w, cc_class = cls, cc_tyargs = tys })
-  -- don't ever try to solve dicts for CallStack IPs from other dicts,
-  -- we always build new dicts in matchClassInst.
+  -- don't ever try to solve CallStack IPs directly from other dicts,
+  -- we always build new dicts instead.
   -- See Note [Overview of implicit CallStacks]
-  | isCallStackIP (ctLocOrigin (ctLoc workItem)) cls tys
+  | [ip, ty] <- tys
   , isWanted ev_w
-  = continueWith workItem
+  , Just mkEvCs <- isCallStackIP (ctEvLoc ev_w) cls ty
+  = do let ev_cs =
+             case lookupInertDict inerts (ctEvLoc ev_w) cls tys of
+               Just ev | isGiven ev -> mkEvCs (ctEvTerm ev)
+               _ -> mkEvCs (EvCallStack EvCsEmpty)
+
+       -- now we have ev_cs :: CallStack, but the evidence term should
+       -- be a dictionary, so we have to coerce ev_cs to a
+       -- dictionary for `IP ip CallStack`
+       let ip_ty = mkClassPred cls tys
+       let ev_tm = mkEvCast (EvCallStack ev_cs) (TcCoercion $ wrapIP ip_ty)
+       addSolvedDict ev_w cls tys
+       setWantedEvBind (ctEvId ev_w) ev_tm
+       stopWith ev_w "Wanted CallStack IP"
 
   | Just ctev_i <- lookupInertDict inerts (ctEvLoc ev_w) cls tys
   = do { (inert_effect, stop_now) <- solveOneFromTheOther ctev_i ev_w
@@ -1621,30 +1634,6 @@ matchClassInst _ clas [ ty ] _
     = panicTcS (text "Unexpected evidence for" <+> ppr (className clas)
                      $$ vcat (map (ppr . idType) (classMethods clas)))
 
-matchClassInst (IS cans _ _) clas tys@[ ip, ty ] loc
-  -- always generate new dictionaries for CallStack implicit-params.
-  -- See Note [Overview of implicit CallStacks]
-  | isCallStackIP origin clas tys
-  = do let ev_cs =
-             case lookupInertDict cans loc clas tys of
-               Just ev | isGiven ev -> mkEvCs (ctEvTerm ev)
-               _ -> mkEvCs (EvCallStack EvCsEmpty)
-
-       -- now we have ev_cs :: CallStack, but matchClassInst is supposed to
-       -- return a dictionary, so we have to coerce ev_cs to a
-       -- dictionary for `IP ip CallStack`
-       let ip_ty = mkClassPred clas [ip, ty]
-       return $ GenInst [] $ mkEvCast (EvCallStack ev_cs)
-                                      (TcCoercion $ wrapIP ip_ty)
-  where
-  locSpan = ctLocSpan loc
-  origin  = ctLocOrigin loc
-  mkEvCs  = case origin of
-              OccurrenceOf n -> EvCsPushCall n locSpan
-              IPOccOrigin n  -> EvCsTop ('?' `consFS` hsIPNameFS n) locSpan
-              _              -> panic $ "Can only build CallStack evidence "
-                                     ++ "from occurrence origins!"
-
 matchClassInst inerts clas tys loc
    = do { dflags <- getDynFlags
         ; tclvl <- getTcLevel
@@ -1769,16 +1758,17 @@ constraint solving.
 -}
 
 -- | Is the constraint for an implicit CallStack parameter?
-isCallStackIP :: CtOrigin -> Class -> [Type] -> Bool
-isCallStackIP orig cls [ _, ty ]
+isCallStackIP :: CtLoc -> Class -> Type -> Maybe (EvTerm -> EvCallStack)
+isCallStackIP loc cls ty
   | Just (tc, []) <- splitTyConApp_maybe ty
   , cls `hasKey` ipClassNameKey && tc `hasKey` callStackTyConKey
-  = occOrigin orig
+  = occOrigin (ctLocOrigin loc)
   where
   -- We only want to grab constraints that arose due to the use of an IP or a
   -- function call. See Note [Overview of implicit CallStacks]
-  occOrigin (OccurrenceOf _) = True
-  occOrigin (IPOccOrigin _)  = True
-  occOrigin _                = False
+  occOrigin (OccurrenceOf n) = Just (EvCsPushCall n locSpan)
+  occOrigin (IPOccOrigin n)  = Just (EvCsTop ('?' `consFS` hsIPNameFS n) locSpan)
+  occOrigin _                = Nothing
+  locSpan = ctLocSpan loc
 isCallStackIP _ _ _
-  = False
+  = Nothing
