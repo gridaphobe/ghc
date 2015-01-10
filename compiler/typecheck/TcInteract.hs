@@ -611,7 +611,7 @@ interactDict inerts workItem@(CDictCan { cc_ev = ev_w, cc_class = cls, cc_tyargs
   -- don't ever try to solve CallStack IPs directly from other dicts,
   -- we always build new dicts instead.
   -- See Note [Overview of implicit CallStacks]
-  | [ip, ty] <- tys
+  | [_ip, ty] <- tys
   , isWanted ev_w
   , Just mkEvCs <- isCallStackIP (ctEvLoc ev_w) cls ty
   = do let ev_cs =
