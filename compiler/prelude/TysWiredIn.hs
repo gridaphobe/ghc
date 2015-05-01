@@ -72,6 +72,8 @@ module TysWiredIn (
         eqTyCon_RDR, eqTyCon, eqTyConName, eqBoxDataCon,
         coercibleTyCon, coercibleDataCon, coercibleClass,
 
+        ipTyCon, ipClass, callStackTyCon,
+
         mkWiredInTyConName -- This is used in TcTypeNats to define the
                            -- built-in functions for evaluation.
     ) where
@@ -910,3 +912,20 @@ promotedOrderingTyCon = promoteTyCon orderingTyCon
 promotedLTDataCon     = promoteDataCon ltDataCon
 promotedEQDataCon     = promoteDataCon eqDataCon
 promotedGTDataCon     = promoteDataCon gtDataCon
+
+ipTyCon :: TyCon
+ipTyCon = mkClassTyCon ipClassName kind tvs [] rhs ipClass NonRecursive
+  where
+    kind = mkArrowKinds [typeSymbolKind, liftedTypeKind] constraintKind
+    ip:_ = tyVarList typeSymbolKind
+    tvs = [ip, alphaTyVar]
+    rhs = DataTyCon [] False
+
+ipClass :: Class
+ipClass = mkClass (tyConTyVars ipTyCon) [([ip], [a])] [] [] [] [] (mkAnd [])
+            ipTyCon
+  where
+    [ip, a] = tyConTyVars ipTyCon
+
+callStackTyCon :: TyCon
+callStackTyCon = pcNonRecDataTyCon callStackTyConName Nothing [] []

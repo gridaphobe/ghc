@@ -713,7 +713,11 @@ eRROR_ID :: Id
 eRROR_ID = pc_bottoming_Id1 errorName errorTy
 
 errorTy  :: Type   -- See Note [Error and friends have an "open-tyvar" forall]
-errorTy  = mkSigmaTy [openAlphaTyVar] [] (mkFunTys [mkListTy charTy] openAlphaTy)
+errorTy  = mkSigmaTy [openAlphaTyVar] []
+             (mkFunTys [ mkClassPred ipClass [ mkStrLitTy (fsLit "callStack")
+                                             , mkTyConTy callStackTyCon]
+                       , mkListTy charTy]
+                       openAlphaTy)
 
 undefinedName :: Name
 undefinedName = mkWiredInIdName gHC_ERR (fsLit "undefined") undefinedKey uNDEFINED_ID
