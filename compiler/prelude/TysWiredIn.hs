@@ -87,6 +87,8 @@ import PrelNames
 import TysPrim
 
 -- others:
+import CoAxiom
+import SrcLoc
 import Constants        ( mAX_TUPLE_SIZE, mAX_CTUPLE_SIZE )
 import Module           ( Module )
 import Type             ( mkTyConApp )
@@ -919,7 +921,17 @@ ipTyCon = mkClassTyCon ipClassName kind tvs [] rhs ipClass NonRecursive
     kind = mkArrowKinds [typeSymbolKind, liftedTypeKind] constraintKind
     ip:_ = tyVarList typeSymbolKind
     tvs = [ip, alphaTyVar]
-    rhs = DataTyCon [] False
+    rhs = NewTyCon ipDataCon alphaTy ([], alphaTy) ax
+    ax = CoAxiom ipClassNameKey ipClassName Representational ipTyCon br True
+    br = FirstBranch (CoAxBranch noSrcSpan tvs [Nominal, Representational]
+                                 [alphaTy] alphaTy [])
+
+ipDataCon :: DataCon
+ipDataCon = pcDataCon ipClassName tvs ts ipTyCon
+  where
+    ip:_ = tyVarList typeSymbolKind
+    tvs = [ip, alphaTyVar]
+    ts  = [alphaTy]
 
 ipClass :: Class
 ipClass = mkClass (tyConTyVars ipTyCon) [([ip], [a])] [] [] [] [] (mkAnd [])

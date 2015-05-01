@@ -726,7 +726,10 @@ uNDEFINED_ID :: Id
 uNDEFINED_ID = pc_bottoming_Id0 undefinedName undefinedTy
 
 undefinedTy  :: Type   -- See Note [Error and friends have an "open-tyvar" forall]
-undefinedTy  = mkSigmaTy [openAlphaTyVar] [] openAlphaTy
+undefinedTy  = mkSigmaTy [openAlphaTyVar] []
+                 (mkFunTy (mkClassPred ipClass [ mkStrLitTy (fsLit "callStack")
+                                               , mkTyConTy callStackTyCon])
+                          openAlphaTy)
 
 {-
 Note [Error and friends have an "open-tyvar" forall]
