@@ -1621,6 +1621,10 @@ callStackDataConKey, srcLocDataConKey :: Unique
 callStackDataConKey                     = mkPreludeDataConUnique 36
 srcLocDataConKey                        = mkPreludeDataConUnique 37
 
+-- Used only for CallStack IPs!!
+ipDataConKey :: Unique
+ipDataConKey                            = mkPreludeDataConUnique 38
+
 {-
 ************************************************************************
 *                                                                      *

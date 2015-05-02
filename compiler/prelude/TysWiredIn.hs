@@ -72,7 +72,7 @@ module TysWiredIn (
         eqTyCon_RDR, eqTyCon, eqTyConName, eqBoxDataCon,
         coercibleTyCon, coercibleDataCon, coercibleClass,
 
-        ipTyCon, ipClass, callStackTyCon,
+        ipCallStackTyCon, ipCallStackClass, callStackTyCon,
 
         mkWiredInTyConName -- This is used in TcTypeNats to define the
                            -- built-in functions for evaluation.
@@ -91,7 +91,7 @@ import CoAxiom
 import SrcLoc
 import Constants        ( mAX_TUPLE_SIZE, mAX_CTUPLE_SIZE )
 import Module           ( Module )
-import Type             ( mkTyConApp )
+import Type             ( mkStrLitTy, mkTyConApp )
 import DataCon
 import ConLike
 import Var
@@ -162,6 +162,7 @@ wiredInTyCons = [ unitTyCon     -- Not treated like other tuples, because
               , coercibleTyCon
               , typeNatKindCon
               , typeSymbolKindCon
+              , callStackTyCon
               ]
 
 mkWiredInTyConName :: BuiltInSyntax -> Module -> FastString -> Unique -> TyCon -> Name
@@ -915,29 +916,36 @@ promotedLTDataCon     = promoteDataCon ltDataCon
 promotedEQDataCon     = promoteDataCon eqDataCon
 promotedGTDataCon     = promoteDataCon gtDataCon
 
-ipTyCon :: TyCon
-ipTyCon = mkClassTyCon ipClassName kind tvs [] rhs ipClass NonRecursive
+
+ipDataConName :: Name
+ipDataConName = mkWiredInDataConName UserSyntax gHC_CLASSES (fsLit "IP") ipDataConKey ipCallStackDataCon
+
+-- A special instantiation of `IP "callStack"` for use in the wired-in
+-- types for `error` and `undefined`
+ipCallStackTyCon :: TyCon
+ipCallStackTyCon = mkClassTyCon ipClassName kind tvs [] rhs ipCallStackClass NonRecursive
   where
     kind = mkArrowKinds [typeSymbolKind, liftedTypeKind] constraintKind
     ip:_ = tyVarList typeSymbolKind
     tvs = [ip, alphaTyVar]
-    rhs = NewTyCon ipDataCon alphaTy ([], alphaTy) ax
-    ax = CoAxiom ipClassNameKey ipClassName Representational ipTyCon br True
-    br = FirstBranch (CoAxBranch noSrcSpan tvs [Nominal, Representational]
-                                 [alphaTy] alphaTy [])
+    rhs = NewTyCon ipCallStackDataCon alphaTy ([], alphaTy) ax
+    tys = [mkStrLitTy (fsLit "callStack"), alphaTy]
+    ax = CoAxiom ipClassNameKey ipClassName Representational ipCallStackTyCon br True
+    br = FirstBranch (CoAxBranch noSrcSpan tvs [Nominal, Nominal]
+                        tys alphaTy [])
 
-ipDataCon :: DataCon
-ipDataCon = pcDataCon ipClassName tvs ts ipTyCon
+ipCallStackDataCon :: DataCon
+ipCallStackDataCon = pcDataCon ipDataConName tvs ts ipCallStackTyCon
   where
     ip:_ = tyVarList typeSymbolKind
     tvs = [ip, alphaTyVar]
     ts  = [alphaTy]
 
-ipClass :: Class
-ipClass = mkClass (tyConTyVars ipTyCon) [([ip], [a])] [] [] [] [] (mkAnd [])
-            ipTyCon
+ipCallStackClass :: Class
+ipCallStackClass = mkClass (tyConTyVars ipCallStackTyCon) [([ip], [a])] [] [] [] [] (mkAnd [])
+            ipCallStackTyCon
   where
-    [ip, a] = tyConTyVars ipTyCon
+    [ip, a] = tyConTyVars ipCallStackTyCon
 
 callStackTyCon :: TyCon
 callStackTyCon = pcNonRecDataTyCon callStackTyConName Nothing [] []

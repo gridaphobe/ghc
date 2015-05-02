@@ -714,8 +714,10 @@ eRROR_ID = pc_bottoming_Id1 errorName errorTy
 
 errorTy  :: Type   -- See Note [Error and friends have an "open-tyvar" forall]
 errorTy  = mkSigmaTy [openAlphaTyVar] []
-             (mkFunTys [ mkClassPred ipClass [ mkStrLitTy (fsLit "callStack")
-                                             , mkTyConTy callStackTyCon]
+             (mkFunTys [ mkClassPred
+                           ipCallStackClass
+                           [ mkStrLitTy (fsLit "callStack")
+                           , mkTyConTy callStackTyCon ]
                        , mkListTy charTy]
                        openAlphaTy)
 
@@ -727,8 +729,10 @@ uNDEFINED_ID = pc_bottoming_Id0 undefinedName undefinedTy
 
 undefinedTy  :: Type   -- See Note [Error and friends have an "open-tyvar" forall]
 undefinedTy  = mkSigmaTy [openAlphaTyVar] []
-                 (mkFunTy (mkClassPred ipClass [ mkStrLitTy (fsLit "callStack")
-                                               , mkTyConTy callStackTyCon])
+                 (mkFunTy (mkClassPred
+                             ipCallStackClass
+                             [ mkStrLitTy (fsLit "callStack")
+                             , mkTyConTy callStackTyCon ])
                           openAlphaTy)
 
 {-
