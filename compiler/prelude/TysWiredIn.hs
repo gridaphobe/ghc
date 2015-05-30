@@ -72,8 +72,6 @@ module TysWiredIn (
         eqTyCon_RDR, eqTyCon, eqTyConName, eqBoxDataCon,
         coercibleTyCon, coercibleDataCon, coercibleClass,
 
-        ipCallStackTyCon, ipCallStackClass, callStackTyCon,
-
         mkWiredInTyConName -- This is used in TcTypeNats to define the
                            -- built-in functions for evaluation.
     ) where
@@ -88,10 +86,9 @@ import TysPrim
 
 -- others:
 import CoAxiom
-import SrcLoc
 import Constants        ( mAX_TUPLE_SIZE, mAX_CTUPLE_SIZE )
 import Module           ( Module )
-import Type             ( mkStrLitTy, mkTyConApp )
+import Type             ( mkTyConApp )
 import DataCon
 import ConLike
 import Var
@@ -162,7 +159,7 @@ wiredInTyCons = [ unitTyCon     -- Not treated like other tuples, because
               , coercibleTyCon
               , typeNatKindCon
               , typeSymbolKindCon
-              , callStackTyCon
+              , openTypeKindTyCon
               ]
 
 mkWiredInTyConName :: BuiltInSyntax -> Module -> FastString -> Unique -> TyCon -> Name
@@ -915,37 +912,3 @@ promotedOrderingTyCon = promoteTyCon orderingTyCon
 promotedLTDataCon     = promoteDataCon ltDataCon
 promotedEQDataCon     = promoteDataCon eqDataCon
 promotedGTDataCon     = promoteDataCon gtDataCon
-
-
-ipDataConName :: Name
-ipDataConName = mkWiredInDataConName UserSyntax gHC_CLASSES (fsLit "IP") ipDataConKey ipCallStackDataCon
-
--- A special instantiation of `IP "callStack"` for use in the wired-in
--- types for `error` and `undefined`
-ipCallStackTyCon :: TyCon
-ipCallStackTyCon = mkClassTyCon ipClassName kind tvs [] rhs ipCallStackClass NonRecursive
-  where
-    kind = mkArrowKinds [typeSymbolKind, liftedTypeKind] constraintKind
-    ip:_ = tyVarList typeSymbolKind
-    tvs = [ip, alphaTyVar]
-    rhs = NewTyCon ipCallStackDataCon alphaTy ([], alphaTy) ax
-    tys = [mkStrLitTy (fsLit "callStack"), alphaTy]
-    ax = CoAxiom ipClassNameKey ipClassName Representational ipCallStackTyCon br True
-    br = FirstBranch (CoAxBranch noSrcSpan tvs [Nominal, Nominal]
-                        tys alphaTy [])
-
-ipCallStackDataCon :: DataCon
-ipCallStackDataCon = pcDataCon ipDataConName tvs ts ipCallStackTyCon
-  where
-    ip:_ = tyVarList typeSymbolKind
-    tvs = [ip, alphaTyVar]
-    ts  = [alphaTy]
-
-ipCallStackClass :: Class
-ipCallStackClass = mkClass (tyConTyVars ipCallStackTyCon) [([ip], [a])] [] [] [] [] (mkAnd [])
-            ipCallStackTyCon
-  where
-    [ip, a] = tyConTyVars ipCallStackTyCon
-
-callStackTyCon :: TyCon
-callStackTyCon = pcNonRecDataTyCon callStackTyConName Nothing [] []

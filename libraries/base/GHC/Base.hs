@@ -70,6 +70,8 @@ Other Prelude modules are much easier with fewer complex dependencies.
            , UnboxedTuples
            , ExistentialQuantification
            , RankNTypes
+           , ImplicitParams
+           , KindSignatures
   #-}
 -- -fno-warn-orphans is needed for things like:
 -- Orphan rule: "x# -# x#" ALWAYS forall x# :: Int# -# x# x# = 0
@@ -101,7 +103,6 @@ module GHC.Base
         module GHC.Types,
         module GHC.Prim,        -- Re-export GHC.Prim and [boot] GHC.Err,
                                 -- to avoid lots of people having to
-        module GHC.Err          -- import it explicitly
   )
         where
 
@@ -110,7 +111,8 @@ import GHC.Classes
 import GHC.CString
 import GHC.Magic
 import GHC.Prim
-import GHC.Err
+import {-# SOURCE #-} GHC.Stack
+import qualified GHC.Err as Err
 import {-# SOURCE #-} GHC.IO (failIO)
 
 import GHC.Tuple ()     -- Note [Depend on GHC.Tuple]
@@ -1200,3 +1202,14 @@ a `iShiftRL#` b | isTrue# (b >=# WORD_SIZE_IN_BITS#) = 0#
 -- 'Control.Monad.ST.stToIO'.
 data RealWorld
 #endif
+
+-- | 'error' stops execution and displays an error message.
+error :: forall (a :: OpenKind). (?callStack :: CallStack) => String -> a
+error s = Err.error (s ++ "\n" ++ showCallStack ?callStack)
+
+-- | A special case of 'error'.
+-- It is expected that compilers will recognize this and insert error
+-- messages which are more appropriate to the context in which 'undefined'
+-- appears.
+undefined :: forall (a :: OpenKind). (?callStack :: CallStack) => a
+undefined = Err.error ("Prelude.undefined\n" ++ showCallStack ?callStack)

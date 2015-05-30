@@ -674,9 +674,6 @@ typeRep_RDR       = varQual_RDR tYPEABLE_INTERNAL    (fsLit "typeRep#")
 mkTyCon_RDR       = varQual_RDR tYPEABLE_INTERNAL    (fsLit "mkTyCon")
 mkTyConApp_RDR    = varQual_RDR tYPEABLE_INTERNAL    (fsLit "mkTyConApp")
 
-undefined_RDR :: RdrName
-undefined_RDR = varQual_RDR gHC_ERR (fsLit "undefined")
-
 error_RDR :: RdrName
 error_RDR = varQual_RDR gHC_ERR (fsLit "error")
 
@@ -1786,9 +1783,6 @@ marshalObjectIdKey            = mkPreludeMiscIdUnique 151
 marshalStringIdKey            = mkPreludeMiscIdUnique 152
 unmarshalStringIdKey          = mkPreludeMiscIdUnique 153
 checkDotnetResNameIdKey       = mkPreludeMiscIdUnique 154
-
-undefinedKey :: Unique
-undefinedKey                  = mkPreludeMiscIdUnique 155
 
 magicDictKey :: Unique
 magicDictKey                  = mkPreludeMiscIdUnique 156

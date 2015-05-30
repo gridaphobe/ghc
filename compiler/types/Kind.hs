@@ -23,7 +23,7 @@ module Kind (
         splitKindFunTys, splitKindFunTysN, splitKindFunTy_maybe,
 
         -- ** Predicates on Kinds
-        isLiftedTypeKind, isUnliftedTypeKind, isOpenTypeKind,
+        isLiftedTypeKind, isUnliftedTypeKind, isOpenTypeKind, isOpenTypeKindCon,
         isConstraintKind, isConstraintOrLiftedKind, returnsConstraintKind,
         isKind, isKindVar,
         isSuperKind, isSuperKindTyCon,

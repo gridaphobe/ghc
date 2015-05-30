@@ -46,8 +46,7 @@ module Foreign.Marshal.Pool (
    pooledNewArray0
 ) where
 
-import GHC.Base              ( Int, Monad(..), (.), liftM, not )
-import GHC.Err               ( undefined )
+import GHC.Base              ( Int, Monad(..), (.), liftM, not, undefined )
 import GHC.Exception         ( throw )
 import GHC.IO                ( IO, mask, catchAny )
 import GHC.IORef             ( IORef, newIORef, readIORef, writeIORef )

@@ -1594,6 +1594,9 @@ tc_kind_var_app name arg_kis
   = do { thing <- tcLookup name
        ; case thing of
            AGlobal (ATyCon tc)
+             | isOpenTypeKindCon tc
+             -> return (mkTyConApp tc arg_kis)
+             | otherwise
              -> do { data_kinds <- xoptM Opt_DataKinds
                    ; unless data_kinds $ addErr (dataKindsErr name)
                    ; case promotableTyCon_maybe tc of

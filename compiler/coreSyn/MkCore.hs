@@ -47,8 +47,8 @@ module MkCore (
         mkRuntimeErrorApp, mkImpossibleExpr, errorIds,
         rEC_CON_ERROR_ID, iRREFUT_PAT_ERROR_ID, rUNTIME_ERROR_ID,
         nON_EXHAUSTIVE_GUARDS_ERROR_ID, nO_METHOD_BINDING_ERROR_ID,
-        pAT_ERROR_ID, eRROR_ID, rEC_SEL_ERROR_ID, aBSENT_ERROR_ID,
-        uNDEFINED_ID, undefinedName
+        pAT_ERROR_ID, eRROR_ID,
+        rEC_SEL_ERROR_ID, aBSENT_ERROR_ID,
     ) where
 
 #include "HsVersions.h"
@@ -656,9 +656,6 @@ errorIds
                   -- import its type from the interface file; we just get
                   -- the Id defined here.  Which has an 'open-tyvar' type.
 
-      uNDEFINED_ID,   -- Ditto for 'undefined'. The big deal is to give it
-                      -- an 'open-tyvar' type.
-
       rUNTIME_ERROR_ID,
       iRREFUT_PAT_ERROR_ID,
       nON_EXHAUSTIVE_GUARDS_ERROR_ID,
@@ -713,27 +710,7 @@ eRROR_ID :: Id
 eRROR_ID = pc_bottoming_Id1 errorName errorTy
 
 errorTy  :: Type   -- See Note [Error and friends have an "open-tyvar" forall]
-errorTy  = mkSigmaTy [openAlphaTyVar] []
-             (mkFunTys [ mkClassPred
-                           ipCallStackClass
-                           [ mkStrLitTy (fsLit "callStack")
-                           , mkTyConTy callStackTyCon ]
-                       , mkListTy charTy]
-                       openAlphaTy)
-
-undefinedName :: Name
-undefinedName = mkWiredInIdName gHC_ERR (fsLit "undefined") undefinedKey uNDEFINED_ID
-
-uNDEFINED_ID :: Id
-uNDEFINED_ID = pc_bottoming_Id0 undefinedName undefinedTy
-
-undefinedTy  :: Type   -- See Note [Error and friends have an "open-tyvar" forall]
-undefinedTy  = mkSigmaTy [openAlphaTyVar] []
-                 (mkFunTy (mkClassPred
-                             ipCallStackClass
-                             [ mkStrLitTy (fsLit "callStack")
-                             , mkTyConTy callStackTyCon ])
-                          openAlphaTy)
+errorTy  = mkSigmaTy [openAlphaTyVar] [] (mkFunTy (mkListTy charTy) openAlphaTy)
 
 {-
 Note [Error and friends have an "open-tyvar" forall]
@@ -776,11 +753,3 @@ pc_bottoming_Id1 name ty
 
     strict_sig = mkClosedStrictSig [evalDmd] botRes
     -- These "bottom" out, no matter what their arguments
-
-pc_bottoming_Id0 :: Name -> Type -> Id
--- Same but arity zero
-pc_bottoming_Id0 name ty
- = mkVanillaGlobalWithInfo name ty bottoming_info
- where
-    bottoming_info = vanillaIdInfo `setStrictnessInfo` strict_sig
-    strict_sig = mkClosedStrictSig [] botRes
