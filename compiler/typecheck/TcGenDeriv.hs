@@ -40,8 +40,7 @@ import Name
 import DynFlags
 import PrelInfo
 import FamInstEnv( FamInst )
-import MkCore ( eRROR_ID )
-import PrelNames hiding (error_RDR)
+import PrelNames
 import MkId ( coerceId )
 import PrimOp
 import SrcLoc
@@ -2251,10 +2250,9 @@ f_Pat           = nlVarPat f_RDR
 k_Pat           = nlVarPat k_RDR
 z_Pat           = nlVarPat z_RDR
 
-minusInt_RDR, tagToEnum_RDR, error_RDR :: RdrName
+minusInt_RDR, tagToEnum_RDR :: RdrName
 minusInt_RDR  = getRdrName (primOpId IntSubOp   )
 tagToEnum_RDR = getRdrName (primOpId TagToEnumOp)
-error_RDR     = getRdrName eRROR_ID
 
 con2tag_RDR, tag2con_RDR, maxtag_RDR :: TyCon -> RdrName
 -- Generates Orig s RdrName, for the binding positions

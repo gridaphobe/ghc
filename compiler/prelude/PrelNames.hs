@@ -464,12 +464,6 @@ gHC_TYPELITS    = mkBaseModule (fsLit "GHC.TypeLits")
 gHC_PARR' :: Module
 gHC_PARR' = mkBaseModule (fsLit "GHC.PArr")
 
-gHC_SRCLOC :: Module
-gHC_SRCLOC = mkBaseModule (fsLit "GHC.SrcLoc")
-
-gHC_STACK :: Module
-gHC_STACK = mkBaseModule (fsLit "GHC.Stack")
-
 gHC_STATICPTR :: Module
 gHC_STATICPTR = mkBaseModule (fsLit "GHC.StaticPtr")
 
@@ -675,7 +669,7 @@ mkTyCon_RDR       = varQual_RDR tYPEABLE_INTERNAL    (fsLit "mkTyCon")
 mkTyConApp_RDR    = varQual_RDR tYPEABLE_INTERNAL    (fsLit "mkTyConApp")
 
 error_RDR :: RdrName
-error_RDR = varQual_RDR gHC_ERR (fsLit "error")
+error_RDR = varQual_RDR gHC_BASE (fsLit "error")
 
 -- Generics (constructors and functions)
 u1DataCon_RDR, par1DataCon_RDR, rec1DataCon_RDR,
@@ -1182,11 +1176,11 @@ ipClassName         = clsQual gHC_CLASSES (fsLit "IP") ipClassNameKey
 -- Source Locations
 callStackDataConName, callStackTyConName, srcLocDataConName :: Name
 callStackDataConName
-  = conName gHC_STACK (fsLit "CallStack") callStackDataConKey
+  = conName gHC_TYPES (fsLit "CallStack") callStackDataConKey
 callStackTyConName
-  = tcQual  gHC_STACK (fsLit "CallStack") callStackTyConKey
+  = tcQual  gHC_TYPES (fsLit "CallStack") callStackTyConKey
 srcLocDataConName
-  = conName gHC_SRCLOC (fsLit "SrcLoc")   srcLocDataConKey
+  = conName gHC_TYPES (fsLit "SrcLoc")   srcLocDataConKey
 
 -- plugins
 pLUGINS :: Module

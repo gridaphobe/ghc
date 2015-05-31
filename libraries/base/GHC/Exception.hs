@@ -32,6 +32,7 @@ import Data.Typeable (Typeable, cast)
    -- loop: Data.Typeable -> GHC.Err -> GHC.Exception
 import GHC.Base
 import GHC.Show
+import GHC.SrcLoc
 
 {- |
 The @SomeException@ type is the root of the exception type hierarchy.
@@ -166,8 +167,23 @@ instance Exception ErrorCall
 instance Show ErrorCall where
     showsPrec _ (ErrorCall err) = showString err
 
-errorCallException :: String -> SomeException
-errorCallException s = toException (ErrorCall s)
+-- | Pretty print 'CallStack'
+--
+-- @since 4.8.2.0
+showCallStack :: CallStack -> String
+showCallStack (CallStack (root:rest))
+  = unlines ("" : showCallSite root : map (indent . showCallSite) rest)
+  where
+  -- Data.OldList isn't available yet, so we repeat the definition here
+  unlines [] = []
+  unlines (l:ls) = l ++ '\n' : unlines ls
+  indent l = "  " ++ l
+  showCallSite (f, loc) = f ++ ", called at " ++ showSrcLoc loc
+showCallStack (CallStack []) = ""
+
+errorCallException :: String -> CallStack -> SomeException
+errorCallException s stk
+  = toException (ErrorCall (s ++ showCallStack stk))
 
 -- |Arithmetic exceptions.
 data ArithException

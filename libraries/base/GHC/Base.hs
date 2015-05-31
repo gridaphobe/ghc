@@ -109,10 +109,9 @@ module GHC.Base
 import GHC.Types
 import GHC.Classes
 import GHC.CString
+import qualified GHC.Err as Err
 import GHC.Magic
 import GHC.Prim
-import GHC.Stack
-import qualified GHC.Err as Err
 import {-# SOURCE #-} GHC.IO (failIO)
 
 import GHC.Tuple ()     -- Note [Depend on GHC.Tuple]
@@ -1203,13 +1202,23 @@ a `iShiftRL#` b | isTrue# (b >=# WORD_SIZE_IN_BITS#) = 0#
 data RealWorld
 #endif
 
+-- The use of KindSignatures causes an implicit import of GHC.Base for
+-- `String`, so these error functions can't be in a module that GHC.Base
+-- imports.
+
 -- | 'error' stops execution and displays an error message.
-error :: forall (a :: OpenKind). (?callStack :: CallStack) => String -> a
-error s = Err.error (s ++ "\n" ++ showCallStack ?callStack)
+error :: forall (a :: OpenKind). (?callStack :: CallStack) => [Char] -> a
+error s = Err.error s ?callStack
 
 -- | A special case of 'error'.
 -- It is expected that compilers will recognize this and insert error
 -- messages which are more appropriate to the context in which 'undefined'
 -- appears.
 undefined :: forall (a :: OpenKind). (?callStack :: CallStack) => a
-undefined = Err.error ("Prelude.undefined\n" ++ showCallStack ?callStack)
+undefined = Err.error "Prelude.undefined" ?callStack
+
+-- | Used for compiler-generated error message;
+-- encoding saves bytes of string junk.
+absentErr :: forall (a :: OpenKind). (?callStack :: CallStack) => a
+absentErr =
+  Err.error "Oops! The program has entered an `absent' argument!\n" ?callStack

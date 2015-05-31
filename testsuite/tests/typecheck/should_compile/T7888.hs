@@ -1,7 +1,7 @@
 {-# LANGUAGE RankNTypes, MagicHash #-}
 
 module T7888 where
-import GHC.Err( undefined )
+import GHC.Base( undefined )
 import GHC.Prim
 
 f :: (forall a. a) -> b

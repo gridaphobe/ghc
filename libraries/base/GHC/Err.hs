@@ -21,7 +21,7 @@
 --
 -----------------------------------------------------------------------------
 
-module GHC.Err( absentErr, error ) where
+module GHC.Err( error ) where
 import GHC.CString ()
 import GHC.Types
 import GHC.Prim
@@ -31,10 +31,5 @@ import GHC.Integer ()   -- Make sure Integer is compiled first
 import {-# SOURCE #-} GHC.Exception( errorCallException )
 
 -- | 'error' stops execution and displays an error message.
-error :: [Char] -> a
-error s = raise# (errorCallException s)
-
--- | Used for compiler-generated error message;
--- encoding saves bytes of string junk.
-absentErr :: a
-absentErr = error "Oops! The program has entered an `absent' argument!\n"
+error :: [Char] -> CallStack -> a
+error s stk = raise# (errorCallException s stk)

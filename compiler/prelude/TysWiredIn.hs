@@ -72,6 +72,8 @@ module TysWiredIn (
         eqTyCon_RDR, eqTyCon, eqTyConName, eqBoxDataCon,
         coercibleTyCon, coercibleDataCon, coercibleClass,
 
+        callStackTyCon,
+
         mkWiredInTyConName -- This is used in TcTypeNats to define the
                            -- built-in functions for evaluation.
     ) where
@@ -911,3 +913,8 @@ promotedOrderingTyCon = promoteTyCon orderingTyCon
 promotedLTDataCon     = promoteDataCon ltDataCon
 promotedEQDataCon     = promoteDataCon eqDataCon
 promotedGTDataCon     = promoteDataCon gtDataCon
+
+-- This is a fake version of the CallStack TyCon that exists solely so we
+-- can refer to it in MkCore.errorTy
+callStackTyCon :: TyCon
+callStackTyCon = pcNonRecDataTyCon callStackTyConName Nothing [] []
