@@ -1,5 +1,5 @@
 {-# LANGUAGE Trustworthy #-}
-{-# LANGUAGE NoImplicitPrelude, MagicHash, ImplicitParams, RankNTypes, KindSignatures #-}
+{-# LANGUAGE NoImplicitPrelude, MagicHash #-}
 {-# OPTIONS_HADDOCK hide #-}
 
 -----------------------------------------------------------------------------

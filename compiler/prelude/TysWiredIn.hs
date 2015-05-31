@@ -85,7 +85,6 @@ import PrelNames
 import TysPrim
 
 -- others:
-import CoAxiom
 import Constants        ( mAX_TUPLE_SIZE, mAX_CTUPLE_SIZE )
 import Module           ( Module )
 import Type             ( mkTyConApp )

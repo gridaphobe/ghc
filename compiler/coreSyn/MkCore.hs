@@ -710,7 +710,7 @@ eRROR_ID :: Id
 eRROR_ID = pc_bottoming_Id1 errorName errorTy
 
 errorTy  :: Type   -- See Note [Error and friends have an "open-tyvar" forall]
-errorTy  = mkSigmaTy [openAlphaTyVar] [] (mkFunTy (mkListTy charTy) openAlphaTy)
+errorTy  = mkSigmaTy [openAlphaTyVar] [] (mkFunTys [mkListTy charTy] openAlphaTy)
 
 {-
 Note [Error and friends have an "open-tyvar" forall]

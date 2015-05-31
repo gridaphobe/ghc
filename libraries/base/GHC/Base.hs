@@ -111,7 +111,7 @@ import GHC.Classes
 import GHC.CString
 import GHC.Magic
 import GHC.Prim
-import {-# SOURCE #-} GHC.Stack
+import GHC.Stack
 import qualified GHC.Err as Err
 import {-# SOURCE #-} GHC.IO (failIO)
 
