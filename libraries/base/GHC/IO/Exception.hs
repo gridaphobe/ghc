@@ -125,6 +125,27 @@ instance Exception AssertionFailed
 instance Show AssertionFailed where
     showsPrec _ (AssertionFailed err) = showString err
 
+-- | If the first argument evaluates to 'True', then the result is the
+-- second argument.  Otherwise an 'AssertionFailed' exception is raised,
+-- containing a 'String' with the source file and line number of the
+-- call to 'assert'.
+--
+-- Assertions can normally be turned on or off with a compiler flag
+-- (for GHC, assertions are normally on unless optimisation is turned on
+-- with @-O@ or the @-fignore-asserts@
+-- option is given).  When assertions are turned off, the first
+-- argument to 'assert' is ignored, and the second argument is
+-- returned as the result.
+
+-- Note the use of "lazy". This means that
+--     assert False (throw e)
+-- will throw the assertion failure rather than e. See trac #5561.
+assert :: (?callStack :: CallStack) => Bool -> a -> a
+assert predicate v
+  | predicate = lazy v
+  | otherwise = throw (AssertionFailed
+                         ("Assertion failed" ++ showCallStack ?callStack))
+
 -----
 
 -- |Superclass for asynchronous exceptions.
@@ -377,24 +398,3 @@ untangle coded message
           _         -> (loc, "")
         }
     not_bar c = c /= '|'
-
--- | If the first argument evaluates to 'True', then the result is the
--- second argument.  Otherwise an 'AssertionFailed' exception is raised,
--- containing a 'String' with the source file and line number of the
--- call to 'assert'.
---
--- Assertions can normally be turned on or off with a compiler flag
--- (for GHC, assertions are normally on unless optimisation is turned on
--- with @-O@ or the @-fignore-asserts@
--- option is given).  When assertions are turned off, the first
--- argument to 'assert' is ignored, and the second argument is
--- returned as the result.
-
--- Note the use of "lazy". This means that
---     assert False (throw e)
--- will throw the assertion failure rather than e. See trac #5561.
-assert :: (?callStack :: CallStack) => Bool -> a -> a
-assert predicate v
-  | predicate = lazy v
-  | otherwise = throw (AssertionFailed
-                         ("Assertion failed" ++ showCallStack ?callStack))
