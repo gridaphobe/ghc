@@ -707,11 +707,10 @@ errorName :: Name
 errorName = mkWiredInIdName gHC_ERR (fsLit "error") errorIdKey eRROR_ID
 
 eRROR_ID :: Id
-eRROR_ID = pc_bottoming_Id2 errorName errorTy
+eRROR_ID = pc_bottoming_Id1 errorName errorTy
 
 errorTy  :: Type   -- See Note [Error and friends have an "open-tyvar" forall]
-errorTy  = mkSigmaTy [openAlphaTyVar] []
-             (mkFunTys [mkListTy charTy, mkTyConTy callStackTyCon] openAlphaTy)
+errorTy  = mkSigmaTy [openAlphaTyVar] [] (mkFunTys [mkListTy charTy] openAlphaTy)
 
 {-
 Note [Error and friends have an "open-tyvar" forall]
@@ -754,13 +753,3 @@ pc_bottoming_Id1 name ty
 
     strict_sig = mkClosedStrictSig [evalDmd] botRes
     -- These "bottom" out, no matter what their arguments
-
-pc_bottoming_Id2 :: Name -> Type -> Id
--- Same but arity two
-pc_bottoming_Id2 name ty
- = mkVanillaGlobalWithInfo name ty bottoming_info
- where
-    bottoming_info = vanillaIdInfo `setStrictnessInfo`    strict_sig
-                                   `setArityInfo`         2
-    strict_sig = mkClosedStrictSig [evalDmd, evalDmd] botRes
-

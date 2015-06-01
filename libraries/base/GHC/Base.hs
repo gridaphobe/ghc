@@ -110,6 +110,7 @@ import GHC.Types
 import GHC.Classes
 import GHC.CString
 import qualified GHC.Err as Err
+import {-# SOURCE #-} GHC.Exception (showCallStack)
 import GHC.Magic
 import GHC.Prim
 import {-# SOURCE #-} GHC.IO (failIO)
@@ -1208,17 +1209,16 @@ data RealWorld
 
 -- | 'error' stops execution and displays an error message.
 error :: forall (a :: OpenKind). (?callStack :: CallStack) => [Char] -> a
-error s = Err.error s ?callStack
+error s = Err.error (s ++ showCallStack ?callStack)
 
 -- | A special case of 'error'.
 -- It is expected that compilers will recognize this and insert error
 -- messages which are more appropriate to the context in which 'undefined'
 -- appears.
 undefined :: forall (a :: OpenKind). (?callStack :: CallStack) => a
-undefined = Err.error "Prelude.undefined" ?callStack
+undefined = Err.error ("Prelude.undefined" ++ showCallStack ?callStack)
 
 -- | Used for compiler-generated error message;
 -- encoding saves bytes of string junk.
-absentErr :: forall (a :: OpenKind). (?callStack :: CallStack) => a
-absentErr =
-  Err.error "Oops! The program has entered an `absent' argument!\n" ?callStack
+absentErr :: forall (a :: OpenKind). a
+absentErr = Err.error "Oops! The program has entered an `absent' argument!\n"

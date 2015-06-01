@@ -31,5 +31,5 @@ import GHC.Integer ()   -- Make sure Integer is compiled first
 import {-# SOURCE #-} GHC.Exception( errorCallException )
 
 -- | 'error' stops execution and displays an error message.
-error :: [Char] -> CallStack -> a
-error s stk = raise# (errorCallException s stk)
+error :: [Char] -> a
+error s = raise# (errorCallException s)

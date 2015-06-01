@@ -25,6 +25,7 @@ module GHC.Exception
        , SomeException(..), ErrorCall(..), ArithException(..)
        , divZeroException, overflowException, ratioZeroDenomException
        , errorCallException
+       , CallStack, getCallStack, showCallStack
        ) where
 
 import Data.Maybe
@@ -181,9 +182,8 @@ showCallStack (CallStack (root:rest))
   showCallSite (f, loc) = f ++ ", called at " ++ showSrcLoc loc
 showCallStack (CallStack []) = ""
 
-errorCallException :: String -> CallStack -> SomeException
-errorCallException s stk
-  = toException (ErrorCall (s ++ showCallStack stk))
+errorCallException :: String -> SomeException
+errorCallException s = toException (ErrorCall s)
 
 -- |Arithmetic exceptions.
 data ArithException
