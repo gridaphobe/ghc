@@ -292,7 +292,7 @@ basicKnownKeyNames
         otherwiseIdName, inlineIdName,
         eqStringName, assertName, breakpointName, breakpointCondName,
         breakpointAutoName,  opaqueTyConName,
-        assertErrorName, runSTRepName,
+        runSTRepName,
         printName, fstName, sndName,
 
         -- Integer
@@ -1035,10 +1035,6 @@ typeLitTypeRepName    = varQual tYPEABLE_INTERNAL (fsLit "typeLitTypeRep") typeL
 dataClassName :: Name
 dataClassName = clsQual gENERICS (fsLit "Data") dataClassKey
 
--- Error module
-assertErrorName    :: Name
-assertErrorName   = varQual gHC_IO_Exception (fsLit "assertError") assertErrorIdKey
-
 -- Enum module (Enum, Bounded)
 enumClassName, enumFromName, enumFromToName, enumFromThenName,
     enumFromThenToName, boundedClassName :: Name
@@ -1734,10 +1730,9 @@ rootMainKey, runMainKey :: Unique
 rootMainKey                   = mkPreludeMiscIdUnique 101
 runMainKey                    = mkPreludeMiscIdUnique 102
 
-thenIOIdKey, lazyIdKey, assertErrorIdKey, oneShotKey :: Unique
+thenIOIdKey, lazyIdKey, oneShotKey :: Unique
 thenIOIdKey                   = mkPreludeMiscIdUnique 103
 lazyIdKey                     = mkPreludeMiscIdUnique 104
-assertErrorIdKey              = mkPreludeMiscIdUnique 105
 oneShotKey                    = mkPreludeMiscIdUnique 106
 
 breakpointIdKey, breakpointCondIdKey, breakpointAutoIdKey,

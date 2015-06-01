@@ -37,6 +37,7 @@ import GHC.IORef
 import GHC.IO.Buffer
 import GHC.IO.Encoding.Failure
 import GHC.IO.Encoding.Types
+import GHC.IO.Exception
 import GHC.Word
 import Data.Bits
 

@@ -978,27 +978,6 @@ maxInt  = I# 0x7FFFFFFFFFFFFFFF#
 id                      :: a -> a
 id x                    =  x
 
--- Assertion function.  This simply ignores its boolean argument.
--- The compiler may rewrite it to @('assertError' line)@.
-
--- | If the first argument evaluates to 'True', then the result is the
--- second argument.  Otherwise an 'AssertionFailed' exception is raised,
--- containing a 'String' with the source file and line number of the
--- call to 'assert'.
---
--- Assertions can normally be turned on or off with a compiler flag
--- (for GHC, assertions are normally on unless optimisation is turned on
--- with @-O@ or the @-fignore-asserts@
--- option is given).  When assertions are turned off, the first
--- argument to 'assert' is ignored, and the second argument is
--- returned as the result.
-
---      SLPJ: in 5.04 etc 'assert' is in GHC.Prim,
---      but from Template Haskell onwards it's simply
---      defined here in Base.lhs
-assert :: Bool -> a -> a
-assert _pred r = r
-
 breakpoint :: a -> a
 breakpoint r = r
 
