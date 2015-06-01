@@ -29,4 +29,3 @@ showSrcLoc SrcLoc {..}
       , show srcLocStartCol, " in "
       , srcLocPackage, ":", srcLocModule
       ]
-
