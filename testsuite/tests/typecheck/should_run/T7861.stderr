@@ -5,6 +5,9 @@ T7861: T7861.hs:11:5:
     Expected type: A a -> a
       Actual type: A a -> [a]
     Relevant bindings include f :: A a -> a (bound at T7861.hs:11:1)
+?callStack, called at libraries/base/GHC/Base.hs:1195:41 in base:GHC.Base
+  error, called at libraries/base/Control/Exception/Base.hs:391:30 in base:Control.Exception.Base
+
     In the expression: doA
     In an equation for ‘f’: f = doA
 (deferred type error)

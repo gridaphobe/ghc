@@ -1,1 +1,4 @@
 conc021: wurble
+?callStack, called at libraries/base/GHC/Base.hs:1195:41 in base:GHC.Base
+  error, called at conc021.hs:9:9 in main:Main
+

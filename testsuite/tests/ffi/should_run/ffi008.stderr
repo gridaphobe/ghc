@@ -1,1 +1,4 @@
 ffi008: this is an error
+?callStack, called at libraries/base/GHC/Base.hs:1195:41 in base:GHC.Base
+  error, called at ffi008.hs:12:12 in main:Main
+

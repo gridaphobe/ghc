@@ -1,1 +1,4 @@
 cgrun059: Error: File not found
+?callStack, called at libraries/base/GHC/Base.hs:1195:41 in base:GHC.Base
+  error, called at cgrun059.hs:12:28 in main:Main
+

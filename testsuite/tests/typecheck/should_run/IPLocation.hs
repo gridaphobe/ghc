@@ -2,7 +2,7 @@
 {-# OPTIONS_GHC -dcore-lint #-}
 module Main where
 
-import GHC.Stack
+import GHC.Exception
 
 f0 = putStrLn $ showCallStack ?loc
      -- should just show the location of ?loc

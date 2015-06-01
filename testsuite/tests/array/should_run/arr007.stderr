@@ -1,1 +1,4 @@
 arr007: Ix{Int}.index: Index (1) out of range ((1,0))
+?callStack, called at libraries/base/GHC/Base.hs:1195:41 in base:GHC.Base
+  error, called at libraries/base/GHC/Arr.hs:176:5 in base:GHC.Arr
+

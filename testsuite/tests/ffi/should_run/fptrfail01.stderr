@@ -1,1 +1,4 @@
 fptrfail01: GHC.ForeignPtr: attempt to mix Haskell and C finalizers in the same ForeignPtr
+?callStack, called at libraries/base/GHC/Base.hs:1195:41 in base:GHC.Base
+  error, called at libraries/base/GHC/ForeignPtr.hs:352:17 in base:GHC.ForeignPtr
+

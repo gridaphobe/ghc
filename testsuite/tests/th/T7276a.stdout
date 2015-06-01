@@ -1,19 +1,22 @@
 
-<interactive>:4:9: Warning:
+<interactive>:4:9: warning:
     Couldn't match type ‘[Dec]’ with ‘Exp’
     Expected type: Q Exp
       Actual type: DecsQ
     In the expression: [d| a = () |] :: Q Exp
     In an equation for ‘x’: x = [d| a = () |] :: Q Exp
 
-<interactive>:1:1:
+<interactive>:1:1: error:
     Exception when trying to run compile-time code:
-      <interactive>:4:9:
+      <interactive>:4:9: error:
     Couldn't match type ‘[Dec]’ with ‘Exp’
     Expected type: Q Exp
       Actual type: DecsQ
     In the expression: [d| a = () |] :: Q Exp
     In an equation for ‘x’: x = [d| a = () |] :: Q Exp
 (deferred type error)
+?callStack, called at libraries/base/GHC/Base.hs:1195:41 in base:GHC.Base
+  error, called at libraries/base/Control/Exception/Base.hs:391:30 in base:Control.Exception.Base
+
     Code: x
     In the untyped splice: $x

@@ -1,1 +1,4 @@
 cgrun051: OK
+?callStack, called at libraries/base/GHC/Base.hs:1195:41 in base:GHC.Base
+  error, called at cgrun051.hs:7:25 in main:Main
+

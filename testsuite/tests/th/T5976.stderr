@@ -1,5 +1,8 @@
 
-T5976.hs:1:1:
+T5976.hs:1:1: error:
     Exception when trying to run compile-time code:
       bar
-      Code: error ((++) "foo " error "bar")
+?callStack, called at libraries/base/GHC/Base.hs:1195:41 in base:GHC.Base
+  error, called at T5976.hs:3:21 in main:Main
+
+    Code: error ((++) "foo " error "bar")

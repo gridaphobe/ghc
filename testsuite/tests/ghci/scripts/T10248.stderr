@@ -16,3 +16,6 @@
     In a stmt of an interactive GHCi command:
       it <- ghciStepIO :: IO a_alT -> IO a_alT (Just <$> _)
 (deferred type error)
+?callStack, called at libraries/base/GHC/Base.hs:1195:41 in base:GHC.Base
+  error, called at libraries/base/Control/Exception/Base.hs:391:30 in base:Control.Exception.Base
+

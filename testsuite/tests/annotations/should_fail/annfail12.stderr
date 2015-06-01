@@ -1,6 +1,9 @@
 
-annfail12.hs:5:1:
+annfail12.hs:5:1: error:
     Exception when trying to run compile-time code:
       You were meant to see this error!
+?callStack, called at libraries/base/GHC/Base.hs:1195:41 in base:GHC.Base
+  error, called at annfail12.hs:5:12 in main:Annfail12
+
     In the annotation:
       {-# ANN f (error "You were meant to see this error!" :: Int) #-}

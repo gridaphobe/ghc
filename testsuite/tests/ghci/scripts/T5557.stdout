@@ -1,2 +1,8 @@
 *** Exception: Prelude.undefined
+?callStack, called at libraries/base/GHC/Base.hs:1202:61 in base:GHC.Base
+  undefined, called at <interactive>:3:12 in interactive:Ghci1
+
 *** Exception: Prelude.undefined
+?callStack, called at libraries/base/GHC/Base.hs:1202:61 in base:GHC.Base
+  undefined, called at <interactive>:4:12 in interactive:Ghci1
+

@@ -1,1 +1,4 @@
 strun002: Variable not found: (2) hello
+?callStack, called at libraries/base/GHC/Base.hs:1195:41 in base:GHC.Base
+  error, called at strun002.hs:7:11 in main:Main
+

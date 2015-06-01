@@ -1,14 +1,54 @@
 
 ==================== Tidy Core ====================
-Result size of Tidy Core = {terms: 23, types: 11, coercions: 0}
+Result size of Tidy Core = {terms: 62, types: 43, coercions: 0}
+
+a :: [Char]
+[GblId, Str=DmdType]
+a = unpackCString# "error"#
+
+a1 :: [Char]
+[GblId, Str=DmdType]
+a1 = unpackCString# "main"#
+
+a2 :: [Char]
+[GblId, Str=DmdType]
+a2 = unpackCString# "T4930"#
+
+a3 :: [Char]
+[GblId, Str=DmdType]
+a3 = unpackCString# "T4930.hs"#
+
+a4 :: Int
+[GblId, Caf=NoCafRefs, Str=DmdType m]
+a4 = I# 4#
+
+a5 :: Int
+[GblId, Caf=NoCafRefs, Str=DmdType m]
+a5 = I# 24#
+
+a6 :: Int
+[GblId, Caf=NoCafRefs, Str=DmdType m]
+a6 = I# 29#
+
+a7 :: SrcLoc
+[GblId, Str=DmdType m]
+a7 = SrcLoc a1 a2 a3 a4 a5 a4 a6
+
+a8 :: ([Char], SrcLoc)
+[GblId, Str=DmdType m]
+a8 = (a, a7)
 
 lvl :: [Char]
 [GblId, Str=DmdType]
 lvl = unpackCString# "Too small"#
 
+lvl1 :: [([Char], SrcLoc)]
+[GblId, Str=DmdType]
+lvl1 = : @ ([Char], SrcLoc) a8 ([] @ ([Char], SrcLoc))
+
 T4930.foo1 :: Int
 [GblId, Str=DmdType b]
-T4930.foo1 = error @ Int lvl
+T4930.foo1 = error2 @ Int lvl lvl1
 
 foo :: Int -> Int
 [GblId,

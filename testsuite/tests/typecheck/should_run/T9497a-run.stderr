@@ -1,4 +1,4 @@
-T9497a-run: T9497a-run.hs:2:8:
+T9497a-run: T9497a-run.hs:2:8: error:
     Found hole ‘_main’ with type: IO ()
     Or perhaps ‘_main’ is mis-spelled, or not in scope
     Relevant bindings include
@@ -6,3 +6,6 @@ T9497a-run: T9497a-run.hs:2:8:
     In the expression: _main
     In an equation for ‘main’: main = _main
 (deferred type error)
+?callStack, called at libraries/base/GHC/Base.hs:1195:41 in base:GHC.Base
+  error, called at libraries/base/Control/Exception/Base.hs:391:30 in base:Control.Exception.Base
+

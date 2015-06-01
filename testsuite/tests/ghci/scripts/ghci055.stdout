@@ -1,3 +1,6 @@
 *** Exception: Prelude.undefined
-x :: t = *** Exception: Prelude.undefined
+?callStack, called at libraries/base/GHC/Base.hs:1202:61 in base:GHC.Base
+  undefined, called at <interactive>:2:7 in interactive:Ghci1
+
+x :: t = _
 y :: Integer = 3

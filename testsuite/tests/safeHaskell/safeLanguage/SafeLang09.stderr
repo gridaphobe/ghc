@@ -1,1 +1,4 @@
 SafeLang09: This curry is poisoned!
+?callStack, called at libraries/base/GHC/Base.hs:1195:41 in base:GHC.Base
+  error, called at ./SafeLang09_B.hs:14:13 in main:SafeLang09_B
+
