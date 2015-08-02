@@ -75,6 +75,11 @@ module TysWiredIn (
         eqTyCon_RDR, eqTyCon, eqTyConName, eqBoxDataCon,
         coercibleTyCon, coercibleDataCon, coercibleClass,
 
+        -- * Implicit Parameters
+        ipTyCon, ipDataCon, ipClass,
+
+        callStackTyCon,
+
         mkWiredInTyConName -- This is used in TcTypeNats to define the
                            -- built-in functions for evaluation.
     ) where
@@ -88,6 +93,8 @@ import PrelNames
 import TysPrim
 
 -- others:
+import CoAxiom
+import Coercion
 import Constants        ( mAX_TUPLE_SIZE, mAX_CTUPLE_SIZE )
 import Module           ( Module )
 import Type             ( mkTyConApp )
@@ -162,6 +169,7 @@ wiredInTyCons = [ unitTyCon     -- Not treated like other tuples, because
               , coercibleTyCon
               , typeNatKindCon
               , typeSymbolKindCon
+              , ipTyCon
               ]
 
 mkWiredInTyConName :: BuiltInSyntax -> Module -> FastString -> Unique -> TyCon -> Name
@@ -174,6 +182,13 @@ mkWiredInDataConName :: BuiltInSyntax -> Module -> FastString -> Unique -> DataC
 mkWiredInDataConName built_in modu fs unique datacon
   = mkWiredInName modu (mkDataOccFS fs) unique
                   (AConLike (RealDataCon datacon))    -- Relevant DataCon
+                  built_in
+
+mkWiredInCoAxiomName :: BuiltInSyntax -> Module -> FastString -> Unique
+                     -> CoAxiom Branched -> Name
+mkWiredInCoAxiomName built_in modu fs unique ax
+  = mkWiredInName modu (mkTcOccFS fs) unique
+                  (ACoAxiom ax)        -- Relevant CoAxiom
                   built_in
 
 -- See Note [Kind-changing of (~) and Coercible]
@@ -930,3 +945,55 @@ promotedOrderingTyCon = promoteTyCon orderingTyCon
 promotedLTDataCon     = promoteDataCon ltDataCon
 promotedEQDataCon     = promoteDataCon eqDataCon
 promotedGTDataCon     = promoteDataCon gtDataCon
+
+
+{-
+Note [The Implicit Parameter class]
+
+Implicit parameters `?x :: a` are desugared into dictionaries for the
+class `IP "x" a`, which is defined (in GHC.Classes) as
+
+  class IP (x :: Symbol) a | x -> a
+
+This class is wired-in so that `error` and `undefined`, which have
+wired-in types, can use the implicit-call-stack feature to provide
+a call-stack alongside the error message.
+-}
+
+ipDataConName, ipTyConName, ipCoName :: Name
+ipDataConName = mkWiredInDataConName UserSyntax gHC_CLASSES (fsLit "IP")
+                  ipDataConKey ipDataCon
+ipTyConName   = mkWiredInTyConName UserSyntax gHC_CLASSES (fsLit "IP")
+                  ipTyConKey ipTyCon
+ipCoName      = mkWiredInCoAxiomName BuiltInSyntax gHC_CLASSES (fsLit "NTCo:IP")
+                  ipCoNameKey (toBranchedAxiom ipCoAxiom)
+
+-- See Note [The Implicit Parameter class]
+ipTyCon :: TyCon
+ipTyCon = mkClassTyCon ipTyConName kind [ip,a] [] rhs ipClass NonRecursive
+  where
+    kind = mkArrowKinds [typeSymbolKind, liftedTypeKind] constraintKind
+    [ip,a] = mkTemplateTyVars [typeSymbolKind, liftedTypeKind]
+    rhs = NewTyCon ipDataCon (mkTyVarTy a) ([], mkTyVarTy a) ipCoAxiom
+
+ipCoAxiom :: CoAxiom Unbranched
+ipCoAxiom = mkNewTypeCo ipCoName ipTyCon [ip,a] [Nominal, Nominal] (mkTyVarTy a)
+  where
+    [ip,a] = mkTemplateTyVars [typeSymbolKind, liftedTypeKind]
+
+ipDataCon :: DataCon
+ipDataCon = pcDataCon ipDataConName [ip,a] ts ipTyCon
+  where
+    [ip,a] = mkTemplateTyVars [typeSymbolKind, liftedTypeKind]
+    ts  = [mkTyVarTy a]
+
+ipClass :: Class
+ipClass = mkClass (tyConTyVars ipTyCon) [([ip], [a])] [] [] [] [] (mkAnd [])
+            ipTyCon
+  where
+    [ip, a] = tyConTyVars ipTyCon
+
+-- this is a fake version of the CallStack TyCon so we can refer to it
+-- in MkCore.errorTy
+callStackTyCon :: TyCon
+callStackTyCon = pcNonRecDataTyCon callStackTyConName Nothing [] []

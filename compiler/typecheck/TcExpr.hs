@@ -191,7 +191,6 @@ tcExpr (NegApp expr neg_expr) res_ty
 
 tcExpr (HsIPVar x) res_ty
   = do { let origin = IPOccOrigin x
-       ; ipClass <- tcLookupClass ipClassName
            {- Implicit parameters must have a *tau-type* not a.
               type scheme.  We enforce this by creating a fresh
               type variable as its type.  (Because res_ty may not
