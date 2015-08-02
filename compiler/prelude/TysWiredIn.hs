@@ -561,14 +561,14 @@ eqTyCon = mkAlgTyCon eqTyConName
   where
     kv = kKiVar
     k = mkTyVarTy kv
-    a:b:_ = tyVarList k
+    [a,b] = mkTemplateTyVars [k,k]
 
 eqBoxDataCon :: DataCon
 eqBoxDataCon = pcDataCon eqBoxDataConName args [TyConApp eqPrimTyCon (map mkTyVarTy args)] eqTyCon
   where
     kv = kKiVar
     k = mkTyVarTy kv
-    a:b:_ = tyVarList k
+    [a,b] = mkTemplateTyVars [k,k]
     args = [kv, a, b]
 
 
@@ -579,7 +579,7 @@ coercibleTyCon = mkClassTyCon
   where kind = (ForAllTy kv $ mkArrowKinds [k, k] constraintKind)
         kv = kKiVar
         k = mkTyVarTy kv
-        a:b:_ = tyVarList k
+        [a,b] = mkTemplateTyVars [k,k]
         tvs = [kv, a, b]
         rhs = DataTyCon [coercibleDataCon] False
 
@@ -588,7 +588,7 @@ coercibleDataCon = pcDataCon coercibleDataConName args [TyConApp eqReprPrimTyCon
   where
     kv = kKiVar
     k = mkTyVarTy kv
-    a:b:_ = tyVarList k
+    [a,b] = mkTemplateTyVars [k,k]
     args = [kv, a, b]
 
 coercibleClass :: Class
