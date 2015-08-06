@@ -8,7 +8,7 @@
 	ignore = untracked
 [submodule "libraries/Cabal"]
 	path = libraries/Cabal
-	url = ../packages/Cabal.git
+	url = git://github.com/gridaphobe/cabal.git
 	ignore = untracked
 [submodule "libraries/containers"]
 	path = libraries/containers
@@ -56,7 +56,7 @@
 	ignore = untracked
 [submodule "libraries/array"]
 	path = libraries/array
-	url = ../packages/array.git
+	url = git://github.com/gridaphobe/packages-array.git
 	ignore = none
 [submodule "libraries/deepseq"]
 	path = libraries/deepseq
@@ -92,7 +92,7 @@
 	ignore = none
 [submodule "libraries/stm"]
 	path = libraries/stm
-	url = ../packages/stm.git
+	url = git://github.com/gridaphobe/packages-stm.git
 	ignore = none
 [submodule "libraries/dph"]
 	path = libraries/dph
@@ -100,7 +100,7 @@
 	ignore = none
 [submodule "utils/haddock"]
 	path = utils/haddock
-	url = ../haddock.git
+	url = git://github.com/gridaphobe/haddock.git
 	ignore = none
 	branch = ghc-head
 [submodule "nofib"]
