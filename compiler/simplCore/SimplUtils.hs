@@ -52,6 +52,7 @@ import Var
 import Demand
 import SimplMonad
 import Type     hiding( substTy )
+import TysWiredIn
 import Coercion hiding( substCo, substTy )
 import DataCon          ( dataConWorkId )
 import VarEnv
@@ -1027,6 +1028,7 @@ preInlineUnconditionally dflags env top_lvl bndr rhs
   | isTopLevel top_lvl && isBottomingId bndr = False -- Note [Top-level bottoming Ids]
   | not (gopt Opt_SimplPreInlining dflags)   = False
   | isCoVar bndr                             = False -- Note [Do not inline CoVars unconditionally]
+  | isCallStackId bndr                       = False
   | otherwise = case idOccInfo bndr of
                   IAmDead                    -> True -- Happens in ((\x.1) v)
                   OneOcc in_lam True int_cxt -> try_once in_lam int_cxt
@@ -1086,6 +1088,15 @@ preInlineUnconditionally dflags env top_lvl bndr rhs
 -- top level things, but then we become more leery about inlining
 -- them.
 
+isCallStackId :: Var -> Bool
+isCallStackId bndr
+  | Just (_, ty) <- isIPPred_maybe (varType bndr)
+  , Just (tc, _) <- splitTyConApp_maybe ty
+  , tc == callStackTyCon
+  = True
+  | otherwise
+  = False
+
 {-
 ************************************************************************
 *                                                                      *
@@ -1141,6 +1152,7 @@ postInlineUnconditionally dflags env top_lvl bndr occ_info rhs unfolding
   | isExportedId bndr           = False
   | isStableUnfolding unfolding = False -- Note [Stable unfoldings and postInlineUnconditionally]
   | isTopLevel top_lvl          = False -- Note [Top level and postInlineUnconditionally]
+  | isCallStackId bndr          = False
   | exprIsTrivial rhs           = True
   | otherwise
   = case occ_info of
