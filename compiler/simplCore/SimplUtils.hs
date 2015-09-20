@@ -52,7 +52,6 @@ import Var
 import Demand
 import SimplMonad
 import Type     hiding( substTy )
-import TysWiredIn
 import Coercion hiding( substCo, substTy )
 import DataCon          ( dataConWorkId )
 import VarEnv
@@ -1087,15 +1086,6 @@ preInlineUnconditionally dflags env top_lvl bndr rhs
 -- simplifications).  Until phase zero we take no special notice of
 -- top level things, but then we become more leery about inlining
 -- them.
-
-isCallStackId :: Var -> Bool
-isCallStackId bndr
-  | Just (_, ty) <- isIPPred_maybe (varType bndr)
-  , Just (tc, _) <- splitTyConApp_maybe ty
-  , tc == callStackTyCon
-  = True
-  | otherwise
-  = False
 
 {-
 ************************************************************************
