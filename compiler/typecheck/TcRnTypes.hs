@@ -298,7 +298,7 @@ data DsGblEnv
         , ds_parr_bi :: PArrBuiltin             -- desugarar names for '-XParallelArrays'
         , ds_static_binds :: IORef [(Fingerprint, (Id,CoreExpr))]
           -- ^ Bindings resulted from floating static forms
-        , ds_extra_binds :: IORef CoreProgram
+        , ds_extra_binds :: Maybe (IORef CoreProgram)
         }
 
 instance ContainsModule DsGblEnv where

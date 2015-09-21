@@ -1059,26 +1059,28 @@ dsEvCallStack cs = do
   let mkPush name loc tm = do
         nameExpr <- mkStringExprFS name
         locExpr <- mkSrcLoc loc
-        csId <- newSysLocalDs callSiteTy
         let csExpr = mkCoreTup [nameExpr, locExpr]
 
-        extra_binds_var <- ds_extra_binds <$> getGblEnv
-        liftIO $ modifyIORef extra_binds_var (NonRec csId csExpr :)
+        extra_binds_var_maybe <- ds_extra_binds <$> getGblEnv
+        csExpr <- case extra_binds_var_maybe of
+          Nothing -> return csExpr
+          Just var -> do csId <- newSysLocalDs callSiteTy
+                         liftIO $ modifyIORef var (NonRec csId csExpr :)
+                         return (Var csId)
 
         case tm of
-          EvCallStack EvCsEmpty -> return (pushCS (Var csId) emptyCS)
+          EvCallStack EvCsEmpty -> return (pushCS csExpr emptyCS)
           _ -> do tmExpr  <- dsEvTerm tm
                   -- at this point tmExpr :: IP sym CallStack
                   -- but we need the actual CallStack to pass to pushCS,
                   -- so we use unwrapIP to strip the dictionary wrapper
                   -- See Note [Overview of implicit CallStacks]
                   let ip_co = unwrapIP (exprType tmExpr)
-                  return (pushCS (Var csId) (mkCastDs tmExpr ip_co))
+                  return (pushCS csExpr (mkCastDs tmExpr ip_co))
   case cs of
     EvCsTop name loc tm -> mkPush name loc tm
     EvCsPushCall name loc tm -> mkPush (occNameFS $ getOccName name) loc tm
     EvCsEmpty -> panic "Cannot have an empty CallStack"
-
 
 ---------------------------------------
 dsTcCoercion :: TcCoercion -> (Coercion -> CoreExpr) -> DsM CoreExpr

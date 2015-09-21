@@ -112,6 +112,7 @@ deSugar hsc_env
                               else return (binds, hpcInfo, emptyModBreaks)
 
         ; (msgs, mb_res) <- initDs hsc_env mod rdr_env type_env fam_inst_env $
+                            withFloatedCallStacks $
                        do { ds_ev_binds <- dsEvBinds ev_binds
                           ; core_prs <- dsTopLHsBinds binds_cvr
                           ; (spec_prs, spec_rules) <- dsImpSpecs imp_specs
@@ -127,7 +128,8 @@ deSugar hsc_env
                                 -- module into the static pointer table
                                 spt_init = sptInitCode mod stBinds
                           ; extra_binds_var <- ds_extra_binds <$> getGblEnv
-                          ; extra_binds <- liftIO $ readIORef extra_binds_var
+                          ; extra_binds <- liftIO $ maybe (return [])
+                                                    readIORef extra_binds_var
                           ; return ( ds_ev_binds ++ extra_binds
                                    , foreign_prs `appOL` core_prs `appOL` spec_prs
                                                  `appOL` toOL (map snd stBinds)
