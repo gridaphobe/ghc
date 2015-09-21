@@ -1033,8 +1033,6 @@ callSiteInline dflags id active_unfolding lone_variable arg_infos cont_info
         CoreUnfolding { uf_tmpl = unf_template, uf_is_top = is_top
                       , uf_is_work_free = is_wf
                       , uf_guidance = guidance, uf_expandable = is_exp }
-          | isCallStackId id -> traceInline dflags "Skipping CallStack:"
-                                  (ppr id) Nothing
           | active_unfolding -> tryUnfolding dflags id lone_variable
                                     arg_infos cont_info unf_template is_top
                                     is_wf is_exp guidance

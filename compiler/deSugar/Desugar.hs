@@ -14,7 +14,7 @@ import DynFlags
 import HscTypes
 import HsSyn
 import TcRnTypes
-import TcRnMonad ( finalSafeMode, fixSafeInstances )
+import TcRnMonad ( finalSafeMode, fixSafeInstances, getGblEnv )
 import MkIface
 import Id
 import Name
@@ -126,7 +126,9 @@ deSugar hsc_env
                                 -- Stub to insert the static entries of the
                                 -- module into the static pointer table
                                 spt_init = sptInitCode mod stBinds
-                          ; return ( ds_ev_binds
+                          ; extra_binds_var <- ds_extra_binds <$> getGblEnv
+                          ; extra_binds <- liftIO $ readIORef extra_binds_var
+                          ; return ( ds_ev_binds ++ extra_binds
                                    , foreign_prs `appOL` core_prs `appOL` spec_prs
                                                  `appOL` toOL (map snd stBinds)
                                    , spec_rules ++ ds_rules, ds_vects

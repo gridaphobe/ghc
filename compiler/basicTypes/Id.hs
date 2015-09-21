@@ -60,7 +60,6 @@ module Id (
         isDataConWorkId, isDataConWorkId_maybe, isDataConId_maybe, idDataCon,
         isConLikeId, isBottomingId, idIsFrom,
         hasNoBinding,
-        isCallStackId,
 
         -- ** Evidence variables
         DictId, isDictId, isEvVar,
@@ -118,7 +117,6 @@ import qualified Var
 import TyCon
 import Type
 import TysPrim
-import TysWiredIn
 import DataCon
 import Demand
 import Name
@@ -459,15 +457,6 @@ isImplicitId id
 
 idIsFrom :: Module -> Id -> Bool
 idIsFrom mod id = nameIsLocalOrFrom mod (idName id)
-
-isCallStackId :: Var -> Bool
-isCallStackId bndr
-  | Just (_, ty) <- isIPPred_maybe (varType bndr)
-  , Just (tc, _) <- splitTyConApp_maybe ty
-  , tc == callStackTyCon
-  = True
-  | otherwise
-  = False
 
 {-
 Note [Primop wrappers]

@@ -43,6 +43,7 @@ import TysPrim ( mkProxyPrimTy )
 import TyCon
 import TcEvidence
 import TcType
+import TcRnMonad
 import Type
 import Kind (returnsConstraintKind)
 import Coercion hiding (substCo)
@@ -70,6 +71,7 @@ import FastString
 import Util
 import MonadUtils
 import Control.Monad(liftM,when)
+import Data.IORef
 import Fingerprint(Fingerprint(..), fingerprintString)
 
 {-
@@ -1066,10 +1068,16 @@ dsEvCallStack cs = do
                   -- See Note [Overview of implicit CallStacks]
                   let ip_co = unwrapIP (exprType tmExpr)
                   return (pushCS nameExpr locExpr (mkCastDs tmExpr ip_co))
-  case cs of
+  cs_expr <- case cs of
     EvCsTop name loc tm -> mkPush name loc tm
     EvCsPushCall name loc tm -> mkPush (occNameFS $ getOccName name) loc tm
     EvCsEmpty -> panic "Cannot have an empty CallStack"
+
+  cs_id <- newSysLocalDs callStackTy
+  extra_binds_var <- ds_extra_binds <$> getGblEnv
+  liftIO $ modifyIORef extra_binds_var (NonRec cs_id cs_expr :)
+  return (Var cs_id)
+
 
 ---------------------------------------
 dsTcCoercion :: TcCoercion -> (Coercion -> CoreExpr) -> DsM CoreExpr
