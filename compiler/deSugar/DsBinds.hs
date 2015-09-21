@@ -1047,36 +1047,37 @@ dsEvCallStack cs = do
   let callStackTyCon = dataConTyCon callStackDataCon
   let callStackTy    = mkTyConTy callStackTyCon
   let emptyCS        = mkCoreConApps callStackDataCon [mkNilExpr callSiteTy]
-  let pushCS name loc rest =
+  let pushCS callSite rest =
         mkWildCase rest callStackTy callStackTy
                    [( DataAlt callStackDataCon
                     , [matchId]
                     , mkCoreConApps callStackDataCon
                        [mkConsExpr callSiteTy
-                                   (mkCoreTup [name, loc])
+                                   callSite
                                    (Var matchId)]
                     )]
   let mkPush name loc tm = do
         nameExpr <- mkStringExprFS name
         locExpr <- mkSrcLoc loc
+        csId <- newSysLocalDs callSiteTy
+        let csExpr = mkCoreTup [nameExpr, locExpr]
+
+        extra_binds_var <- ds_extra_binds <$> getGblEnv
+        liftIO $ modifyIORef extra_binds_var (NonRec csId csExpr :)
+
         case tm of
-          EvCallStack EvCsEmpty -> return (pushCS nameExpr locExpr emptyCS)
+          EvCallStack EvCsEmpty -> return (pushCS (Var csId) emptyCS)
           _ -> do tmExpr  <- dsEvTerm tm
                   -- at this point tmExpr :: IP sym CallStack
                   -- but we need the actual CallStack to pass to pushCS,
                   -- so we use unwrapIP to strip the dictionary wrapper
                   -- See Note [Overview of implicit CallStacks]
                   let ip_co = unwrapIP (exprType tmExpr)
-                  return (pushCS nameExpr locExpr (mkCastDs tmExpr ip_co))
-  cs_expr <- case cs of
+                  return (pushCS (Var csId) (mkCastDs tmExpr ip_co))
+  case cs of
     EvCsTop name loc tm -> mkPush name loc tm
     EvCsPushCall name loc tm -> mkPush (occNameFS $ getOccName name) loc tm
     EvCsEmpty -> panic "Cannot have an empty CallStack"
-
-  cs_id <- newSysLocalDs callStackTy
-  extra_binds_var <- ds_extra_binds <$> getGblEnv
-  liftIO $ modifyIORef extra_binds_var (NonRec cs_id cs_expr :)
-  return (Var cs_id)
 
 
 ---------------------------------------

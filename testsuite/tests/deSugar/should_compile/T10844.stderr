@@ -19,54 +19,36 @@ foo =
     tpl `cast` (T10844a.NTCo:Foo[0] <a>_N :: Foo a ~R# (a -> a))
 
 -- RHS size: {terms: 2, types: 0, coercions: 0}
-T10844a.$fFooInt11 :: [Char]
-[GblId,
- Str=DmdType,
- Unf=Unf{Src=<vanilla>, TopLvl=True, Value=False, ConLike=False,
-         WorkFree=False, Expandable=False, Guidance=IF_ARGS [] 50 0}]
-T10844a.$fFooInt11 = unpackCString# "error"#
-
--- RHS size: {terms: 2, types: 0, coercions: 0}
-T10844a.$fFooInt10 :: [Char]
-[GblId,
- Str=DmdType,
- Unf=Unf{Src=<vanilla>, TopLvl=True, Value=False, ConLike=False,
-         WorkFree=False, Expandable=False, Guidance=IF_ARGS [] 40 0}]
-T10844a.$fFooInt10 = unpackCString# "main"#
-
--- RHS size: {terms: 2, types: 0, coercions: 0}
 T10844a.$fFooInt9 :: [Char]
 [GblId,
  Str=DmdType,
  Unf=Unf{Src=<vanilla>, TopLvl=True, Value=False, ConLike=False,
          WorkFree=False, Expandable=False, Guidance=IF_ARGS [] 50 0}]
-T10844a.$fFooInt9 = unpackCString# "T10844a"#
+T10844a.$fFooInt9 = unpackCString# "error"#
 
 -- RHS size: {terms: 2, types: 0, coercions: 0}
 T10844a.$fFooInt8 :: [Char]
 [GblId,
  Str=DmdType,
  Unf=Unf{Src=<vanilla>, TopLvl=True, Value=False, ConLike=False,
+         WorkFree=False, Expandable=False, Guidance=IF_ARGS [] 40 0}]
+T10844a.$fFooInt8 = unpackCString# "main"#
+
+-- RHS size: {terms: 2, types: 0, coercions: 0}
+T10844a.$fFooInt7 :: [Char]
+[GblId,
+ Str=DmdType,
+ Unf=Unf{Src=<vanilla>, TopLvl=True, Value=False, ConLike=False,
+         WorkFree=False, Expandable=False, Guidance=IF_ARGS [] 50 0}]
+T10844a.$fFooInt7 = unpackCString# "T10844a"#
+
+-- RHS size: {terms: 2, types: 0, coercions: 0}
+T10844a.$fFooInt6 :: [Char]
+[GblId,
+ Str=DmdType,
+ Unf=Unf{Src=<vanilla>, TopLvl=True, Value=False, ConLike=False,
          WorkFree=False, Expandable=False, Guidance=IF_ARGS [] 60 0}]
-T10844a.$fFooInt8 = unpackCString# "./T10844a.hs"#
-
--- RHS size: {terms: 2, types: 0, coercions: 0}
-T10844a.$fFooInt7 :: Int
-[GblId,
- Caf=NoCafRefs,
- Str=DmdType m,
- Unf=Unf{Src=<vanilla>, TopLvl=True, Value=True, ConLike=True,
-         WorkFree=True, Expandable=True, Guidance=IF_ARGS [] 10 20}]
-T10844a.$fFooInt7 = I# 6#
-
--- RHS size: {terms: 2, types: 0, coercions: 0}
-T10844a.$fFooInt6 :: Int
-[GblId,
- Caf=NoCafRefs,
- Str=DmdType m,
- Unf=Unf{Src=<vanilla>, TopLvl=True, Value=True, ConLike=True,
-         WorkFree=True, Expandable=True, Guidance=IF_ARGS [] 10 20}]
-T10844a.$fFooInt6 = I# 13#
+T10844a.$fFooInt6 = unpackCString# "./T10844a.hs"#
 
 -- RHS size: {terms: 2, types: 0, coercions: 0}
 T10844a.$fFooInt5 :: Int
@@ -75,64 +57,76 @@ T10844a.$fFooInt5 :: Int
  Str=DmdType m,
  Unf=Unf{Src=<vanilla>, TopLvl=True, Value=True, ConLike=True,
          WorkFree=True, Expandable=True, Guidance=IF_ARGS [] 10 20}]
-T10844a.$fFooInt5 = I# 18#
+T10844a.$fFooInt5 = I# 6#
+
+-- RHS size: {terms: 2, types: 0, coercions: 0}
+T10844a.$fFooInt4 :: Int
+[GblId,
+ Caf=NoCafRefs,
+ Str=DmdType m,
+ Unf=Unf{Src=<vanilla>, TopLvl=True, Value=True, ConLike=True,
+         WorkFree=True, Expandable=True, Guidance=IF_ARGS [] 10 20}]
+T10844a.$fFooInt4 = I# 13#
+
+-- RHS size: {terms: 2, types: 0, coercions: 0}
+T10844a.$fFooInt3 :: Int
+[GblId,
+ Caf=NoCafRefs,
+ Str=DmdType m,
+ Unf=Unf{Src=<vanilla>, TopLvl=True, Value=True, ConLike=True,
+         WorkFree=True, Expandable=True, Guidance=IF_ARGS [] 10 20}]
+T10844a.$fFooInt3 = I# 18#
 
 -- RHS size: {terms: 8, types: 0, coercions: 0}
-T10844a.$fFooInt4 :: SrcLoc
+T10844a.$fFooInt2 :: SrcLoc
 [GblId,
  Str=DmdType m,
  Unf=Unf{Src=<vanilla>, TopLvl=True, Value=True, ConLike=True,
          WorkFree=True, Expandable=True, Guidance=IF_ARGS [] 10 80}]
-T10844a.$fFooInt4 =
+T10844a.$fFooInt2 =
   SrcLoc
-    T10844a.$fFooInt10
-    T10844a.$fFooInt9
     T10844a.$fFooInt8
     T10844a.$fFooInt7
     T10844a.$fFooInt6
-    T10844a.$fFooInt7
     T10844a.$fFooInt5
+    T10844a.$fFooInt4
+    T10844a.$fFooInt5
+    T10844a.$fFooInt3
 
 -- RHS size: {terms: 3, types: 3, coercions: 0}
-T10844a.$fFooInt3 :: ([Char], SrcLoc)
+T10844a.$fFooInt1 :: ([Char], SrcLoc)
 [GblId,
  Str=DmdType m,
  Unf=Unf{Src=<vanilla>, TopLvl=True, Value=True, ConLike=True,
          WorkFree=True, Expandable=True, Guidance=IF_ARGS [] 10 30}]
-T10844a.$fFooInt3 = (T10844a.$fFooInt11, T10844a.$fFooInt4)
+T10844a.$fFooInt1 = (T10844a.$fFooInt9, T10844a.$fFooInt2)
 
 -- RHS size: {terms: 3, types: 8, coercions: 0}
-T10844a.$fFooInt2 :: [([Char], SrcLoc)]
-[GblId,
- Str=DmdType m2,
- Unf=Unf{Src=<vanilla>, TopLvl=True, Value=True, ConLike=True,
-         WorkFree=True, Expandable=True, Guidance=IF_ARGS [] 10 30}]
-T10844a.$fFooInt2 =
-  : @ ([Char], SrcLoc) T10844a.$fFooInt3 ([] @ ([Char], SrcLoc))
-
--- RHS size: {terms: 2, types: 0, coercions: 0}
-T10844a.$fFooInt1 :: CallStack
-[GblId,
- Str=DmdType m,
- Unf=Unf{Src=<vanilla>, TopLvl=True, Value=True, ConLike=True,
-         WorkFree=True, Expandable=True, Guidance=IF_ARGS [] 10 20}]
-T10844a.$fFooInt1 = CallStack T10844a.$fFooInt2
-
--- RHS size: {terms: 2, types: 0, coercions: 0}
-lvl :: [Char]
+lvl :: [([Char], SrcLoc)]
 [GblId, Str=DmdType]
-lvl = unpackCString# "foo"#
+lvl =
+  : @ ([Char], SrcLoc) T10844a.$fFooInt1 ([] @ ([Char], SrcLoc))
+
+-- RHS size: {terms: 2, types: 0, coercions: 0}
+lvl1 :: CallStack
+[GblId, Str=DmdType]
+lvl1 = CallStack lvl
+
+-- RHS size: {terms: 2, types: 0, coercions: 0}
+lvl2 :: [Char]
+[GblId, Str=DmdType]
+lvl2 = unpackCString# "foo"#
 
 -- RHS size: {terms: 3, types: 1, coercions: 4}
-lvl1 :: Int
+lvl3 :: Int
 [GblId, Str=DmdType b]
-lvl1 =
+lvl3 =
   error
     @ Int
-    (T10844a.$fFooInt1
+    (lvl1
      `cast` (Sym (NTCo:IP[0] <"callStack">_N <CallStack>_N)
              :: CallStack ~R# (?callStack::CallStack)))
-    lvl
+    lvl2
 
 -- RHS size: {terms: 10, types: 4, coercions: 0}
 T10844a.$fFooInt_$cfoo [InlPrag=INLINE (sat-args=1)] :: Int -> Int
@@ -140,16 +134,25 @@ T10844a.$fFooInt_$cfoo [InlPrag=INLINE (sat-args=1)] :: Int -> Int
  Arity=1,
  Str=DmdType <S(S),1*U(U)>m,
  Unf=Unf{Src=InlineStable, TopLvl=True, Value=True, ConLike=True,
-         WorkFree=True, Expandable=True,
+         WorkFree=False, Expandable=True,
          Guidance=ALWAYS_IF(arity=1,unsat_ok=False,boring_ok=False)
-         Tmpl= \ (ds [Occ=Once!] :: Int) ->
+         Tmpl= let {
+                 a :: [([Char], SrcLoc)]
+                 [LclId, Str=DmdType]
+                 a =
+                   : @ ([Char], SrcLoc) T10844a.$fFooInt1 ([] @ ([Char], SrcLoc)) } in
+               let {
+                 a1 [Occ=OnceL] :: CallStack
+                 [LclId, Str=DmdType]
+                 a1 = CallStack a } in
+               \ (ds [Occ=Once!] :: Int) ->
                  case ds of wild { I# ds1 [Occ=Once!] ->
                  case ds1 of _ [Occ=Dead] {
                    __DEFAULT -> wild;
                    0# ->
                      error
                        @ Int
-                       (T10844a.$fFooInt1
+                       (a1
                         `cast` (Sym (NTCo:IP[0] <"callStack">_N <CallStack>_N)
                                 :: CallStack ~R# (?callStack::CallStack)))
                        (build @ Char (\ (@ b) -> unpackFoldrCString# @ b "foo"#))
@@ -160,7 +163,7 @@ T10844a.$fFooInt_$cfoo =
     case eta of wild { I# ds ->
     case ds of _ [Occ=Dead] {
       __DEFAULT -> wild;
-      0# -> lvl1
+      0# -> lvl3
     }
     }
 
@@ -185,12 +188,29 @@ T10844a.$fFooInt =
 [2 of 2] Compiling T10844           ( T10844.hs, T10844.o )
 
 ==================== Tidy Core ====================
-Result size of Tidy Core = {terms: 36, types: 28, coercions: 7}
+Result size of Tidy Core = {terms: 43, types: 42, coercions: 7}
 
 -- RHS size: {terms: 2, types: 0, coercions: 0}
 n [InlPrag=NOINLINE] :: Int
 [GblId, Caf=NoCafRefs, Str=DmdType m]
 n = I# 0#
+
+-- RHS size: {terms: 3, types: 8, coercions: 0}
+T10844.main5 :: [([Char], SrcLoc)]
+[GblId,
+ Str=DmdType,
+ Unf=Unf{Src=<vanilla>, TopLvl=True, Value=True, ConLike=True,
+         WorkFree=True, Expandable=True, Guidance=IF_ARGS [] 10 30}]
+T10844.main5 =
+  : @ ([Char], SrcLoc) T10844a.$fFooInt1 ([] @ ([Char], SrcLoc))
+
+-- RHS size: {terms: 2, types: 0, coercions: 0}
+T10844.main4 :: CallStack
+[GblId,
+ Str=DmdType,
+ Unf=Unf{Src=<vanilla>, TopLvl=True, Value=True, ConLike=True,
+         WorkFree=True, Expandable=True, Guidance=IF_ARGS [] 10 20}]
+T10844.main4 = CallStack T10844.main5
 
 -- RHS size: {terms: 2, types: 0, coercions: 0}
 T10844.main3 :: [Char]
@@ -217,7 +237,7 @@ T10844.main2 =
     0# ->
       case error
              @ Int
-             (T10844a.$fFooInt1
+             (T10844.main4
               `cast` (Sym (NTCo:IP[0] <"callStack">_N <CallStack>_N)
                       :: CallStack ~R# (?callStack::CallStack)))
              T10844.main3
