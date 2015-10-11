@@ -1027,9 +1027,9 @@ dsEvCallStack cs = do
   let srcLocTy     = mkTyConTy srcLocTyCon
   let mkSrcLoc l =
         liftM (mkCoreConApps srcLocDataCon)
-              (sequence [ mkStringExprDs (showPpr df $ modulePackageKey m)
-                        , mkStringExprFSDs (moduleNameFS $ moduleName m)
-                        , mkStringExprFSDs (srcSpanFile l)
+              (sequence [ mkStringExpr (showPpr df $ modulePackageKey m)
+                        , mkStringExprFS (moduleNameFS $ moduleName m)
+                        , mkStringExprFS (srcSpanFile l)
                         , return $ mkIntExprInt df (srcSpanStartLine l)
                         , return $ mkIntExprInt df (srcSpanStartCol l)
                         , return $ mkIntExprInt df (srcSpanEndLine l)
@@ -1057,7 +1057,7 @@ dsEvCallStack cs = do
                                    (Var matchId)]
                     )]
   let mkPush name loc tm = do
-        nameExpr <- mkStringExprFSDs name
+        nameExpr <- mkStringExprFS name
         locExpr <- mkSrcLoc loc
         let csExpr = mkCoreTup [nameExpr, locExpr]
 
