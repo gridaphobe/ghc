@@ -76,10 +76,10 @@ import FastString
 import Data.IORef
 import TcRnMonad
 
-
 import TcEvidence
 
 import Control.Monad    ( zipWithM )
+import Data.List        ( find )
 
 {-
 ************************************************************************
@@ -574,12 +574,21 @@ mkStringExprDs = mkStringExprFSDs . fsLit
 mkStringExprFSDs :: FastString -> DsM CoreExpr
 mkStringExprFSDs str = do
   str_expr <- mkStringExprFS str
+  addExtraBindDs str_expr
+
+addExtraBindDs :: CoreExpr -> DsM CoreExpr
+addExtraBindDs expr = do
   extra_binds_var_maybe <- ds_extra_binds <$> getGblEnv
   case extra_binds_var_maybe of
-    Nothing  -> return str_expr
-    Just var -> do str_id <- newSysLocalDs stringTy
-                   liftIO $ modifyIORef var (NonRec str_id str_expr :)
-                   return (Var str_id)
+    Nothing
+      -> return expr
+    Just var -> do
+      extra_binds <- liftIO $ readIORef var
+      case find (cheapEqExpr expr . snd) extra_binds of
+       Just (id, _) -> return (Var id)
+       Nothing      -> do id <- newSysLocalDs (exprType expr)
+                          liftIO $ modifyIORef var ((id, expr) :)
+                          return (Var id)
 
 
 {-

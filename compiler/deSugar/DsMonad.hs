@@ -24,7 +24,7 @@ module DsMonad (
         UniqSupply, newUniqueSupply,
         getGhcModeDs, dsGetFamInstEnvs, dsGetStaticBindsVar,
         dsLookupGlobal, dsLookupGlobalId, dsDPHBuiltin, dsLookupTyCon, dsLookupDataCon,
-        withFloatedCallStacks,
+        withExtraBinds,
 
         PArrBuiltin(..),
         dsLookupDPHRdrEnv, dsLookupDPHRdrEnv_maybe,
@@ -265,8 +265,8 @@ loadModule doc mod
                              is_dloc = wiredInSrcSpan, is_as = name }
     name = moduleName mod
 
-withFloatedCallStacks :: DsM a -> DsM a
-withFloatedCallStacks thing_inside
+withExtraBinds :: DsM a -> DsM a
+withExtraBinds thing_inside
   = do ref <- liftIO (newIORef [])
        updGblEnv (\env -> env { ds_extra_binds = Just ref }) thing_inside
 

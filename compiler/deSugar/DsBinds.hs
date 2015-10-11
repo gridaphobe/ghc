@@ -882,7 +882,7 @@ dsEvTerm (EvDelayedError ty msg) = return $ Var errorId `mkTyApps` [ty] `mkApps`
 dsEvTerm (EvLit l) =
   case l of
     EvNum n -> mkIntegerExpr n
-    EvStr s -> mkStringExprFSDs s
+    EvStr s -> mkStringExprFS s
 
 dsEvTerm (EvCallStack cs) = dsEvCallStack cs
 
@@ -973,9 +973,9 @@ dsEvTypeable ev =
 
   -- This part could be cached
   tyConRep dflags mkTyCon tc =
-    do pkgStr  <- mkStringExprFSDs pkg_fs
-       modStr  <- mkStringExprFSDs modl_fs
-       nameStr <- mkStringExprFSDs name_fs
+    do pkgStr  <- mkStringExprFS pkg_fs
+       modStr  <- mkStringExprFS modl_fs
+       nameStr <- mkStringExprFS name_fs
        return (mkApps (Var mkTyCon) [ int64 high, int64 low
                                     , pkgStr, modStr, nameStr
                                     ])
