@@ -25,6 +25,7 @@ module DsUtils (
         wrapBind, wrapBinds,
 
         mkErrorAppDs, mkCoreAppDs, mkCoreAppsDs, mkCastDs,
+        mkStringExprDs, mkStringExprFSDs,
 
         seqVar,
 
@@ -72,6 +73,9 @@ import SrcLoc
 import Util
 import DynFlags
 import FastString
+import Data.IORef
+import TcRnMonad
+
 
 import TcEvidence
 
@@ -561,6 +565,22 @@ mkCastDs :: CoreExpr -> Coercion -> CoreExpr
 -- CoreUtils.mkCast; and we do less peephole optimisation too
 mkCastDs e co | isReflCo co = e
               | otherwise   = Cast e co
+
+-- | Like 'mkStringExpr' except it makes the string a new top-level binder.
+mkStringExprDs :: String -> DsM CoreExpr
+mkStringExprDs = mkStringExprFSDs . fsLit
+
+-- | Like 'mkStringExprFS' except it makes the string a new top-level binder.
+mkStringExprFSDs :: FastString -> DsM CoreExpr
+mkStringExprFSDs str = do
+  str_expr <- mkStringExprFS str
+  extra_binds_var_maybe <- ds_extra_binds <$> getGblEnv
+  case extra_binds_var_maybe of
+    Nothing  -> return str_expr
+    Just var -> do str_id <- newSysLocalDs stringTy
+                   liftIO $ modifyIORef var (NonRec str_id str_expr :)
+                   return (Var str_id)
+
 
 {-
 ************************************************************************

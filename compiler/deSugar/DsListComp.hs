@@ -821,7 +821,7 @@ dsMcBindStmt pat rhs' bind_op fail_op stmts
       | matchCanFail match
         = do { fail_op' <- dsExpr fail_op
              ; dflags <- getDynFlags
-             ; fail_msg <- mkStringExpr (mk_fail_msg dflags pat)
+             ; fail_msg <- mkStringExprDs (mk_fail_msg dflags pat)
              ; extractMatchResult match (App fail_op' fail_msg) }
       | otherwise
         = extractMatchResult match (error "It can't fail")
