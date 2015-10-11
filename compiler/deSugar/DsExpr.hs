@@ -435,7 +435,7 @@ dsExpr (HsStatic expr@(L loc _)) = do
                      ]
     info <- mkConApp staticPtrInfoDataCon <$>
             (++[srcLoc]) <$>
-            mapM mkStringExprFS
+            mapM mkStringExprFSDs
                  [ packageKeyFS $ modulePackageKey $ nameModule n'
                  , moduleNameFS $ moduleName $ nameModule n'
                  , occNameFS    $ nameOccName n'
@@ -917,7 +917,7 @@ handle_failure pat match fail_op
   | matchCanFail match
   = do { fail_op' <- dsExpr fail_op
        ; dflags <- getDynFlags
-       ; fail_msg <- mkStringExpr (mk_fail_msg dflags pat)
+       ; fail_msg <- mkStringExprDs (mk_fail_msg dflags pat)
        ; extractMatchResult match (App fail_op' fail_msg) }
   | otherwise
   = extractMatchResult match (error "It can't fail")

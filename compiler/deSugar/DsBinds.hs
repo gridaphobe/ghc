@@ -882,7 +882,7 @@ dsEvTerm (EvDelayedError ty msg) = return $ Var errorId `mkTyApps` [ty] `mkApps`
 dsEvTerm (EvLit l) =
   case l of
     EvNum n -> mkIntegerExpr n
-    EvStr s -> mkStringExprFS s
+    EvStr s -> mkStringExprFSDs s
 
 dsEvTerm (EvCallStack cs) = dsEvCallStack cs
 
@@ -973,9 +973,9 @@ dsEvTypeable ev =
 
   -- This part could be cached
   tyConRep dflags mkTyCon tc =
-    do pkgStr  <- mkStringExprFS pkg_fs
-       modStr  <- mkStringExprFS modl_fs
-       nameStr <- mkStringExprFS name_fs
+    do pkgStr  <- mkStringExprFSDs pkg_fs
+       modStr  <- mkStringExprFSDs modl_fs
+       nameStr <- mkStringExprFSDs name_fs
        return (mkApps (Var mkTyCon) [ int64 high, int64 low
                                     , pkgStr, modStr, nameStr
                                     ])
@@ -1027,9 +1027,9 @@ dsEvCallStack cs = do
   let srcLocTy     = mkTyConTy srcLocTyCon
   let mkSrcLoc l =
         liftM (mkCoreConApps srcLocDataCon)
-              (sequence [ mkStringExpr (showPpr df $ modulePackageKey m)
-                        , mkStringExprFS (moduleNameFS $ moduleName m)
-                        , mkStringExprFS (srcSpanFile l)
+              (sequence [ mkStringExprDs (showPpr df $ modulePackageKey m)
+                        , mkStringExprFSDs (moduleNameFS $ moduleName m)
+                        , mkStringExprFSDs (srcSpanFile l)
                         , return $ mkIntExprInt df (srcSpanStartLine l)
                         , return $ mkIntExprInt df (srcSpanStartCol l)
                         , return $ mkIntExprInt df (srcSpanEndLine l)
@@ -1057,7 +1057,7 @@ dsEvCallStack cs = do
                                    (Var matchId)]
                     )]
   let mkPush name loc tm = do
-        nameExpr <- mkStringExprFS name
+        nameExpr <- mkStringExprFSDs name
         locExpr <- mkSrcLoc loc
         let csExpr = mkCoreTup [nameExpr, locExpr]
 
