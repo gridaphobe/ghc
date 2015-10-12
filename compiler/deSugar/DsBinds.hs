@@ -69,9 +69,7 @@ import BasicTypes hiding ( TopLevel )
 import DynFlags
 import FastString
 import Util
-import MonadUtils
 import Control.Monad(liftM,when)
-import Data.IORef
 import Fingerprint(Fingerprint(..), fingerprintString)
 
 {-
@@ -1059,14 +1057,8 @@ dsEvCallStack cs = do
   let mkPush name loc tm = do
         nameExpr <- mkStringExprFSDs name
         locExpr <- mkSrcLoc loc
-        let csExpr = mkCoreTup [nameExpr, locExpr]
 
-        extra_binds_var_maybe <- ds_extra_binds <$> getGblEnv
-        -- csExpr <- case extra_binds_var_maybe of
-        --   Nothing -> return csExpr
-        --   Just var -> do csId <- newSysLocalDs callSiteTy
-        --                  liftIO $ modifyIORef var (NonRec csId csExpr :)
-        --                  return (Var csId)
+        csExpr <- addExtraBindDs $ mkCoreTup [nameExpr, locExpr]
 
         case tm of
           EvCallStack EvCsEmpty -> return (pushCS csExpr emptyCS)

@@ -35,7 +35,7 @@ import GHC.Prim
 -- ghc-prim types we need unpackCString#
 
 unpackCString# :: Addr# -> [Char]
-{-# NOINLINE unpackCString# #-}
+{-# NOINLINE CONLIKE unpackCString# #-}
     -- There's really no point in inlining this, ever, as the loop doesn't
     -- specialise in an interesting But it's pretty small, so there's a danger
     -- that it'll be inlined at every literal, which is a waste

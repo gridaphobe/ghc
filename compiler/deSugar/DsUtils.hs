@@ -26,6 +26,7 @@ module DsUtils (
 
         mkErrorAppDs, mkCoreAppDs, mkCoreAppsDs, mkCastDs,
         mkStringExprDs, mkStringExprFSDs,
+        addExtraBindDs,
 
         seqVar,
 
