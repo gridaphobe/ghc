@@ -977,6 +977,20 @@ Important Details:
   the given CallStack. So we must take care in TcInteract.interactDict to
   prioritize solving wanted CallStacks.
 
+- Consider:
+
+    f :: (?stk :: CallStack) => Int
+    f = let y = getCallStack ?stk
+        in length y
+
+  When we infer y's type, we will not have access to f's given ?stk, but
+  we certainly want to solve the occurrence of ?stk from the f's given.
+  So we disable the no-given solver inside let-binders (concretely, when
+  the TcLevel > 3), and allow GHC to quantify over implicit CallStacks
+  in TcSimplify.simplifyInfer. Then we gather up any remaining wanted
+  CallStacks and invoke the no-given solver in the defaulting phase.
+  (See TcSimplify.defaultCallStacks)
+
 - We will automatically solve any wanted CallStack regardless of the name of the
   IP, i.e.
 

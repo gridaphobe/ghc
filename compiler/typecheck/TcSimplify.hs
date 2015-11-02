@@ -137,6 +137,7 @@ simpl_top wanteds
            ; if something_happened
              then do { wc_residual <- nestTcS (solveWantedsAndDrop wc)
                      ; try_class_defaulting wc_residual }
+                  -- See Note [Overview of implicit CallStacks]
              else try_callstack_defaulting wc }
 
     try_callstack_defaulting :: WantedConstraints -> TcS WantedConstraints
@@ -146,7 +147,8 @@ simpl_top wanteds
       | otherwise
       = defaultCallStacks wc
 
-
+-- | Default any remaining @CallStack@ constraints to single-element
+-- @CallStack@s.
 defaultCallStacks :: WantedConstraints -> TcS WantedConstraints
 defaultCallStacks wanteds
   = do simples <- handle_simples (wc_simple wanteds)

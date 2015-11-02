@@ -690,6 +690,9 @@ interactDict inerts workItem@(CDictCan { cc_ev = ev_w, cc_class = cls, cc_tyargs
 
   | Just mkEvCs <- isCallStackCt workItem
   , isWanted ev_w
+    -- only solve no-given CallStacks if we're at the top or
+    -- top-implication level.
+    -- See Note [Overview of implicit CallStacks]
   , ctLocLevel (ctEvLoc ev_w) == topTcLevel ||
     ctLocLevel (ctEvLoc ev_w) == pushTcLevel topTcLevel
   = do solveCallStackFrom (mkEvCs (EvCallStack EvCsEmpty)) workItem
