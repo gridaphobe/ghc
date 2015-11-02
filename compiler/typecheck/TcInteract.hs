@@ -8,7 +8,6 @@ module TcInteract (
 #include "HsVersions.h"
 
 import BasicTypes ( infinity, IntWithInf, intGtLimit )
-import HsTypes ( hsIPNameFS )
 import FastString
 import TcCanonical
 import TcFlatten
@@ -22,7 +21,7 @@ import Var
 import TcType
 import Name
 import PrelNames ( knownNatClassName, knownSymbolClassName,
-                   callStackTyConKey, typeableClassName )
+                   typeableClassName )
 import TysWiredIn ( ipClass, typeNatKind, typeSymbolKind )
 import Id( idType )
 import CoAxiom ( Eqn, CoAxiom(..), CoAxBranch(..), fromBranches )
@@ -50,7 +49,6 @@ import VarEnv
 import Control.Monad
 import Maybes( isJust )
 import Pair (Pair(..))
-import Unique( hasKey )
 import DynFlags
 import Util
 
@@ -683,20 +681,17 @@ interactDict inerts workItem@(CDictCan { cc_ev = ev_w, cc_class = cls, cc_tyargs
   -- don't ever try to solve CallStack IPs directly from other dicts,
   -- we always build new dicts instead.
   -- See Note [Overview of implicit CallStacks]
-  | Just mkEvCs <- isCallStackIP (ctEvLoc ev_w) cls tys
+  | Just mkEvCs <- isCallStackCt workItem
   , isWanted ev_w
-  = do let ev_cs =
-             case lookupInertDict inerts cls tys of
-               Just ev | isGiven ev -> mkEvCs (ctEvTerm ev)
-               _ -> mkEvCs (EvCallStack EvCsEmpty)
+  , Just cs_g <- lookupInertDict inerts cls tys
+  , isGiven cs_g
+  = do solveCallStackFrom (mkEvCs (ctEvTerm cs_g)) workItem
+       stopWith ev_w "Wanted CallStack IP"
 
-       -- now we have ev_cs :: CallStack, but the evidence term should
-       -- be a dictionary, so we have to coerce ev_cs to a
-       -- dictionary for `IP ip CallStack`
-       let ip_ty = mkClassPred cls tys
-       let ev_tm = mkEvCast (EvCallStack ev_cs) (TcCoercion $ wrapIP ip_ty)
-       addSolvedDict ev_w cls tys
-       setWantedEvBind (ctEvId ev_w) ev_tm
+  | Just mkEvCs <- isCallStackCt workItem
+  , isWanted ev_w
+  , ctLocLevel (ctEvLoc ev_w) == pushTcLevel topTcLevel
+  = do solveCallStackFrom (mkEvCs (EvCallStack EvCsEmpty)) workItem
        stopWith ev_w "Wanted CallStack IP"
 
   | Just ctev_i <- lookupInertDict inerts cls tys

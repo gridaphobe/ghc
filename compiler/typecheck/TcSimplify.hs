@@ -137,7 +137,55 @@ simpl_top wanteds
            ; if something_happened
              then do { wc_residual <- nestTcS (solveWantedsAndDrop wc)
                      ; try_class_defaulting wc_residual }
-             else return wc }
+             else try_callstack_defaulting wc }
+
+    try_callstack_defaulting :: WantedConstraints -> TcS WantedConstraints
+    try_callstack_defaulting wc
+      | isEmptyWC wc
+      = return wc
+      | otherwise
+      = defaultCallStacks wc
+      -- = do { something_happened <- defaultCallStacks wc
+      --      ; if something_happened
+      --        then nestTcS (solveWantedsAndDrop wc)
+      --        else return wc }
+
+
+defaultCallStacks :: WantedConstraints -> TcS WantedConstraints
+defaultCallStacks wanteds
+  -- = do traceTcS "defaultCallStacks.wanteds" (ppr wanteds)
+  --      traceTcS "defaultCallStacks.cts" (ppr cts)
+  --      or <$> mapM defaultCallStack cts
+  -- where
+  -- cts = bagToList (approximateWC wanteds)
+  
+  -- defaultCallStack ct
+  --   | Just mkEvCs <- isCallStackCt ct
+  --   = do solveCallStackFrom (mkEvCs (EvCallStack EvCsEmpty)) ct
+  --        return True
+  --   | otherwise
+  --   = return False
+
+  = do simples <- handle_simples (wc_simple wanteds)
+       implics <- mapBagM handle_implic (wc_impl wanteds)
+       return (wanteds { wc_simple = simples, wc_impl = implics })
+
+  where
+
+  handle_simples simples
+    = catBagMaybes <$> mapBagM defaultCallStack simples
+
+  handle_implic implic = do
+    wanteds <- defaultCallStacks (ic_wanted implic)
+    return (implic { ic_wanted = wanteds })
+
+  defaultCallStack ct
+    | Just mkEvCs <- isCallStackCt ct
+    = do solveCallStackFrom (mkEvCs (EvCallStack EvCsEmpty)) ct
+         return Nothing
+    | otherwise
+    = return (Just ct)
+
 
 {-
 Note [When to do type-class defaulting]
@@ -202,7 +250,7 @@ Option (i) had many disadvantages:
       untouchable.
 
 Instead our new defaulting story is to pull defaulting out of the solver loop and
-go with option (i), implemented at SimplifyTop. Namely:
+go with option (ii), implemented at SimplifyTop. Namely:
      - First, have a go at solving the residual constraint of the whole
        program
      - Try to approximate it with a simple constraint
@@ -456,7 +504,7 @@ simplifyInfer rhs_tclvl apply_mr sig_qtvs name_taus wanteds
                             --
                             -- If any meta-tyvar unifications take place (unlikely), we'll
                             -- pick that up later.
-
+                      ; traceTc "quant_cand" (ppr quant_cand)
                       ; WC { wc_simple = simples }
                            <- setTcLevel rhs_tclvl                $
                               runTcSWithEvBinds null_ev_binds_var $
