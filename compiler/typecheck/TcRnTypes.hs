@@ -2498,4 +2498,3 @@ isCallStackIP loc cls tys
     occOrigin (OccurrenceOf n) = Just (EvCsPushCall n locSpan)
     occOrigin (IPOccOrigin n)  = Just (EvCsTop ('?' `consFS` hsIPNameFS n) locSpan)
     occOrigin _                = Nothing
-

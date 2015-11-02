@@ -145,27 +145,10 @@ simpl_top wanteds
       = return wc
       | otherwise
       = defaultCallStacks wc
-      -- = do { something_happened <- defaultCallStacks wc
-      --      ; if something_happened
-      --        then nestTcS (solveWantedsAndDrop wc)
-      --        else return wc }
 
 
 defaultCallStacks :: WantedConstraints -> TcS WantedConstraints
 defaultCallStacks wanteds
-  -- = do traceTcS "defaultCallStacks.wanteds" (ppr wanteds)
-  --      traceTcS "defaultCallStacks.cts" (ppr cts)
-  --      or <$> mapM defaultCallStack cts
-  -- where
-  -- cts = bagToList (approximateWC wanteds)
-  
-  -- defaultCallStack ct
-  --   | Just mkEvCs <- isCallStackCt ct
-  --   = do solveCallStackFrom (mkEvCs (EvCallStack EvCsEmpty)) ct
-  --        return True
-  --   | otherwise
-  --   = return False
-
   = do simples <- handle_simples (wc_simple wanteds)
        implics <- mapBagM handle_implic (wc_impl wanteds)
        return (wanteds { wc_simple = simples, wc_impl = implics })
