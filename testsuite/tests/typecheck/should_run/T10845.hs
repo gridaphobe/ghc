@@ -20,7 +20,13 @@ f3 :: (?loc :: CallStack) => CallStack
 f3 = let y x = ?loc
      in y 0
 
+f4 :: (?loc :: CallStack) => IO ()
+f4 = let y x = do putStrLn $ showCallStack ?loc
+                  putStrLn $ showCallStack ?loc
+     in y 0
+
 main :: IO ()
 main = do putStrLn $ showCallStack f1
           putStrLn $ showCallStack f2
           putStrLn $ showCallStack f3
+          f4

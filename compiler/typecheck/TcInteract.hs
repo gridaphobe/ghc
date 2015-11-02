@@ -690,7 +690,8 @@ interactDict inerts workItem@(CDictCan { cc_ev = ev_w, cc_class = cls, cc_tyargs
 
   | Just mkEvCs <- isCallStackCt workItem
   , isWanted ev_w
-  , ctLocLevel (ctEvLoc ev_w) == pushTcLevel topTcLevel
+  , ctLocLevel (ctEvLoc ev_w) == topTcLevel ||
+    ctLocLevel (ctEvLoc ev_w) == pushTcLevel topTcLevel
   = do solveCallStackFrom (mkEvCs (EvCallStack EvCsEmpty)) workItem
        stopWith ev_w "Wanted CallStack IP"
 
