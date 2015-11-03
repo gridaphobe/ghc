@@ -17,6 +17,7 @@ import Kind ( isKind )
 import InstEnv( DFunInstType, lookupInstEnv, instanceDFunId )
 import CoAxiom( sfInteractTop, sfInteractInert )
 
+import HsTypes
 import Var
 import TcType
 import Name
@@ -683,20 +684,24 @@ interactDict inerts workItem@(CDictCan { cc_ev = ev_w, cc_class = cls, cc_tyargs
   -- See Note [Overview of implicit CallStacks]
   | Just mkEvCs <- isCallStackCt workItem
   , isWanted ev_w
-  , Just cs_g <- lookupInertDict inerts cls tys
-  , isGiven cs_g
-  = do solveCallStackFrom (mkEvCs (ctEvTerm cs_g)) workItem
+  -- , Just cs_g <- lookupInertDict inerts cls tys
+  -- , isGiven cs_g
+  , OccurrenceOf _ <- ctLocOrigin (ctLoc workItem)
+  = do let loc = setCtLocOrigin (ctLoc workItem) (IPOccOrigin (HsIPName (fsLit "callStack")))
+       (cs_g, fresh) <- newWantedEvVar loc (ctPred workItem)
+       when (isFresh fresh) (emitWorkNC [cs_g])
+       solveCallStackFrom (mkEvCs (ctEvTerm cs_g)) workItem
        stopWith ev_w "Wanted CallStack IP"
 
-  | Just mkEvCs <- isCallStackCt workItem
-  , isWanted ev_w
-    -- only solve no-given CallStacks if we're at the top or
-    -- top-implication level.
-    -- See Note [Overview of implicit CallStacks]
-  , ctLocLevel (ctEvLoc ev_w) == topTcLevel ||
-    ctLocLevel (ctEvLoc ev_w) == pushTcLevel topTcLevel
-  = do solveCallStackFrom (mkEvCs (EvCallStack EvCsEmpty)) workItem
-       stopWith ev_w "Wanted CallStack IP"
+  -- | Just mkEvCs <- isCallStackCt workItem
+  -- , isWanted ev_w
+  --   -- only solve no-given CallStacks if we're at the top or
+  --   -- top-implication level.
+  --   -- See Note [Overview of implicit CallStacks]
+  -- , ctLocLevel (ctEvLoc ev_w) == topTcLevel ||
+  --   ctLocLevel (ctEvLoc ev_w) == pushTcLevel topTcLevel
+  -- = do solveCallStackFrom (mkEvCs (EvCallStack EvCsEmpty)) workItem
+  --      stopWith ev_w "Wanted CallStack IP"
 
   | Just ctev_i <- lookupInertDict inerts cls tys
   = do { (inert_effect, stop_now) <- solveOneFromTheOther ctev_i ev_w
@@ -771,25 +776,6 @@ interactGivenIP inerts workItem@(CDictCan { cc_ev = ev, cc_class = cls
 
 interactGivenIP _ wi = pprPanic "interactGivenIP" (ppr wi)
 
--- | Is the constraint for an implicit CallStack parameter?
--- i.e.   (IP "name" CallStack)
-isCallStackIP :: CtLoc -> Class -> [Type] -> Maybe (EvTerm -> EvCallStack)
-isCallStackIP loc cls tys
-  | cls == ipClass
-  , [_ip_name, ty] <- tys
-  , Just (tc, _) <- splitTyConApp_maybe ty
-  , tc `hasKey` callStackTyConKey
-  = occOrigin (ctLocOrigin loc)
-  | otherwise
-  = Nothing
-  where
-    locSpan = ctLocSpan loc
-
-    -- We only want to grab constraints that arose due to the use of an IP or a
-    -- function call. See Note [Overview of implicit CallStacks]
-    occOrigin (OccurrenceOf n) = Just (EvCsPushCall n locSpan)
-    occOrigin (IPOccOrigin n)  = Just (EvCsTop ('?' `consFS` hsIPNameFS n) locSpan)
-    occOrigin _                = Nothing
 
 {-
 Note [Shadowing of Implicit Parameters]
