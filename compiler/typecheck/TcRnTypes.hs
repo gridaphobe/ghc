@@ -66,7 +66,6 @@ module TcRnTypes(
         mkNonCanonical, mkNonCanonicalCt,
         ctEvPred, ctEvLoc, ctEvOrigin, ctEvEqRel,
         ctEvTerm, ctEvCoercion, ctEvId,
-        isCallStackCt,
 
         WantedConstraints(..), insolubleWC, emptyWC, isEmptyWC,
         andWC, unionsWC, addSimples, addImplics, mkSimpleWC, addInsols,
@@ -2469,32 +2468,3 @@ data TcPluginResult
     -- and the evidence for them is recorded.
     -- The second field contains new work, that should be processed by
     -- the constraint solver.
-
-
--- | Is the constraint for an implicit CallStack parameter?
--- i.e.   (IP "name" CallStack)
-isCallStackCt :: Ct -> Maybe (EvTerm -> EvCallStack)
-isCallStackCt CDictCan { cc_ev = ev, cc_class = cls, cc_tyargs = tys }
-  = isCallStackIP (ctEvLoc ev) cls tys
-isCallStackCt _
-  = Nothing
-
--- | Is the constraint for an implicit CallStack parameter?
--- i.e.   (IP "name" CallStack)
-isCallStackIP :: CtLoc -> Class -> [Type] -> Maybe (EvTerm -> EvCallStack)
-isCallStackIP loc cls tys
-  | cls == ipClass
-  , [_ip_name, ty] <- tys
-  , Just (tc, _) <- splitTyConApp_maybe ty
-  , tc `hasKey` callStackTyConKey
-  = occOrigin (ctLocOrigin loc)
-  | otherwise
-  = Nothing
-  where
-    locSpan = ctLocSpan loc
-
-    -- We only want to grab constraints that arose due to the use of an IP or a
-    -- function call. See Note [Overview of implicit CallStacks]
-    occOrigin (OccurrenceOf n) = Just (EvCsPushCall n locSpan)
-    occOrigin (IPOccOrigin n)  = Just (EvCsTop ('?' `consFS` hsIPNameFS n) locSpan)
-    occOrigin _                = Nothing

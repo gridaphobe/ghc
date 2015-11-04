@@ -5,28 +5,17 @@ import GHC.Exception
 import GHC.Stack
 
 f1 :: (?loc :: CallStack) => CallStack
-f1 = let y = (?loc :: CallStack)
-     in y
+-- we can infer a CallStack for let-binders
+f1 = let y x = (?loc :: CallStack)
+     in y 0
 
 f2 :: (?loc :: CallStack) => CallStack
-f2 = let y x = (?loc :: CallStack)
-     in y 0
-
-f3 :: (?loc :: CallStack) => CallStack
--- in this case, `y :: (?loc :: t) => a -> t`, so we don't get an entry
--- corresponding to the occurrence of `?loc`. ugh.. i don't think
--- there's anything we can do about this, but on the other hand, it
--- seems *very* unlikely to occur in the real world.
-f3 = let y x = ?loc
-     in y 0
-
-f4 :: (?loc :: CallStack) => IO ()
-f4 = let y x = do putStrLn $ showCallStack ?loc
-                  putStrLn $ showCallStack ?loc
-     in y 0
+-- but only when we would infer an IP.
+-- i.e. the monomorphism restriction prevents us
+-- from inferring a CallStack.
+f2 = let y = (?loc :: CallStack)
+     in y
 
 main :: IO ()
 main = do putStrLn $ showCallStack f1
           putStrLn $ showCallStack f2
-          putStrLn $ showCallStack f3
-          f4

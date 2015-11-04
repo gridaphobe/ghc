@@ -2,7 +2,8 @@
 
 module TcInteract (
      solveSimpleGivens,   -- Solves [EvVar],GivenLoc
-     solveSimpleWanteds   -- Solves Cts
+     solveSimpleWanteds,  -- Solves Cts
+     isCallStackCt        -- for use in TcSimplify
   ) where
 
 #include "HsVersions.h"
@@ -23,7 +24,7 @@ import TcType
 import Name
 import PrelNames ( knownNatClassName, knownSymbolClassName,
                    typeableClassName )
-import TysWiredIn ( ipClass, typeNatKind, typeSymbolKind )
+import TysWiredIn ( callStackTyCon, ipClass, typeNatKind, typeSymbolKind )
 import Id( idType )
 import CoAxiom ( Eqn, CoAxiom(..), CoAxBranch(..), fromBranches )
 import Class
@@ -682,26 +683,11 @@ interactDict inerts workItem@(CDictCan { cc_ev = ev_w, cc_class = cls, cc_tyargs
   -- don't ever try to solve CallStack IPs directly from other dicts,
   -- we always build new dicts instead.
   -- See Note [Overview of implicit CallStacks]
-  | Just mkEvCs <- isCallStackCt workItem
+  | Just solveCallStack <- isCallStackIP (ctEvLoc ev_w) cls tys
   , isWanted ev_w
-  -- , Just cs_g <- lookupInertDict inerts cls tys
-  -- , isGiven cs_g
-  , OccurrenceOf _ <- ctLocOrigin (ctLoc workItem)
-  = do let loc = setCtLocOrigin (ctLoc workItem) (IPOccOrigin (HsIPName (fsLit "callStack")))
-       (cs_g, fresh) <- newWantedEvVar loc (ctPred workItem)
-       when (isFresh fresh) (emitWorkNC [cs_g])
-       solveCallStackFrom (mkEvCs (ctEvTerm cs_g)) workItem
-       stopWith ev_w "Wanted CallStack IP"
-
-  -- | Just mkEvCs <- isCallStackCt workItem
-  -- , isWanted ev_w
-  --   -- only solve no-given CallStacks if we're at the top or
-  --   -- top-implication level.
-  --   -- See Note [Overview of implicit CallStacks]
-  -- , ctLocLevel (ctEvLoc ev_w) == topTcLevel ||
-  --   ctLocLevel (ctEvLoc ev_w) == pushTcLevel topTcLevel
-  -- = do solveCallStackFrom (mkEvCs (EvCallStack EvCsEmpty)) workItem
-  --      stopWith ev_w "Wanted CallStack IP"
+  , OccurrenceOf _ <- ctLocOrigin (ctEvLoc ev_w)
+  = do { solveCallStack workItem
+       ; stopWith ev_w "Wanted CallStack IP" }
 
   | Just ctev_i <- lookupInertDict inerts cls tys
   = do { (inert_effect, stop_now) <- solveOneFromTheOther ctev_i ev_w
@@ -2055,3 +2041,40 @@ a TypeRep for them.  For qualified but not polymorphic types, like
    no other class works with impredicative types.
    For now we leave it off, until we have a better story for impredicativity.
 -}
+
+-- | Is the constraint for an implicit CallStack parameter?
+-- i.e.   (IP "name" CallStack)
+isCallStackCt :: Ct -> Maybe (Ct -> TcS ())
+isCallStackCt CDictCan { cc_ev = ev, cc_class = cls, cc_tyargs = tys }
+  = isCallStackIP (ctEvLoc ev) cls tys
+isCallStackCt _
+  = Nothing
+
+-- | Is the constraint for an implicit CallStack parameter?
+-- i.e.   (IP "name" CallStack)
+isCallStackIP :: CtLoc -> Class -> [Type]
+              -> Maybe (Ct -> TcS ())
+isCallStackIP loc cls tys
+  | cls == ipClass
+  , [ip_name_ty, ty] <- tys
+  , Just (tc, _) <- splitTyConApp_maybe ty
+  , tc == callStackTyCon
+  , Just ip_name <- isStrLitTy ip_name_ty
+  = checkOrigin (ctLocOrigin loc) ip_name
+  | otherwise
+  = Nothing
+  where
+  -- We only want to grab constraints that arose due to the use of an IP or a
+  -- function call. See Note [Overview of implicit CallStacks]
+  checkOrigin (OccurrenceOf func) ip_name = Just $ \ct -> do
+    let new_loc    = setCtLocOrigin loc (IPOccOrigin (HsIPName ip_name))
+    (cs_g, fresh) <- newWantedEvVar new_loc (ctPred ct)
+
+    when (isFresh fresh) $
+      emitWorkNC [cs_g]
+
+    solveCallStackFrom (EvCsPushCall func (ctLocSpan loc) (ctEvTerm cs_g)) ct
+
+  checkOrigin (IPOccOrigin _)  _ = Just $ \ct -> do
+    solveCallStackFrom EvCsEmpty ct
+  checkOrigin _                _ = Nothing

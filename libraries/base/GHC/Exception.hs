@@ -27,7 +27,7 @@ module GHC.Exception
        , SomeException(..), ErrorCall(..), pattern ErrorCall, ArithException(..)
        , divZeroException, overflowException, ratioZeroDenomException
        , errorCallException, errorCallWithCallStackException
-       , showCallStack, popCallStack, showSrcLoc
+       , showCallStack, showSrcLoc
          -- re-export CallStack and SrcLoc from GHC.Types
        , CallStack(..), SrcLoc(..)
        ) where
@@ -186,7 +186,7 @@ errorCallWithCallStackException :: String -> CallStack -> SomeException
 errorCallWithCallStackException s stk = unsafeDupablePerformIO $ do
   ccsStack <- currentCallStack
   let
-    implicitParamCallStack = showCallStackLines (popCallStack stk)
+    implicitParamCallStack = showCallStackLines stk
     ccsCallStack = showCCSStack ccsStack
     stack = intercalate "\n" $ implicitParamCallStack ++ ccsCallStack
   return $ toException (ErrorCallWithLocation s stack)
@@ -218,13 +218,6 @@ showCallStackLines (CallStack stk) =
     "CallStack (from ImplicitParams):" : map (("  " ++) . showCallSite) stk
   where
     showCallSite (f, loc) = f ++ ", called at " ++ showSrcLoc loc
-
--- | Remove the most recent callsite from the 'CallStack'
---
--- @since 4.9.0.0
-popCallStack :: CallStack -> CallStack
-popCallStack (CallStack (_:rest)) = CallStack rest
-popCallStack _ = error "CallStack cannot be empty!"
 
 -- |Arithmetic exceptions.
 data ArithException

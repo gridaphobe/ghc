@@ -1,3 +1,4 @@
+<<<<<<< 896dd5f745660636f6c624bd5f18d67a5296229e
 CallStack (from ImplicitParams):
   ?loc, called at IPLocation.hs:8:31 in main:Main
 CallStack (from ImplicitParams):
@@ -26,3 +27,21 @@ CallStack (from ImplicitParams):
   f6, called at IPLocation.hs:36:8 in main:Main
   f6, called at IPLocation.hs:36:8 in main:Main
   f6, called at IPLocation.hs:45:11 in main:Main
+=======
+CallStack: empty
+CallStack:
+  f1, called at IPLocation.hs:34:11 in main:Main
+CallStack:
+  x, called at IPLocation.hs:16:8 in main:Main
+CallStack:
+  x, called at IPLocation.hs:21:8 in main:Main
+  f4, called at IPLocation.hs:36:11 in main:Main
+CallStack: empty
+CallStack:
+  f6, called at IPLocation.hs:30:8 in main:Main
+  f6, called at IPLocation.hs:30:8 in main:Main
+  f6, called at IPLocation.hs:30:8 in main:Main
+  f6, called at IPLocation.hs:30:8 in main:Main
+  f6, called at IPLocation.hs:30:8 in main:Main
+  f6, called at IPLocation.hs:38:11 in main:Main
+>>>>>>> revise callstack solver to

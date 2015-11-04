@@ -165,9 +165,9 @@ defaultCallStacks wanteds
     return (implic { ic_wanted = wanteds })
 
   defaultCallStack ct
-    | Just mkEvCs <- isCallStackCt ct
-    = do solveCallStackFrom (mkEvCs (EvCallStack EvCsEmpty)) ct
-         return Nothing
+    | Just solveCallStack <- isCallStackCt ct
+    = do { solveCallStack ct
+         ; return Nothing }
     | otherwise
     = return (Just ct)
 

@@ -6,17 +6,11 @@ import GHC.Exception
 import GHC.Types
 
 f0 = putStrLn $ showCallStack ?loc
-     -- should just show the location of ?loc
+     -- should be empty
 
 f1 :: (?loc :: CallStack) => IO ()
 f1 = putStrLn $ showCallStack ?loc
-     -- should show the location of ?loc *and* f1's call-site
-
-f2 :: (?loc :: CallStack) => IO ()
-f2 = do putStrLn $ showCallStack ?loc
-        putStrLn $ showCallStack ?loc
-     -- each ?loc should refer to a different location, but they should
-     -- share f2's call-site
+     -- should show the location of f1's call-site
 
 f3 :: ((?loc :: CallStack) => () -> IO ()) -> IO ()
 f3 x = x ()
@@ -38,7 +32,6 @@ f6 n = f6 (n-1)
 
 main = do f0
           f1
-          f2
           f3 (\ () -> putStrLn $ showCallStack ?loc)
           f4 (\ () -> putStrLn $ showCallStack ?loc)
           f5 (\ () -> putStrLn $ showCallStack ?loc3)
