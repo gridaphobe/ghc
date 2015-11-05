@@ -29,7 +29,7 @@ module GHC.Exception
        , errorCallException, errorCallWithCallStackException
        , showCallStack, showSrcLoc
          -- re-export CallStack and SrcLoc from GHC.Types
-       , CallStack(..), SrcLoc(..)
+       , CallStack(..), SrcLoc(..), isEmptyCallStack
        ) where
 
 import Data.Maybe
@@ -214,6 +214,7 @@ showCallStack :: CallStack -> String
 showCallStack = intercalate "\n" . showCallStackLines
 
 showCallStackLines :: CallStack -> [String]
+showCallStackLines (CallStack [])  = []
 showCallStackLines (CallStack stk) =
     "CallStack (from ImplicitParams):" : map (("  " ++) . showCallSite) stk
   where

@@ -489,7 +489,6 @@ simplifyInfer rhs_tclvl apply_mr sig_qtvs name_taus wanteds
                             --
                             -- If any meta-tyvar unifications take place (unlikely), we'll
                             -- pick that up later.
-                      ; traceTc "quant_cand" (ppr quant_cand)
                       ; WC { wc_simple = simples }
                            <- setTcLevel rhs_tclvl                $
                               runTcSWithEvBinds null_ev_binds_var $

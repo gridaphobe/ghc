@@ -18,7 +18,7 @@
 
 module GHC.Stack.Types (
     -- * Implicit parameter call stacks
-    SrcLoc(..), CallStack(..),
+    SrcLoc(..), CallStack(..), isEmptyCallStack
   ) where
 
 {-
@@ -74,6 +74,13 @@ import GHC.Integer ()
 -- @since 4.9.0.0
 data CallStack = CallStack { getCallStack :: [([Char], SrcLoc)] }
   -- See Note [Overview of implicit CallStacks]
+
+-- | Is the 'CallStack' empty?
+--
+-- @since 4.9.2.0
+isEmptyCallStack :: CallStack -> Bool
+isEmptyCallStack (CallStack []) = True
+isEmptyCallStack _              = False
 
 -- | A single location in the source code.
 --
