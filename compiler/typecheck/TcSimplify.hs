@@ -147,9 +147,9 @@ simpl_top wanteds
       | otherwise
       = defaultCallStacks wc
 
--- | Default any remaining @CallStack@ constraints to single-element
--- @CallStack@s.
+-- | Default any remaining @CallStack@ constraints to empty @CallStack@s.
 defaultCallStacks :: WantedConstraints -> TcS WantedConstraints
+-- See Note [Overview of implicit CallStacks]
 defaultCallStacks wanteds
   = do simples <- handle_simples (wc_simple wanteds)
        implics <- mapBagM handle_implic (wc_impl wanteds)
@@ -166,7 +166,7 @@ defaultCallStacks wanteds
 
   defaultCallStack ct
     | Just solveCallStack <- isCallStackCt ct
-    = do { solveCallStack ct
+    = do { solveCallStack
          ; return Nothing }
     | otherwise
     = return (Just ct)

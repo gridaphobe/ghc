@@ -898,57 +898,79 @@ Note [Overview of implicit CallStacks]
 The goal of CallStack evidence terms is to reify locations
 in the program source as runtime values, without any support
 from the RTS. We accomplish this by assigning a special meaning
-to implicit parameters of type GHC.Stack.CallStack. A use of
-a CallStack IP, e.g.
+to implicit parameters of type GHC.Stack.CallStack.
 
-  head []    = error (show (?loc :: CallStack))
-  head (x:_) = x
+Implicit CallStacks are regular implicit parameters, augmented with two
+extra rules in the constraint solver:
 
-will be solved with the source location that gave rise to the IP
-constraint (here, the use of ?loc). If there is already
-a CallStack IP in scope, e.g. passed-in as an argument
+0. Occurrences of CallStack IPs are solved directly from the given IP,
+   just like a regular IP. For example, the occurrence of `?stk` in
 
-  head :: (?loc :: CallStack) => [a] -> a
-  head []    = error (show (?loc :: CallStack))
-  head (x:_) = x
+     error :: (?stk :: CallStack) => String -> a
+     error s = raise (ErrorCall (s ++ show ?stk))
 
-we will push the new location onto the CallStack that was passed
-in. These two cases are reflected by the EvCallStack evidence
-type. In the first case, we will create an evidence term
+   will be solved for the `?stk` in `error`s context as before.
 
-  EvCsTop "?loc" <?loc's location> EvCsEmpty
+1. In a function call, instead of simply passing the given IP, we first
+   append the current call-site to it. For example, consider a
+   call to the callstack-aware `error` above.
 
-and in the second we'll have a given constraint
+     undefined :: (?stk :: CallStack) => a
+     undefined = error "undefined!"
 
-  [G] d :: IP "loc" CallStack
+   Here we want to take the given `?stk` and append the current
+   call-site, before passing it to `error`. In essence, we want to
+   rewrite `error "undefined!"` to
 
-in scope, and will create an evidence term
+     let ?stk = pushCallStack <error's location> ?stk
+     in error "undefined!"
 
-  EvCsTop "?loc" <?loc's location> d
+   We achieve this effect by emitting a NEW wanted
 
-When we call a function that uses a CallStack IP, e.g.
+     [W] d :: IP "stk" CallStack
 
-  f = head xs
+   from which we build the evidence term
 
-we create an evidence term
+     EvCsPushCall "error" <error's location> (EvId d)
 
-  EvCsPushCall "head" <head's location> EvCsEmpty
+   that we use to solve the call to `error`. The new wanted `d` will
+   then be solved per rule (1), ie as a regular IP.
 
-again pushing onto a given evidence term if one exists.
+   (see TcInteract.interactDict and TcInteract.isCallStackIP)
+
+2. We default any insoluble CallStacks to the empty CallStack. Suppose
+   `undefined` did not request a CallStack, ie
+
+     undefined :: a
+     undefined = error "undefined!"   
+
+   Under the usual IP rules, the new wanted from rule (2) would be
+   insoluble as there's no given IP from which to solve it, so we
+   would get an "unbound implicit parameter" error.
+
+   We don't ever want to emit an insoluble CallStack IP, so we add a
+   defaulting pass to default any remaining wanted CallStacks to the
+   empty CallStack with the evidence term
+
+     EvCsEmpty
+
+   (see TcSimplify.simpl_top and TcSimplify.defaultCallStacks)
 
 This provides a lightweight mechanism for building up call-stacks
 explicitly, but is notably limited by the fact that the stack will
 stop at the first function whose type does not include a CallStack IP.
-For example, using the above definition of head:
+For example, using the above definition of undefined:
 
-  f :: [a] -> a
-  f = head
+  head :: [a] -> a
+  head []    = undefined
+  head (x:_) = x
 
-  g = f []
+  g = head []
 
-the resulting CallStack will include use of ?loc inside head and
-the call to head inside f, but NOT the call to f inside g, because f
-did not explicitly request a CallStack.
+the resulting CallStack will include the call to `undefined` in `head`
+and the call to `error` in `undefined`, but *not* the call to `head`
+in `g`, because `head` did not explicitly request a CallStack.
+
 
 Important Details:
 - GHC should NEVER report an insoluble CallStack constraint.
@@ -958,35 +980,6 @@ Important Details:
   GHC.SrcLoc and contains the package/module/file name, as well as the full
   source-span. Both CallStack and SrcLoc are kept abstract so only GHC can
   construct new values.
-
-- Consider the use of ?stk in:
-
-    head :: (?stk :: CallStack) => [a] -> a
-    head [] = error (show ?stk)
-
-  When solving the use of ?stk we'll have a given
-
-   [G] d :: IP "stk" CallStack
-
-  in scope. In the interaction phase, GHC would normally solve the use of ?stk
-  directly from the given, i.e. re-using the dicionary. But this is NOT what we
-  want! We want to generate a *new* CallStack with ?loc's SrcLoc pushed onto
-  the given CallStack. So we must take care in TcInteract.interactDict to
-  prioritize solving wanted CallStacks.
-
-- Consider:
-
-    f :: (?stk :: CallStack) => Int
-    f = let y = getCallStack ?stk
-        in length y
-
-  When we infer y's type, we will not have access to f's given ?stk, but
-  we certainly want to solve the occurrence of ?stk from the f's given.
-  So we disable the no-given solver inside let-binders (concretely, when
-  the TcLevel > 3), and allow GHC to quantify over implicit CallStacks
-  in TcSimplify.simplifyInfer. Then we gather up any remaining wanted
-  CallStacks and invoke the no-given solver in the defaulting phase.
-  (See TcSimplify.defaultCallStacks)
 
 - We will automatically solve any wanted CallStack regardless of the name of the
   IP, i.e.
@@ -1001,7 +994,7 @@ Important Details:
     head [] = error (show (?stk :: CallStack))
 
   the printed CallStack will NOT include head's call-site. This reflects the
-  standard scoping rules of implicit-parameters. (See TcInteract.interactDict)
+  standard scoping rules of implicit-parameters.
 
 - An EvCallStack term desugars to a CoreExpr of type `IP "some str" CallStack`.
   The desugarer will need to unwrap the IP newtype before pushing a new
@@ -1015,7 +1008,7 @@ Important Details:
     (?stk :: CallStack) => [a] -> a
 
   constraint that arises from the ambiguity check on `head`s type signature.
-  (See TcEvidence.isCallStackIP)
+  (See TcInteract.isCallStackIP)
 -}
 
 mkEvCast :: EvTerm -> TcCoercion -> EvTerm

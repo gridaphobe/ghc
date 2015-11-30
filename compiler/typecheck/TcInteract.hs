@@ -683,10 +683,10 @@ interactDict inerts workItem@(CDictCan { cc_ev = ev_w, cc_class = cls, cc_tyargs
   -- don't ever try to solve CallStack IPs directly from other dicts,
   -- we always build new dicts instead.
   -- See Note [Overview of implicit CallStacks]
-  | Just solveCallStack <- isCallStackIP (ctEvLoc ev_w) cls tys
+  | Just solveCallStack <- isCallStackIP ev_w cls tys
   , isWanted ev_w
   , OccurrenceOf _ <- ctLocOrigin (ctEvLoc ev_w)
-  = do { solveCallStack workItem
+  = do { solveCallStack
        ; stopWith ev_w "Wanted CallStack IP" }
 
   | Just ctev_i <- lookupInertDict inerts cls tys
@@ -2044,37 +2044,63 @@ a TypeRep for them.  For qualified but not polymorphic types, like
 
 -- | Is the constraint for an implicit CallStack parameter?
 -- i.e.   (IP "name" CallStack)
-isCallStackCt :: Ct -> Maybe (Ct -> TcS ())
+--
+-- If so, returns an action that will solve the CallStack.
+isCallStackCt :: Ct -> Maybe (TcS ())
 isCallStackCt CDictCan { cc_ev = ev, cc_class = cls, cc_tyargs = tys }
-  = isCallStackIP (ctEvLoc ev) cls tys
+  = isCallStackIP ev cls tys
 isCallStackCt _
   = Nothing
 
 -- | Is the constraint for an implicit CallStack parameter?
 -- i.e.   (IP "name" CallStack)
-isCallStackIP :: CtLoc -> Class -> [Type]
-              -> Maybe (Ct -> TcS ())
-isCallStackIP loc cls tys
+--
+-- If so, returns an action that will solve the CallStack.
+isCallStackIP :: CtEvidence -> Class -> [Type]
+              -> Maybe (TcS ())
+isCallStackIP ev cls tys
   | cls == ipClass
   , [ip_name_ty, ty] <- tys
   , Just (tc, _) <- splitTyConApp_maybe ty
   , tc == callStackTyCon
   , Just ip_name <- isStrLitTy ip_name_ty
-  = checkOrigin (ctLocOrigin loc) ip_name
+  = checkOrigin (ctLocOrigin (ctEvLoc ev)) ip_name
+
   | otherwise
   = Nothing
+
   where
+
   -- We only want to grab constraints that arose due to the use of an IP or a
   -- function call. See Note [Overview of implicit CallStacks]
-  checkOrigin (OccurrenceOf func) ip_name = Just $ \ct -> do
+
+  -- If the constraint came from a function call, we want to push the
+  -- new call-site onto the stack.
+  checkOrigin (OccurrenceOf func) ip_name = Just $ do
+    let loc        = ctEvLoc ev
     let new_loc    = setCtLocOrigin loc (IPOccOrigin (HsIPName ip_name))
-    (cs_g, fresh) <- newWantedEvVar new_loc (ctPred ct)
+    (cs_g, fresh) <- newWantedEvVar new_loc (ctEvPred ev)
 
     when (isFresh fresh) $
       emitWorkNC [cs_g]
 
-    solveCallStackFrom (EvCsPushCall func (ctLocSpan loc) (ctEvTerm cs_g)) ct
+    solveCallStackFrom (EvCsPushCall func (ctLocSpan loc) (ctEvTerm cs_g))
 
-  checkOrigin (IPOccOrigin _)  _ = Just $ \ct -> do
-    solveCallStackFrom EvCsEmpty ct
-  checkOrigin _                _ = Nothing
+  -- If the constraint came from an occurrence of an IP, we just solve
+  -- it with the empty stack.
+  checkOrigin (IPOccOrigin _) _ = Just $ do
+    solveCallStackFrom EvCsEmpty
+
+  -- Otherwise we're not interested in the constraint, treat it as a
+  -- regular IP. (This should only happen when we perform an
+  -- ambiguity check)
+  checkOrigin _ _ = Nothing
+
+  solveCallStackFrom ev_cs = do
+    -- now we have ev_cs :: CallStack, but the evidence term should
+    -- be a dictionary, so we have to coerce ev_cs to a
+    -- dictionary for `IP ip CallStack`
+    let ip_ty = mkClassPred cls tys
+    let ev_tm = mkEvCast (EvCallStack ev_cs) (TcCoercion (wrapIP ip_ty))
+    setWantedEvBind (ctEvId ev) ev_tm
+    
