@@ -36,7 +36,6 @@ module TcSMonad (
     getTopEnv, getGblEnv, getLclEnv, getTcEvBinds, getTcLevel,
     getTcEvBindsMap,
     tcLookupClass,
-    solveCallStackFrom,
 
     -- Inerts
     InertSet(..), InertCans(..),
@@ -2963,18 +2962,3 @@ deferTcSForAllEq role loc (tvs1,body1) (tvs2,body2)
                          ; return (TcLetCo ev_binds new_co) }
 
         ; return $ EvCoercion (foldr mkTcForAllCo coe_inside skol_tvs) }
-
-solveCallStackFrom :: EvCallStack -> Ct -> TcS ()
-solveCallStackFrom
-  ev_cs
-  (CDictCan { cc_ev = ev_w, cc_class = cls, cc_tyargs = tys }) = do
-  -- now we have ev_cs :: CallStack, but the evidence term should
-  -- be a dictionary, so we have to coerce ev_cs to a
-  -- dictionary for `IP ip CallStack`
-  let ip_ty = mkClassPred cls tys
-  let ev_tm = mkEvCast (EvCallStack ev_cs) (TcCoercion (wrapIP ip_ty))
-  -- addSolvedDict ev_w cls tys
-  setWantedEvBind (ctEvId ev_w) ev_tm
-
-solveCallStackFrom _ _ =
-  panic "solveCallStackFrom: attempted to solve non-callstack"

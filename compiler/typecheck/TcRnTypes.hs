@@ -145,8 +145,6 @@ import Outputable
 import ListSetOps
 import FastString
 import GHC.Fingerprint
-import PrelNames
-import TysWiredIn
 
 import Control.Monad (ap, liftM, msum)
 #if __GLASGOW_HASKELL__ > 710
