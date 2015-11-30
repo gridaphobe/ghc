@@ -903,7 +903,7 @@ to implicit parameters of type GHC.Stack.CallStack.
 Implicit CallStacks are regular implicit parameters, augmented with two
 extra rules in the constraint solver:
 
-0. Occurrences of CallStack IPs are solved directly from the given IP,
+1. Occurrences of CallStack IPs are solved directly from the given IP,
    just like a regular IP. For example, the occurrence of `?stk` in
 
      error :: (?stk :: CallStack) => String -> a
@@ -911,7 +911,7 @@ extra rules in the constraint solver:
 
    will be solved for the `?stk` in `error`s context as before.
 
-1. In a function call, instead of simply passing the given IP, we first
+2. In a function call, instead of simply passing the given IP, we first
    append the current call-site to it. For example, consider a
    call to the callstack-aware `error` above.
 
@@ -938,7 +938,7 @@ extra rules in the constraint solver:
 
    (see TcInteract.interactDict and TcInteract.isCallStackIP)
 
-2. We default any insoluble CallStacks to the empty CallStack. Suppose
+3. We default any insoluble CallStacks to the empty CallStack. Suppose
    `undefined` did not request a CallStack, ie
 
      undefined :: a
@@ -1009,6 +1009,14 @@ Important Details:
 
   constraint that arises from the ambiguity check on `head`s type signature.
   (See TcInteract.isCallStackIP)
+
+- When we emit a new wanted CallStack from rule (2) we set its origin to
+  `IPOccOrigin ip_name` instead of the original `OccurrenceOf func`
+  (see TcInteract.isCallStackIP).
+
+  This is a bit shady, but is how we ensure that the new wanted is
+  solved like a regular IP.
+
 -}
 
 mkEvCast :: EvTerm -> TcCoercion -> EvTerm
