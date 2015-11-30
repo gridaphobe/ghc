@@ -2078,6 +2078,8 @@ isCallStackIP ev cls tys
   -- new call-site onto the stack.
   checkOrigin (OccurrenceOf func) ip_name = Just $ do
     let loc        = ctEvLoc ev
+                                    -- we change the origin to IPOccOrigin
+                                    -- so this rule does not fire again.
     let new_loc    = setCtLocOrigin loc (IPOccOrigin (HsIPName ip_name))
     (cs_g, fresh) <- newWantedEvVar new_loc (ctEvPred ev)
 
