@@ -2103,4 +2103,3 @@ isCallStackIP ev cls tys
     let ip_ty = mkClassPred cls tys
     let ev_tm = mkEvCast (EvCallStack ev_cs) (TcCoercion (wrapIP ip_ty))
     setWantedEvBind (ctEvId ev) ev_tm
-    

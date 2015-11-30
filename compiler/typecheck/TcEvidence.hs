@@ -942,7 +942,7 @@ extra rules in the constraint solver:
    `undefined` did not request a CallStack, ie
 
      undefined :: a
-     undefined = error "undefined!"   
+     undefined = error "undefined!"
 
    Under the usual IP rules, the new wanted from rule (2) would be
    insoluble as there's no given IP from which to solve it, so we
