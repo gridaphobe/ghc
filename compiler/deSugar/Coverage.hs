@@ -467,6 +467,18 @@ addTickLHsExprLetBody e@(L pos e0) = do
    tick_it      = allocTickBox (ExpBox False) False False pos $ addTickHsExpr e0
    dont_tick_it = addTickLHsExprNever e
 
+addTickLHsExprMaybe :: LHsExpr Id -> TM (LHsExpr Id)
+addTickLHsExprMaybe (L pos e0) = do
+    -- Hackish exception - on request we *do* tick variables even if
+    -- we normally wouldn't. This has basically no effect outside of
+    -- adding ticks to -ddump-ticked, but this is sometimes useful
+    -- (LiquidHaskell generates type-annotated program views from it)
+    tickEverything <- gopt Opt_TickEverything `liftM` getDynFlags
+    if tickEverything then
+      allocTickBox (ExpBox False) False False pos $ addTickHsExpr e0
+    else
+      L pos `liftM` addTickHsExpr e0
+
 -- version of addTick that does not actually add a tick,
 -- because the scope of this tick is completely subsumed by
 -- another.
@@ -518,7 +530,7 @@ addTickHsExpr e@(HsOverLabel _)  = return e
 addTickHsExpr e@(HsLit _)        = return e
 addTickHsExpr (HsLam matchgroup) = liftM HsLam (addTickMatchGroup True matchgroup)
 addTickHsExpr (HsLamCase mgs)    = liftM HsLamCase (addTickMatchGroup True mgs)
-addTickHsExpr (HsApp e1 e2)      = liftM2 HsApp (addTickLHsExprNever e1)
+addTickHsExpr (HsApp e1 e2)      = liftM2 HsApp (addTickLHsExprMaybe e1)
                                                 (addTickLHsExpr      e2)
 addTickHsExpr (HsAppTypeOut e ty) = liftM2 HsAppTypeOut (addTickLHsExprNever e)
                                                         (return ty)
@@ -526,7 +538,7 @@ addTickHsExpr (HsAppTypeOut e ty) = liftM2 HsAppTypeOut (addTickLHsExprNever e)
 addTickHsExpr (OpApp e1 e2 fix e3) =
         liftM4 OpApp
                 (addTickLHsExpr e1)
-                (addTickLHsExprNever e2)
+                (addTickLHsExprMaybe e2)
                 (return fix)
                 (addTickLHsExpr e3)
 addTickHsExpr (NegApp e neg) =
@@ -538,10 +550,10 @@ addTickHsExpr (HsPar e) =
 addTickHsExpr (SectionL e1 e2) =
         liftM2 SectionL
                 (addTickLHsExpr e1)
-                (addTickLHsExprNever e2)
+                (addTickLHsExprMaybe e2)
 addTickHsExpr (SectionR e1 e2) =
         liftM2 SectionR
-                (addTickLHsExprNever e1)
+                (addTickLHsExprMaybe e1)
                 (addTickLHsExpr e2)
 addTickHsExpr (ExplicitTuple es boxity) =
         liftM2 ExplicitTuple
@@ -603,7 +615,7 @@ addTickHsExpr expr@(RecordUpd { rupd_expr = e, rupd_flds = flds })
 
 addTickHsExpr (ExprWithTySig e ty) =
         liftM2 ExprWithTySig
-                (addTickLHsExprNever e) -- No need to tick the inner expression
+                (addTickLHsExprMaybe e) -- No need to tick the inner expression
                                     -- for expressions with signatures
                 (return ty)
 addTickHsExpr (ArithSeq  ty wit arith_seq) =
