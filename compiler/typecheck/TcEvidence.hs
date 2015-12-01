@@ -936,7 +936,7 @@ extra rules in the constraint solver:
    that we use to solve the call to `error`. The new wanted `d` will
    then be solved per rule (1), ie as a regular IP.
 
-   (see TcInteract.interactDict and TcInteract.isCallStackIP)
+   (see TcInteract.interactDict)
 
 3. We default any insoluble CallStacks to the empty CallStack. Suppose
    `undefined` did not request a CallStack, ie
@@ -1000,19 +1000,9 @@ Important Details:
   The desugarer will need to unwrap the IP newtype before pushing a new
   call-site onto a given stack (See DsBinds.dsEvCallStack)
 
-- We only want to intercept constraints that arose due to the use of an IP or a
-  function call. In particular, we do NOT want to intercept the
-
-    (?stk :: CallStack) => [a] -> a
-      ~
-    (?stk :: CallStack) => [a] -> a
-
-  constraint that arises from the ambiguity check on `head`s type signature.
-  (See TcInteract.isCallStackIP)
-
 - When we emit a new wanted CallStack from rule (2) we set its origin to
   `IPOccOrigin ip_name` instead of the original `OccurrenceOf func`
-  (see TcInteract.isCallStackIP).
+  (see TcInteract.interactDict).
 
   This is a bit shady, but is how we ensure that the new wanted is
   solved like a regular IP.
