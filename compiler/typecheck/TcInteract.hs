@@ -2064,7 +2064,7 @@ isCallStackIP ev cls tys
   , Just (tc, _) <- splitTyConApp_maybe ty
   , tc == callStackTyCon
   , Just ip_name <- isStrLitTy ip_name_ty
-  = checkOrigin (ctLocOrigin (ctEvLoc ev)) ip_name
+  = Just $ checkOrigin (ctLocOrigin (ctEvLoc ev)) ip_name
 
   | otherwise
   = Nothing
@@ -2076,7 +2076,7 @@ isCallStackIP ev cls tys
 
   -- If the constraint came from a function call, we want to push the
   -- new call-site onto the stack.
-  checkOrigin (OccurrenceOf func) ip_name = Just $ do
+  checkOrigin (OccurrenceOf func) ip_name = do
     let loc        = ctEvLoc ev
                                     -- we change the origin to IPOccOrigin
                                     -- so this rule does not fire again.
@@ -2088,15 +2088,9 @@ isCallStackIP ev cls tys
 
     solveCallStackFrom (EvCsPushCall func (ctLocSpan loc) (ctEvTerm cs_g))
 
-  -- If the constraint came from an occurrence of an IP, we just solve
-  -- it with the empty stack.
-  checkOrigin (IPOccOrigin _) _ = Just $ do
+  -- Otherwise we just solve it with the empty stack.
+  checkOrigin _ _ = do
     solveCallStackFrom EvCsEmpty
-
-  -- Otherwise we're not interested in the constraint, treat it as a
-  -- regular IP. (This should only happen when we perform an
-  -- ambiguity check)
-  checkOrigin _ _ = Nothing
 
   solveCallStackFrom ev_cs = do
     -- now we have ev_cs :: CallStack, but the evidence term should
