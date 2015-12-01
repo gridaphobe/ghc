@@ -61,7 +61,7 @@ module TcRnTypes(
         isCDictCan_Maybe, isCFunEqCan_maybe,
         isCIrredEvCan, isCNonCanonical, isWantedCt, isDerivedCt,
         isGivenCt, isHoleCt, isOutOfScopeCt, isExprHoleCt, isTypeHoleCt,
-        isUserTypeErrorCt, getUserTypeErrorMsg,
+        isUserTypeErrorCt, isCallStackCt, getUserTypeErrorMsg,
         ctEvidence, ctLoc, setCtLoc, ctPred, ctFlavour, ctEqRel, ctOrigin,
         mkNonCanonical, mkNonCanonicalCt,
         ctEvPred, ctEvLoc, ctEvOrigin, ctEvEqRel,
@@ -112,6 +112,7 @@ import HsSyn
 import CoreSyn
 import HscTypes
 import TcEvidence
+import TysWiredIn ( callStackTyCon, ipClass )
 import Type
 import CoAxiom  ( Role )
 import Class    ( Class )
@@ -1446,6 +1447,20 @@ isUserTypeErrorCt :: Ct -> Bool
 isUserTypeErrorCt ct = case getUserTypeErrorMsg ct of
                          Just _ -> True
                          _      -> False
+
+-- | Is the constraint for an Implicit CallStack
+-- (i.e. @IP "name" CallStack@)?
+--
+-- If so, returns @Just "name"@.
+isCallStackCt :: Ct -> Maybe FastString
+isCallStackCt CDictCan { cc_class = cls, cc_tyargs = tys }
+  | cls == ipClass
+  , [ip_name_ty, ty] <- tys
+  , Just (tc, _) <- splitTyConApp_maybe ty
+  , tc == callStackTyCon
+  = isStrLitTy ip_name_ty
+isCallStackCt _
+  = Nothing
 
 instance Outputable Ct where
   ppr ct = ppr (cc_ev ct) <+> parens (text ct_sort)
