@@ -44,6 +44,7 @@ import FastString
 import FastStringEnv
 import ListSetOps
 import Id
+import Type
 
 import Control.Monad
 import Data.Either      ( partitionEithers, isRight, rights )
@@ -1579,7 +1580,9 @@ topSigWarnId sig_ns id
 
 warnMissingSig :: SDoc -> Id -> RnM ()
 warnMissingSig msg id
-  = addWarnAt (getSrcSpan id) (mk_msg (idType id))
+  = do  { env <- tcInitTidyEnv
+        ; let (_, tidy_ty) = tidyOpenType env (idType id)
+        ; addWarnAt (getSrcSpan id) (mk_msg tidy_ty) }
   where
     mk_msg ty = sep [ msg, nest 2 $ pprPrefixName (idName id) <+> dcolon <+> ppr ty ]
 
