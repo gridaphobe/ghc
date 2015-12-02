@@ -1528,6 +1528,7 @@ warnUnusedImportDecls gbl_env
        ; whenGOptM Opt_D_dump_minimal_imports $
          printMinimalImports usage }
 
+-- | Warn the user about top level binders that lack type signatures.
 warnMissingSigs :: TcGblEnv -> RnM ()
 warnMissingSigs gbl_env
   = do { let exports = availsToNameSet (tcg_exports gbl_env)
@@ -1548,7 +1549,6 @@ warnMissingSigs gbl_env
 
 type SigWarn = [Id] -> RnM ()
      -- Missing-signature warning
-     -- The Bool is True for an AbsBinds, False otherwise
 
 noSigWarn :: SigWarn
 noSigWarn _ = return ()
