@@ -205,12 +205,17 @@ data TickDensity
   | TickTopFunctions      -- for -prof-auto-top
   | TickExportedFunctions -- for -prof-auto-exported
   | TickCallSites         -- for stack tracing
+  | TickEverything        -- for -ftick-everything
   deriving Eq
 
 mkDensity :: TickishType -> DynFlags -> TickDensity
 mkDensity tickish dflags = case tickish of
   HpcTicks             -> TickForCoverage
-  SourceNotes          -> TickForCoverage
+  SourceNotes
+    | gopt Opt_TickEverything dflags
+      -> TickEverything
+    | otherwise
+      -> TickForCoverage
   Breakpoints          -> TickForBreakPoints
   ProfNotes ->
     case profAuto dflags of
@@ -238,6 +243,7 @@ shouldTickBind density top_lev exported _simple_pat inline
       TickExportedFunctions -> exported && not inline
       TickForCoverage       -> True
       TickCallSites         -> False
+      TickEverything        -> True
 
 shouldTickPatBind :: TickDensity -> Bool -> Bool
 shouldTickPatBind density top_lev
@@ -248,6 +254,7 @@ shouldTickPatBind density top_lev
       TickExportedFunctions -> False
       TickForCoverage       -> False
       TickCallSites         -> False
+      TickEverything        -> True
 
 -- -----------------------------------------------------------------------------
 -- Adding ticks to bindings
@@ -417,6 +424,7 @@ addTickLHsExpr e@(L pos e0) = do
   case d of
     TickForBreakPoints | isGoodBreakExpr e0 -> tick_it
     TickForCoverage    -> tick_it
+    TickEverything     -> tick_it
     TickCallSites      | isCallSite e0      -> tick_it
     _other             -> dont_tick_it
  where
@@ -434,6 +442,7 @@ addTickLHsExprRHS e@(L pos e0) = do
      TickForBreakPoints | HsLet{} <- e0 -> dont_tick_it
                         | otherwise     -> tick_it
      TickForCoverage -> tick_it
+     TickEverything  -> tick_it
      TickCallSites   | isCallSite e0 -> tick_it
      _other          -> dont_tick_it
  where
@@ -473,11 +482,11 @@ addTickLHsExprMaybe (L pos e0) = do
     -- we normally wouldn't. This has basically no effect outside of
     -- adding ticks to -ddump-ticked, but this is sometimes useful
     -- (LiquidHaskell generates type-annotated program views from it)
-    tickEverything <- gopt Opt_TickEverything `liftM` getDynFlags
-    if tickEverything then
-      allocTickBox (ExpBox False) False False pos $ addTickHsExpr e0
-    else
-      L pos `liftM` addTickHsExpr e0
+    d <- getDensity
+    case d of
+      TickEverything
+        -> allocTickBox (ExpBox False) False False pos $ addTickHsExpr e0
+      _ -> L pos `liftM` addTickHsExpr e0
 
 -- version of addTick that does not actually add a tick,
 -- because the scope of this tick is completely subsumed by
@@ -503,13 +512,13 @@ isCallSite _ = False
 
 addTickLHsExprOptAlt :: Bool -> LHsExpr Id -> TM (LHsExpr Id)
 addTickLHsExprOptAlt oneOfMany (L pos e0)
-  = ifDensity TickForCoverage
+  = ifDensitys [TickForCoverage, TickEverything]
         (allocTickBox (ExpBox oneOfMany) False False pos $ addTickHsExpr e0)
         (addTickLHsExpr (L pos e0))
 
 addBinTickLHsExpr :: (Bool -> BoxLabel) -> LHsExpr Id -> TM (LHsExpr Id)
 addBinTickLHsExpr boxLabel (L pos e0)
-  = ifDensity TickForCoverage
+  = ifDensitys [TickForCoverage, TickEverything]
         (allocBinTickBox boxLabel pos $ addTickHsExpr e0)
         (addTickLHsExpr (L pos e0))
 
@@ -666,7 +675,7 @@ addTickHsExpr (HsWrap w e) =
 
 addTickHsExpr (ExprWithTySigOut e ty) =
         liftM2 ExprWithTySigOut
-               (addTickLHsExprNever e) -- No need to tick the inner expression
+               (addTickLHsExprMaybe e) -- No need to tick the inner expression
                (return ty)             -- for expressions with signatures
 
 -- Others should never happen in expression content.
@@ -709,6 +718,7 @@ addTickGRHSBody isOneOfMany isLambda expr@(L pos e0) = do
   d <- getDensity
   case d of
     TickForCoverage  -> addTickLHsExprOptAlt isOneOfMany expr
+    TickEverything   -> addTickLHsExprOptAlt isOneOfMany expr
     TickAllFunctions | isLambda ->
        addPathEntry "\\" $
          allocTickBox (ExpBox False) True{-count-} False{-not top-} pos $
@@ -1053,7 +1063,8 @@ coveragePasses dflags =
     ifa (gopt Opt_Hpc dflags)                HpcTicks $
     ifa (gopt Opt_SccProfilingOn dflags &&
          profAuto dflags /= NoProfAuto)      ProfNotes $
-    ifa (debugLevel dflags > 0)              SourceNotes []
+    ifa (debugLevel dflags > 0 ||
+         gopt Opt_TickEverything dflags)     SourceNotes []
   where ifa f x xs | f         = x:xs
                    | otherwise = xs
 
@@ -1124,8 +1135,8 @@ withEnv f (TM m) = TM $ \ env st ->
 getDensity :: TM TickDensity
 getDensity = TM $ \env st -> (density env, noFVs, st)
 
-ifDensity :: TickDensity -> TM a -> TM a -> TM a
-ifDensity d th el = do d0 <- getDensity; if d == d0 then th else el
+ifDensitys :: [TickDensity] -> TM a -> TM a -> TM a
+ifDensitys ds th el = do d <- getDensity; if d `elem` ds then th else el
 
 getFreeVars :: TM a -> TM (FreeVars, a)
 getFreeVars (TM m)

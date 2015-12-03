@@ -1,0 +1,74 @@
+AbsBinds [] []
+  {Exports: [foo <= foo_apS
+               <>]
+   Exported types: foo :: Integer
+                   [LclId, Str=DmdType]
+   Binds: -- ticks = [src<T10506.hs:(17,1)-(19,23)>]
+          foo_apS
+            = src<T10506.hs:(17,7)-(18,36)> let
+                                              AbsBinds [] []
+                                                {Exports: [x_apK <= x_az9
+                                                             <>]
+                                                 Exported types: x_apK :: Integer
+                                                                 [LclId, Str=DmdType]
+                                                 Binds: -- ticks = [src<T10506.hs:17:11-15>]
+                                                        x_az9 = src<T10506.hs:17:15> 1}
+                                            in
+                                              src<T10506.hs:(17,20)-(18,36)> case
+                                                                                 src<T10506.hs:17:25-36> src<T10506.hs:17:25-28> Just
+                                                                                                           (src<T10506.hs:17:30-36> (src<T10506.hs:17:31-35> src<T10506.hs:17:33> (+)
+                                                                                                                                                               src<T10506.hs:17:31> x_apK
+                                                                                                                                                               src<T10506.hs:17:35> y_apJ))
+                                                                             of {
+                                                                               Just z_apL
+                                                                                 -> src<T10506.hs:18:32-36> src<T10506.hs:18:34> (+)
+                                                                                                              src<T10506.hs:18:32> z_apL
+                                                                                                              src<T10506.hs:18:36> 5 }
+            where
+                AbsBinds [] []
+                  {Exports: [y_apJ <= y_apV
+                               <>]
+                   Exported types: y_apJ :: Integer
+                                   [LclId, Str=DmdType]
+                   Binds: Just y_apV
+                            = src<T10506.hs:19:18-23> src<T10506.hs:19:18-21> Just
+                                                        (src<T10506.hs:19:23> 4)}}
+AbsBinds [] []
+  {Exports: [plus1 <= plus1_azB
+               <>]
+   Exported types: plus1 :: Integer -> Integer
+                   [LclId, Str=DmdType]
+   Binds: -- ticks = [src<T10506.hs:8:1-12>]
+          plus1_azB
+            = src<T10506.hs:8:9-12> (src<T10506.hs:8:10-11> ( \ x_ -> src<T10506.hs:8:10> (+) x_
+                                                                src<T10506.hs:8:11> 1))}
+AbsBinds [a_azT] [$dNum_azY]
+  {Exports: [plus <= plus_azP
+               <>]
+   Exported types: plus
+                     :: forall a_azT. Num a_azT => a_azT -> a_azT -> a_azT
+                   [LclId, Str=DmdType]
+   Binds: -- ticks = [src<T10506.hs:5:1-16>]
+          plus_azP x_aoz y_aoA
+            = src<T10506.hs:5:12-16> src<T10506.hs:5:14> (+)
+                                       src<T10506.hs:5:12> x_aoz src<T10506.hs:5:16> y_aoA}
+AbsBinds [] []
+  {Exports: [plus2 <= plus2_aA8
+               <>]
+   Exported types: plus2 :: Integer -> Integer
+                   [LclId, Str=DmdType]
+   Binds: -- ticks = [src<T10506.hs:11:1-14>]
+          plus2_aA8
+            = src<T10506.hs:11:9-14> src<T10506.hs:11:9-12> plus
+                                       (src<T10506.hs:11:14> 2)}
+AbsBinds [] []
+  {Exports: [three <= three_aAm
+               <>]
+   Exported types: three :: Integer
+                   [LclId, Str=DmdType]
+   Binds: -- ticks = [src<T10506.hs:14:1-18>]
+          three_aAm
+            = src<T10506.hs:14:9-18> src<T10506.hs:14:11-16> plus
+                                       src<T10506.hs:14:9> 1 src<T10506.hs:14:18> 2}
+$trModule = Module (TrNameS "main"#) (TrNameS "T10506"#)
+
