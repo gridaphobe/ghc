@@ -478,7 +478,7 @@ addTickLHsExprLetBody e@(L pos e0) = do
 
 addTickLHsExprMaybe :: LHsExpr Id -> TM (LHsExpr Id)
 addTickLHsExprMaybe (L pos e0) = do
-    -- Hackish exception - on request we *do* tick variables even if
+    -- Hackish exception - on request we *do* tick expressions even if
     -- we normally wouldn't. This has basically no effect outside of
     -- adding ticks to -ddump-ticked, but this is sometimes useful
     -- (LiquidHaskell generates type-annotated program views from it)
@@ -625,7 +625,7 @@ addTickHsExpr expr@(RecordUpd { rupd_expr = e, rupd_flds = flds })
 addTickHsExpr (ExprWithTySig e ty) =
         liftM2 ExprWithTySig
                 (addTickLHsExprMaybe e) -- No need to tick the inner expression
-                                    -- for expressions with signatures
+                                        -- for expressions with signatures
                 (return ty)
 addTickHsExpr (ArithSeq  ty wit arith_seq) =
         liftM3 ArithSeq
