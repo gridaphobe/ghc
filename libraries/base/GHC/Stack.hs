@@ -23,7 +23,9 @@ module GHC.Stack (
     errorWithStackTrace,
 
     -- * Implicit parameter call stacks
-    SrcLoc(..), CallStack(..),
+    CallStack, getCallStack,
+    -- * Source locations
+    SrcLoc(..),
 
     -- * Internals
     CostCentreStack,

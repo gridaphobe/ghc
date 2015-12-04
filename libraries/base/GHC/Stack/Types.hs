@@ -18,7 +18,9 @@
 
 module GHC.Stack.Types (
     -- * Implicit parameter call stacks
-    SrcLoc(..), CallStack(..), isEmptyCallStack
+    CallStack, getCallStack, pushCallStack,
+    -- * Source locations
+    SrcLoc(..)
   ) where
 
 {-
@@ -44,22 +46,28 @@ import GHC.Integer ()
 -- Explicit call-stacks built via ImplicitParams
 ----------------------------------------------------------------------
 
--- | @CallStack@s are an alternate method of obtaining the call stack at a given
--- point in the program.
+-- | Implicit @CallStack@s are an alternate method of obtaining the call stack
+-- at a given point in the program.
 --
--- When an implicit-parameter of type @CallStack@ occurs in a program, GHC will
--- solve it with the current location. If another @CallStack@ implicit-parameter
--- is in-scope (e.g. as a function argument), the new location will be appended
--- to the one in-scope, creating an explicit call-stack. For example,
+-- GHC has two built-in rules for solving implicit-parameters of type
+-- @CallStack@.
+--
+-- 1. If the @CallStack@ occurs in a function call, it appends the
+--    source location of the call to the @CallStack@ in the environment.
+-- 2. @CallStack@s that cannot be solved normally (i.e. unbound
+--    occurrences) are defaulted to the empty @CallStack@.
+--
+-- Otherwise implicit @CallStack@s behave just like ordinary implicit
+-- parameters. For example:
 --
 -- @
--- myerror :: (?loc :: CallStack) => String -> a
--- myerror msg = error (msg ++ "\n" ++ showCallStack ?loc)
+-- myerror :: (?callStack :: CallStack) => String -> a
+-- myerror msg = error (msg ++ "\n" ++ showCallStack ?callStack)
 -- @
+--
 -- ghci> myerror "die"
 -- *** Exception: die
--- CallStack:
---   ?loc, called at MyError.hs:7:51 in main:MyError
+-- CallStack (from ImplicitParams):
 --   myerror, called at <interactive>:2:1 in interactive:Ghci1
 --
 -- @CallStack@s do not interact with the RTS and do not require compilation with
@@ -75,12 +83,12 @@ import GHC.Integer ()
 data CallStack = CallStack { getCallStack :: [([Char], SrcLoc)] }
   -- See Note [Overview of implicit CallStacks]
 
--- | Is the 'CallStack' empty?
---
--- @since 4.9.2.0
-isEmptyCallStack :: CallStack -> Bool
-isEmptyCallStack (CallStack []) = True
-isEmptyCallStack _              = False
+
+-- | Push a call-site onto the stack.
+pushCallStack :: ([Char], SrcLoc) -> CallStack -> CallStack
+pushCallStack callSite (CallStack stk)
+  = CallStack (callSite : stk)
+
 
 -- | A single location in the source code.
 --
