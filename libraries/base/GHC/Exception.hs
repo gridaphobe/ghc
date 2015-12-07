@@ -195,6 +195,9 @@ showCCSStack :: [String] -> [String]
 showCCSStack [] = []
 showCCSStack stk = "CallStack (from -prof):" : map ("  " ++) (reverse stk)
 
+-- prettySrcLoc and prettyCallStack are defined here to avoid hs-boot
+-- files. See Note [Definition of CallStack]
+
 -- | Pretty print 'SrcLoc'
 --
 -- @since 4.8.1.0
