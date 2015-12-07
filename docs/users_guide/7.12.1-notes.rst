@@ -37,16 +37,17 @@ Language
    the environment. For example
 
    ::
-                             myerror :: (?callStack :: CallStack) => String -> a
-                             myerror msg = error (msg ++ "\n" ++ showCallStack ?callStack)
+        myerror :: (?callStack :: CallStack) => String -> a
+        myerror msg = error (msg ++ "\n" ++ showCallStack ?callStack)
 
-                             ghci> myerror "die"
-                             *** Exception: die
-                             CallStack (from ImplicitParams):
-                               myerror, called at <interactive>:2:1 in interactive:Ghci1
+        ghci> myerror "die"
+        *** Exception: die
+        CallStack (from ImplicitParams):
+          myerror, called at <interactive>:2:1 in interactive:Ghci1
 
    prints the call-site of ``myerror``. The name of the implicit
-   parameter does not matter.
+   parameter does not matter, but within ``base`` we call it
+   ``?callStack``.
 
    See :ref:`lib-base` for a description of the ``CallStack`` type.
 
@@ -279,13 +280,13 @@ base
 
 -  Version number 4.9.0.0 (was 4.7.0.0)
 
--  A new module ``GHC.Stack.Types`` was added, exporting two new types
-   ``SrcLoc`` and ``CallStack``. A ``SrcLoc`` contains package, module,
-   and file names, as well as start and end positions.
+-  ``GHC.Stack`` exports two new types ``SrcLoc`` and ``CallStack``. A
+   ``SrcLoc`` contains package, module, and file names, as well as start
+   and end positions. A ``CallStack`` is a ``[(String, SrcLoc)]``,
+   sorted by most-recent call.
 
-   A new type ``CallStack`` was added for use with the new implicit callstack
-   parameters. A ``CallStack`` is a ``[(String, SrcLoc)]``, sorted by
-   most-recent call.
+-  ``error`` and ``undefined`` will now report a partial stack-trace
+   using the new ``CallStack`` feature (and the ``-prof`` stack if available).
 
 -  A new function, ``interruptible``, was added to ``GHC.IO`` allowing
    an ``IO`` action to be run such that it can be interrupted by an

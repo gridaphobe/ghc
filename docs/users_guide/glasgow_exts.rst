@@ -8122,7 +8122,8 @@ environment. For example
      myerror, called at <interactive>:2:1 in interactive:Ghci1
 
 prints the call-site of ``myerror``. The name of the implicit
-parameter does not matter.
+parameter does not matter, but within ``base`` we call it
+``?callStack``.
 
 The ``CallStack`` will only extend as far as the types allow it, for
 example
