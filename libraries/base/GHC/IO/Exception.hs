@@ -357,7 +357,7 @@ assertError predicate v
   | predicate = lazy v
   | otherwise = throw (AssertionFailed
                         ("Assertion failed\n"
-                         ++ showCallStack ?callStack))
+                         ++ prettyCallStack ?callStack))
 
 unsupportedOperation :: IOError
 unsupportedOperation =

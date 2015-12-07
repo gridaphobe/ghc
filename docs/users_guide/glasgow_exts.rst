@@ -8114,7 +8114,7 @@ environment. For example
 
 ::
    myerror :: (?callStack :: CallStack) => String -> a
-   myerror msg = error (msg ++ "\n" ++ showCallStack ?callStack)
+   myerror msg = error (msg ++ "\n" ++ prettyCallStack ?callStack)
 
    ghci> myerror "die"
    *** Exception: die

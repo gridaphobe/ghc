@@ -23,10 +23,10 @@ module GHC.Stack (
     errorWithStackTrace,
 
     -- * Implicit parameter call stacks
-    CallStack, getCallStack, pushCallStack, showCallStack,
+    CallStack, getCallStack, pushCallStack, prettyCallStack,
 
     -- * Source locations
-    SrcLoc(..), showSrcLoc,
+    SrcLoc(..), prettySrcLoc,
 
     -- * Internals
     CostCentreStack,
@@ -43,6 +43,7 @@ module GHC.Stack (
   ) where
 
 import GHC.Stack.CCS
+import GHC.Stack.Types
 import GHC.IO
 import GHC.Base
 import GHC.List

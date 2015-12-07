@@ -28,8 +28,8 @@ module GHC.Exception
        , divZeroException, overflowException, ratioZeroDenomException
        , errorCallException, errorCallWithCallStackException
          -- re-export CallStack and SrcLoc from GHC.Types
-       , CallStack, getCallStack, showCallStack
-       , SrcLoc(..), showSrcLoc
+       , CallStack, getCallStack, prettyCallStack
+       , SrcLoc(..), prettySrcLoc
        ) where
 
 import Data.Maybe
@@ -186,7 +186,7 @@ errorCallWithCallStackException :: String -> CallStack -> SomeException
 errorCallWithCallStackException s stk = unsafeDupablePerformIO $ do
   ccsStack <- currentCallStack
   let
-    implicitParamCallStack = showCallStackLines stk
+    implicitParamCallStack = prettyCallStackLines stk
     ccsCallStack = showCCSStack ccsStack
     stack = intercalate "\n" $ implicitParamCallStack ++ ccsCallStack
   return $ toException (ErrorCallWithLocation s stack)
@@ -198,8 +198,8 @@ showCCSStack stk = "CallStack (from -prof):" : map ("  " ++) (reverse stk)
 -- | Pretty print 'SrcLoc'
 --
 -- @since 4.8.1.0
-showSrcLoc :: SrcLoc -> String
-showSrcLoc SrcLoc {..}
+prettySrcLoc :: SrcLoc -> String
+prettySrcLoc SrcLoc {..}
   = foldr (++) ""
       [ srcLocFile, ":"
       , show srcLocStartLine, ":"
@@ -210,15 +210,15 @@ showSrcLoc SrcLoc {..}
 -- | Pretty print 'CallStack'
 --
 -- @since 4.8.1.0
-showCallStack :: CallStack -> String
-showCallStack = intercalate "\n" . showCallStackLines
+prettyCallStack :: CallStack -> String
+prettyCallStack = intercalate "\n" . prettyCallStackLines
 
-showCallStackLines :: CallStack -> [String]
-showCallStackLines cs = case getCallStack cs of
+prettyCallStackLines :: CallStack -> [String]
+prettyCallStackLines cs = case getCallStack cs of
   []  -> []
-  stk -> "CallStack (from ImplicitParams):" : map (("  " ++) . showCallSite) stk
+  stk -> "CallStack (from ImplicitParams):" : map (("  " ++) . prettyCallSite) stk
   where
-    showCallSite (f, loc) = f ++ ", called at " ++ showSrcLoc loc
+    prettyCallSite (f, loc) = f ++ ", called at " ++ prettySrcLoc loc
 
 -- |Arithmetic exceptions.
 data ArithException
