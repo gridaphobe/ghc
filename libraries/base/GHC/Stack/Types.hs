@@ -101,6 +101,8 @@ data CallStack = CallStack { getCallStack :: [([Char], SrcLoc)] }
 
 
 -- | Push a call-site onto the stack.
+--
+-- @since 4.9.0.0
 pushCallStack :: ([Char], SrcLoc) -> CallStack -> CallStack
 pushCallStack callSite (CallStack stk)
   = CallStack (callSite : stk)
