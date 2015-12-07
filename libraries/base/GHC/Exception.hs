@@ -27,11 +27,9 @@ module GHC.Exception
        , SomeException(..), ErrorCall(..), pattern ErrorCall, ArithException(..)
        , divZeroException, overflowException, ratioZeroDenomException
        , errorCallException, errorCallWithCallStackException
-       , showCallStack, showSrcLoc
          -- re-export CallStack and SrcLoc from GHC.Types
-       , CallStack, getCallStack
-       , SrcLoc, srcLocPackage, srcLocModule, srcLocFile
-       , srcLocStartLine, srcLocStartCol, srcLocEndLine, srcLocEndCol
+       , CallStack, getCallStack, showCallStack
+       , SrcLoc(..), showSrcLoc
        ) where
 
 import Data.Maybe
@@ -199,7 +197,7 @@ showCCSStack stk = "CallStack (from -prof):" : map ("  " ++) (reverse stk)
 
 -- | Pretty print 'SrcLoc'
 --
--- @since 4.9.0.0
+-- @since 4.8.1.0
 showSrcLoc :: SrcLoc -> String
 showSrcLoc SrcLoc {..}
   = foldr (++) ""
@@ -211,7 +209,7 @@ showSrcLoc SrcLoc {..}
 
 -- | Pretty print 'CallStack'
 --
--- @since 4.9.0.0
+-- @since 4.8.1.0
 showCallStack :: CallStack -> String
 showCallStack = intercalate "\n" . showCallStackLines
 

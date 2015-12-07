@@ -48,8 +48,7 @@ Language
    prints the call-site of ``myerror``. The name of the implicit
    parameter does not matter.
 
-   See the release notes for ``base`` for a description of the
-   ``CallStack`` type.
+   See :ref:`lib-base` for a description of the ``CallStack`` type.
 
 -  To conform to the common case, the default role assigned to
    parameters of datatypes declared in ``hs-boot`` files is
@@ -272,6 +271,9 @@ array
 
 -  Version number XXXXX (was 0.5.0.0)
 
+
+.. _lib-base:
+
 base
 ~~~~
 
@@ -281,7 +283,7 @@ base
    ``SrcLoc`` and ``CallStack``. A ``SrcLoc`` contains package, module,
    and file names, as well as start and end positions.
 
-   A ``CallStack`` was added for use with the new implicit callstack
+   A new type ``CallStack`` was added for use with the new implicit callstack
    parameters. A ``CallStack`` is a ``[(String, SrcLoc)]``, sorted by
    most-recent call.
 

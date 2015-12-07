@@ -79,7 +79,7 @@ import GHC.Integer ()
 -- function that was called, the 'SrcLoc' is the call-site. The list is
 -- ordered with the most recently called function at the head.
 --
--- @since 4.9.0.0
+-- @since 4.8.1.0
 data CallStack = CallStack { getCallStack :: [([Char], SrcLoc)] }
   -- See Note [Overview of implicit CallStacks]
 
@@ -92,7 +92,7 @@ pushCallStack callSite (CallStack stk)
 
 -- | A single location in the source code.
 --
--- @since 4.9.0.0
+-- @since 4.8.1.0
 data SrcLoc = SrcLoc
   { srcLocPackage   :: [Char]
   , srcLocModule    :: [Char]
