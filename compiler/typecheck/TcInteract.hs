@@ -10,6 +10,7 @@ module TcInteract (
 #include "HsVersions.h"
 
 import BasicTypes ( infinity, IntWithInf, intGtLimit )
+import HsTypes ( HsIPName(..) )
 import FastString
 import TcCanonical
 import TcFlatten
@@ -18,9 +19,7 @@ import Type
 import InstEnv( DFunInstType, lookupInstEnv, instanceDFunId )
 import CoAxiom( sfInteractTop, sfInteractInert )
 
-import HsTypes
 import Var
-import Unique
 import TcType
 import Name
 import PrelNames ( knownNatClassName, knownSymbolClassName,
@@ -54,6 +53,7 @@ import VarEnv
 import Control.Monad
 import Maybes( isJust )
 import Pair (Pair(..))
+import Unique( hasKey )
 import DynFlags
 import Util
 
