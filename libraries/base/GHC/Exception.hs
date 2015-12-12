@@ -219,7 +219,8 @@ prettyCallStack = intercalate "\n" . prettyCallStackLines
 prettyCallStackLines :: CallStack -> [String]
 prettyCallStackLines cs = case getCallStack cs of
   []  -> []
-  stk -> "CallStack (from ImplicitParams):" : map (("  " ++) . prettyCallSite) stk
+  stk -> "CallStack (from ImplicitParams):"
+       : map (("  " ++) . prettyCallSite) stk
   where
     prettyCallSite (f, loc) = f ++ ", called at " ++ prettySrcLoc loc
 

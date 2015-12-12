@@ -551,8 +551,8 @@ extra rules in the constraint solver:
 3. We default any insoluble CallStacks to the empty CallStack. Suppose
    `undefined` did not request a CallStack, ie
 
-     undefined :: a
-     undefined = error "undefined!"
+     undefinedNoStk :: a
+     undefinedNoStk = error "undefined!"
 
    Under the usual IP rules, the new wanted from rule (2) would be
    insoluble as there's no given IP from which to solve it, so we
@@ -569,7 +569,7 @@ extra rules in the constraint solver:
 This provides a lightweight mechanism for building up call-stacks
 explicitly, but is notably limited by the fact that the stack will
 stop at the first function whose type does not include a CallStack IP.
-For example, using the above definition of undefined:
+For example, using the above definition of `undefined`:
 
   head :: [a] -> a
   head []    = undefined
