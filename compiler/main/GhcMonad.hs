@@ -11,10 +11,10 @@
 module GhcMonad (
         -- * 'Ghc' monad stuff
         GhcMonad(..),
-        Ghc(..), 
+        Ghc(..),
         GhcT(..), liftGhcT,
         reflectGhc, reifyGhc,
-        getSessionDynFlags, 
+        getSessionDynFlags,
         liftIO,
         Session(..), withSession, modifySession, withTempSession,
 
@@ -29,6 +29,7 @@ import DynFlags
 import Exception
 import ErrUtils
 
+import Control.Monad
 import Data.IORef
 
 -- -----------------------------------------------------------------------------
@@ -93,7 +94,7 @@ newtype Ghc a = Ghc { unGhc :: Session -> IO a }
 -- session.  A compilation session consists of a set of modules
 -- constituting the current program or library, the context for
 -- interactive evaluation, and various caches.
-data Session = Session !(IORef HscEnv) 
+data Session = Session !(IORef HscEnv)
 
 instance Functor Ghc where
   fmap f m = Ghc $ \s -> f `fmap` unGhc m s
@@ -184,13 +185,8 @@ instance ExceptionMonad m => ExceptionMonad (GhcT m) where
                            in
                               unGhcT (f g_restore) s
 
-#if __GLASGOW_HASKELL__ < 710
--- Pre-AMP change
-instance (ExceptionMonad m, Functor m) => HasDynFlags (GhcT m) where
-#else
-instance (ExceptionMonad m) => HasDynFlags (GhcT m) where
-#endif
-  getDynFlags = getSessionDynFlags
+instance MonadIO m => HasDynFlags (GhcT m) where
+  getDynFlags = GhcT $ \(Session r) -> liftM hsc_dflags (liftIO $ readIORef r)
 
 #if __GLASGOW_HASKELL__ < 710
 -- Pre-AMP change

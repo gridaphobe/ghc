@@ -1,1 +1,1 @@
-f :: (Monad m, ?callStack::CallStack) => (m a, t) -> m b
+f :: (Monad m, ?callStack::CallStack) => (m a, r) -> m b

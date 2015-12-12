@@ -594,7 +594,6 @@ in the ParsedSource.
 There are unfortunately enough differences between the ParsedSource and the
 RenamedSource that the API Annotations cannot be used directly with
 RenamedSource, so this allows a simple mapping to be used based on the location.
->>>>>>> origin/master
 -}
 
 instance OutputableBndr id => Outputable (HsExpr id) where
@@ -650,6 +649,7 @@ ppr_expr (HsApp e1 e2)
 ppr_expr (OpApp e1 op _ e2)
   = case unLoc op of
       HsVar (L _ v) -> pp_infixly v
+      HsRecFld f    -> pp_infixly f
       _             -> pp_prefixly
   where
     pp_e1 = pprDebugParendExpr e1   -- In debug mode, add parens
@@ -1642,7 +1642,7 @@ pprStmt (ApplicativeStmt args mb_join _)
   -- of statements.
    pp_for_user = vcat $ punctuate semi $ concatMap flattenArg args
 
-   -- ppr directly rather than transforming here, becuase we need to
+   -- ppr directly rather than transforming here, because we need to
    -- inject a "return" which is hard when we're polymorphic in the id
    -- type.
    flattenStmt :: ExprLStmt idL -> [SDoc]

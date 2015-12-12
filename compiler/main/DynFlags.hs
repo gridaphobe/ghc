@@ -1,4 +1,5 @@
 {-# LANGUAGE CPP #-}
+{-# LANGUAGE FlexibleInstances #-}
 
 -------------------------------------------------------------------------------
 --
@@ -176,6 +177,12 @@ import System.IO.Unsafe ( unsafePerformIO )
 import Data.IORef
 import Control.Arrow ((&&&))
 import Control.Monad
+import Control.Monad.Trans.Class
+import Control.Monad.Trans.Writer
+import Control.Monad.Trans.Reader
+#if MIN_VERSION_transformers(0,4,0)
+import Control.Monad.Trans.Except
+#endif
 import Control.Exception (throwIO)
 
 import Data.Bits
@@ -186,6 +193,7 @@ import Data.Map (Map)
 import qualified Data.Map as Map
 import Data.Set (Set)
 import qualified Data.Set as Set
+import Data.Monoid (Monoid)
 import Data.Word
 import System.FilePath
 import System.Directory
@@ -324,6 +332,8 @@ data GeneralFlag
 
    | Opt_PrintExplicitForalls
    | Opt_PrintExplicitKinds
+   | Opt_PrintExplicitCoercions
+   | Opt_PrintEqualityRelations
    | Opt_PrintUnicodeSyntax
    | Opt_PrintExpandedSynonyms
    | Opt_PrintPotentialInstances
@@ -654,6 +664,7 @@ data ExtensionFlag
    | Opt_StaticPointers
    | Opt_Strict
    | Opt_StrictData
+   | Opt_TypeInType
    | Opt_MonadFailDesugaring
    deriving (Eq, Enum, Show)
 
@@ -911,6 +922,29 @@ data DynFlags = DynFlags {
 
 class HasDynFlags m where
     getDynFlags :: m DynFlags
+
+{- It would be desirable to have the more generalised
+
+  instance (MonadTrans t, Monad m, HasDynFlags m) => HasDynFlags (t m) where
+      getDynFlags = lift getDynFlags
+
+instance definition. However, that definition would overlap with the
+`HasDynFlags (GhcT m)` instance. Instead we define instances for a
+couple of common Monad transformers explicitly. -}
+
+instance (Monoid a, Monad m, HasDynFlags m) => HasDynFlags (WriterT a m) where
+    getDynFlags = lift getDynFlags
+
+instance (Monad m, HasDynFlags m) => HasDynFlags (ReaderT a m) where
+    getDynFlags = lift getDynFlags
+
+instance (Monad m, HasDynFlags m) => HasDynFlags (MaybeT m) where
+    getDynFlags = lift getDynFlags
+
+#if MIN_VERSION_transformers(0,4,0)
+instance (Monad m, HasDynFlags m) => HasDynFlags (ExceptT e m) where
+    getDynFlags = lift getDynFlags
+#endif
 
 class ContainsDynFlags t where
     extractDynFlags :: t -> DynFlags
@@ -2996,6 +3030,8 @@ fFlags = [
   flagGhciSpec "print-evld-with-show"         Opt_PrintEvldWithShow,
   flagSpec "print-explicit-foralls"           Opt_PrintExplicitForalls,
   flagSpec "print-explicit-kinds"             Opt_PrintExplicitKinds,
+  flagSpec "print-explicit-coercions"         Opt_PrintExplicitCoercions,
+  flagSpec "print-equality-relations"         Opt_PrintEqualityRelations,
   flagSpec "print-unicode-syntax"             Opt_PrintUnicodeSyntax,
   flagSpec "print-expanded-synonyms"          Opt_PrintExpandedSynonyms,
   flagSpec "print-potential-instances"        Opt_PrintPotentialInstances,
@@ -3222,6 +3258,7 @@ xFlags = [
   flagSpec "TraditionalRecordSyntax"          Opt_TraditionalRecordSyntax,
   flagSpec "TransformListComp"                Opt_TransformListComp,
   flagSpec "TupleSections"                    Opt_TupleSections,
+  flagSpec "TypeInType"                       Opt_TypeInType,
   flagSpec "TypeFamilies"                     Opt_TypeFamilies,
   flagSpec "TypeOperators"                    Opt_TypeOperators,
   flagSpec "TypeSynonymInstances"             Opt_TypeSynonymInstances,
@@ -3305,6 +3342,9 @@ impliedXFlags
 
     , (Opt_TypeFamilies,     turnOn, Opt_KindSignatures)  -- Type families use kind signatures
     , (Opt_PolyKinds,        turnOn, Opt_KindSignatures)  -- Ditto polymorphic kinds
+    , (Opt_TypeInType,       turnOn, Opt_DataKinds)
+    , (Opt_TypeInType,       turnOn, Opt_PolyKinds)
+    , (Opt_TypeInType,       turnOn, Opt_KindSignatures)
 
     -- AutoDeriveTypeable is not very useful without DeriveDataTypeable
     , (Opt_AutoDeriveTypeable, turnOn, Opt_DeriveDataTypeable)
