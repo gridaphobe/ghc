@@ -1,1 +1,2 @@
-f :: (Monad m, ?callStack::CallStack) => (m a, r) -> m b
+f :: (?callStack::GHC.Stack.Types.CallStack, Monad m) =>
+     (m a, r) -> m b

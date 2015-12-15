@@ -68,7 +68,8 @@ module TysWiredIn (
         -- * Kinds
         typeNatKindCon, typeNatKind, typeSymbolKindCon, typeSymbolKind,
         isLiftedTypeKindTyConName, liftedTypeKind, constraintKind,
-        starKindTyConName, unicodeStarKindTyConName,
+        starKindTyCon, starKindTyConName,
+        unicodeStarKindTyCon, unicodeStarKindTyConName,
         liftedTypeKindTyCon, constraintKindTyCon,
 
         -- * Parallel arrays
@@ -608,12 +609,41 @@ unboxedUnitTyCon = tupleTyCon Unboxed 0
 unboxedUnitDataCon :: DataCon
 unboxedUnitDataCon = tupleDataCon   Unboxed 0
 
-{-
-************************************************************************
+
+{- *********************************************************************
 *                                                                      *
-     The ``boxed primitive'' types (@Char@, @Int@, etc)
+              Equality types and classes
 *                                                                      *
-************************************************************************
+********************************************************************* -}
+
+{- Note [Equality types and classes]
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+We have the following gallery of equality types and classes
+
+* (a ~ b) :: Constraint     is defined in base:Data.Type.Equality,
+  It is an ordinary type class; it is kind-homogenous, lifted,
+  and has (a ~~ b) as a superclass
+
+* (a ~~ b) :: Constraint    is defined in ghc-prim:GHC.Types
+  It is a wired-in class (heqTyCon, heqClass).
+  It is kind-inhomogeous, lifted,
+  and has (a ~# b) as a superclass
+
+* (a ~# b) :: Constraint    is a primitive equality constraint
+                            for Nominal equality
+  Is is primitive (eqPrimTyCon), and kind-inhomogeneous
+
+* (a :~: b) :: *            is defined in base:Data.Type.Equality
+  It is an ordinary GADT, which provides evidence for type equality
+
+* (Coercible a b) :: Constraint    is defined in ghc-prim:GHC.Types
+  It is a wired-in class (coercibleTyCon, coercibleClass).
+  It is kind-homogeous, lifted,
+  and has (a ~R# b) as a superclass
+
+* (a ~R# b) :: Constraint   is a primitive equality constraint
+                            for Representational equality
+  Is is primitive (eqReprPrimTyCon), and kind-inhomogeneous
 -}
 
 heqTyCon, coercibleTyCon :: TyCon
@@ -661,8 +691,15 @@ heqSCSelId, coercibleSCSelId :: Id
     sc_pred   = mkTyConApp eqReprPrimTyCon [k, k, mkTyVarTy av, mkTyVarTy bv]
     sc_sel_id = mkDictSelId coercibleSCSelIdName klass
 
+
+{- *********************************************************************
+*                                                                      *
+                Kinds and levity
+*                                                                      *
+********************************************************************* -}
+
 -- For information about the usage of the following type, see Note [TYPE]
--- in module Kind
+-- in module TysPrim
 levityTy :: Type
 levityTy = mkTyConTy levityTyCon
 
@@ -699,6 +736,12 @@ unicodeStarKindTyCon  = mkSynonymTyCon unicodeStarKindTyConName
                                        liftedTypeKind
                                        [] []
                                        (tYPE liftedDataConTy)
+
+{- *********************************************************************
+*                                                                      *
+     The boxed primitive types: Char, Int, etc
+*                                                                      *
+********************************************************************* -}
 
 charTy :: Type
 charTy = mkTyConTy charTyCon

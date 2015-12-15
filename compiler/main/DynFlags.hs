@@ -423,7 +423,6 @@ data GeneralFlag
    | Opt_Ticky_Allocd
    | Opt_Ticky_LNE
    | Opt_Ticky_Dyn_Thunk
-   | Opt_Static
    | Opt_RPath
    | Opt_RelativeDynlibPaths
    | Opt_Hpc
@@ -504,7 +503,7 @@ data WarningFlag =
    | Opt_WarnUnusedPatternBinds
    | Opt_WarnUnusedImports
    | Opt_WarnUnusedMatches
-   | Opt_WarnContextQuantification
+   | Opt_WarnContextQuantification    -- remove in 8.2
    | Opt_WarnWarningsDeprecations
    | Opt_WarnDeprecatedFlags
    | Opt_WarnAMP -- Introduced in GHC 7.8, obsolete since 7.10
@@ -566,6 +565,7 @@ data ExtensionFlag
    | Opt_OverlappingInstances
    | Opt_UndecidableInstances
    | Opt_IncoherentInstances
+   | Opt_UndecidableSuperClasses
    | Opt_MonomorphismRestriction
    | Opt_MonoPatBinds
    | Opt_MonoLocalBinds
@@ -1328,14 +1328,6 @@ wayUnsetGeneralFlags _ WayDyn      = [-- There's no point splitting objects
                                       Opt_SplitSections]
 wayUnsetGeneralFlags _ WayProf     = []
 wayUnsetGeneralFlags _ WayEventLog = []
-
-wayExtras :: Platform -> Way -> DynFlags -> DynFlags
-wayExtras _ (WayCustom {}) dflags = dflags
-wayExtras _ WayThreaded dflags = dflags
-wayExtras _ WayDebug    dflags = dflags
-wayExtras _ WayDyn      dflags = dflags
-wayExtras _ WayProf     dflags = dflags
-wayExtras _ WayEventLog dflags = dflags
 
 wayOptc :: Platform -> Way -> [String]
 wayOptc _ (WayCustom {}) = []
@@ -2162,10 +2154,7 @@ parseDynamicFlagsFull activeFlags cmdline dflags0 args = do
 updateWays :: DynFlags -> DynFlags
 updateWays dflags
     = let theWays = sort $ nub $ ways dflags
-          f = if WayDyn `elem` theWays then unSetGeneralFlag'
-                                       else setGeneralFlag'
-      in f Opt_Static
-       $ dflags {
+      in dflags {
              ways        = theWays,
              buildTag    = mkBuildTag (filter (not . wayRTSOnly) theWays),
              rtsBuildTag = mkBuildTag                            theWays
@@ -2904,7 +2893,8 @@ fWarningFlags = [
   flagSpec "warn-dodgy-foreign-imports"       Opt_WarnDodgyForeignImports,
   flagSpec "warn-dodgy-imports"               Opt_WarnDodgyImports,
   flagSpec "warn-empty-enumerations"          Opt_WarnEmptyEnumerations,
-  flagSpec "warn-context-quantification"      Opt_WarnContextQuantification,
+  flagSpec' "warn-context-quantification"      Opt_WarnContextQuantification
+    (\_ -> deprecate "it is subsumed by an error message that cannot be disabled"),
   flagSpec' "warn-duplicate-constraints"      Opt_WarnDuplicateConstraints
     (\_ -> deprecate "it is subsumed by -fwarn-redundant-constraints"),
   flagSpec "warn-redundant-constraints"       Opt_WarnRedundantConstraints,
@@ -3272,6 +3262,7 @@ xFlags = [
   flagSpec "TypeSynonymInstances"             Opt_TypeSynonymInstances,
   flagSpec "UnboxedTuples"                    Opt_UnboxedTuples,
   flagSpec "UndecidableInstances"             Opt_UndecidableInstances,
+  flagSpec "UndecidableSuperClasses"          Opt_UndecidableSuperClasses,
   flagSpec "UnicodeSyntax"                    Opt_UnicodeSyntax,
   flagSpec "UnliftedFFITypes"                 Opt_UnliftedFFITypes,
   flagSpec "ViewPatterns"                     Opt_ViewPatterns
@@ -3302,8 +3293,7 @@ defaultFlags settings
 
     ++ (if pc_DYNAMIC_BY_DEFAULT (sPlatformConstants settings)
         then wayGeneralFlags platform WayDyn
-        else [Opt_Static])
-        -- Opt_Static needs to be set if and only if WayDyn is not used (#7478)
+        else [])
 
     where platform = sTargetPlatform settings
 
@@ -3473,7 +3463,6 @@ standardWarnings -- see Note [Documenting warning flags]
         Opt_WarnInlineRuleShadowing,
         Opt_WarnAlternativeLayoutRuleTransitional,
         Opt_WarnUnsupportedLlvmVersion,
-        Opt_WarnContextQuantification,
         Opt_WarnTabs
       ]
 
@@ -3697,12 +3686,11 @@ addWay w = upd (addWay' w)
 addWay' :: Way -> DynFlags -> DynFlags
 addWay' w dflags0 = let platform = targetPlatform dflags0
                         dflags1 = dflags0 { ways = w : ways dflags0 }
-                        dflags2 = wayExtras platform w dflags1
-                        dflags3 = foldr setGeneralFlag' dflags2
+                        dflags2 = foldr setGeneralFlag' dflags1
                                         (wayGeneralFlags platform w)
-                        dflags4 = foldr unSetGeneralFlag' dflags3
+                        dflags3 = foldr unSetGeneralFlag' dflags2
                                         (wayUnsetGeneralFlags platform w)
-                    in dflags4
+                    in dflags3
 
 removeWayDyn :: DynP ()
 removeWayDyn = upd (\dfs -> dfs { ways = filter (WayDyn /=) (ways dfs) })
@@ -4170,7 +4158,7 @@ picCCOpts dflags
       -- correctly.  They need to reference data in the Haskell
       -- objects, but can't without -fPIC.  See
       -- http://ghc.haskell.org/trac/ghc/wiki/Commentary/PositionIndependentCode
-       | gopt Opt_PIC dflags || not (gopt Opt_Static dflags) ->
+       | gopt Opt_PIC dflags || WayDyn `elem` ways dflags ->
           ["-fPIC", "-U__PIC__", "-D__PIC__"]
        | otherwise                             -> []
 
@@ -4302,7 +4290,7 @@ makeDynFlagsConsistent dflags
  | hscTarget dflags == HscLlvm &&
    not ((arch == ArchX86_64) && (os == OSLinux || os == OSDarwin || os == OSFreeBSD)) &&
    not ((isARM arch) && (os == OSLinux)) &&
-   (not (gopt Opt_Static dflags) || gopt Opt_PIC dflags)
+   (gopt Opt_PIC dflags || WayDyn `elem` ways dflags)
     = if cGhcWithNativeCodeGen == "YES"
       then let dflags' = dflags { hscTarget = HscAsm }
                warn = "Using native code generator rather than LLVM, as LLVM is incompatible with -fPIC and -dynamic on this platform"

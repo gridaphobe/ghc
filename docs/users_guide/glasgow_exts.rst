@@ -5751,6 +5751,87 @@ A small example:
 Note that deriving ``Eq`` is necessary for the pattern matching to work
 since it gets translated into an equality comparison.
 
+.. _overloaded-labels:
+
+Overloaded labels
+-----------------
+
+GHC supports *overloaded labels*, a form of identifier whose interpretation may
+depend both on its type and on its literal text.  When the
+``-XOverloadedLabels`` extension is enabled, an overloaded label can written
+with a prefix hash, for example ``#foo``.  The type of this expression is
+``IsLabel "foo" a => a``.
+
+The class ``IsLabel`` is defined as:
+
+::
+
+    class IsLabel (x :: Symbol) a where
+      fromLabel :: Proxy# x -> a
+
+This is rather similar to the class ``IsString`` (see
+:ref:`overloaded-strings`), but with an additional type parameter that makes the
+text of the label available as a type-level string (see
+:ref:`type-level-literals`).
+
+There are no predefined instances of this class.  It is not in scope by default,
+but can be brought into scope by importing
+:base-ref:`GHC.OverloadedLabels <GHC-OverloadedLabels.html>`:.  Unlike
+``IsString``, there are no special defaulting rules for ``IsLabel``.
+
+During typechecking, GHC will replace an occurrence of an overloaded label like
+``#foo`` with
+
+::
+
+    fromLabel (proxy# :: Proxy# "foo")
+
+This will have some type ``alpha`` and require the solution of a class
+constraint ``IsLabel "foo" alpha``.
+
+The intention is for ``IsLabel`` to be used to support overloaded record fields
+and perhaps anonymous records.  Thus, it may be given instances for base
+datatypes (in particular ``(->)``) in the future.
+
+When writing an overloaded label, there must be no space between the hash sign
+and the following identifier.  :ref:`magic-hash` makes use of postfix hash
+signs; if ``OverloadedLabels`` and ``MagicHash`` are both enabled then ``x#y``
+means ``x# y``, but if only ``OverloadedLabels`` is enabled then it means ``x
+#y``.  To avoid confusion, you are strongly encouraged to put a space before the
+hash when using ``OverloadedLabels``.
+
+When using ``OverloadedLabels`` (or ``MagicHash``) in a ``.hsc`` file (see
+:ref:`hsc2hs`), the hash signs must be doubled (write ``##foo`` instead of
+``#foo``) to avoid them being treated as ``hsc2hs`` directives.
+
+Here is an extension of the record access example in :ref:`type-level-literals`
+showing how an overloaded label can be used as a record selector:
+
+::
+
+    {-# LANGUAGE DataKinds, KindSignatures, MultiParamTypeClasses,
+                 FunctionalDependencies, FlexibleInstances,
+                 OverloadedLabels, ScopedTypeVariables #-}
+
+    import GHC.OverloadedLabels (IsLabel(..))
+    import GHC.TypeLits (Symbol)
+
+    data Label (l :: Symbol) = Get
+
+    class Has a l b | a l -> b where
+      from :: a -> Label l -> b
+
+    data Point = Point Int Int deriving Show
+
+    instance Has Point "x" Int where from (Point x _) _ = x
+    instance Has Point "y" Int where from (Point _ y) _ = y
+
+    instance Has a l b => IsLabel l (a -> b) where
+      fromLabel _ x = from x (Get :: Label l)
+
+    example = #x (Point 1 2)
+
+
 .. _overloaded-lists:
 
 Overloaded lists
@@ -5914,6 +5995,55 @@ capability the ``OverloadedLists`` extension will be in a good position
 to subsume the ``OverloadedStrings`` extension (currently, as a special
 case, string literals benefit from statically allocated compact
 representation).
+
+Undecidable (or recursive) superclasses
+---------------------------------------
+
+The language extension ``-XUndecidableSuperClasses`` allows much more flexible
+constraints in superclasses.
+
+A class cannot generally have itself as a superclass. So this is illegal ::
+
+    class C a => D a where ...
+    class D a => C a where ...
+
+GHC implements this test conservatively when type functions, or type variables,
+are involved. For example ::
+
+    type family F a :: Constraint
+    class F a => C a where ...
+
+GHC will complain about this, because you might later add ::
+
+    type instance F Int = C Int
+
+and now we'd be in a superclass loop.  Here's an example involving a type variable ::
+
+   class f (C f) => C f
+   class c       => Id c
+
+If we expanded the superclasses of ``C Id`` we'd get first ``Id (C Id)`` and
+thence ``C Id`` again.
+
+But superclass constraints like these are sometimes useful, and the conservative
+check is annoying where no actual recursion is involved.
+
+Moreover genuninely-recursive superclasses are sometimes useful. Here's a real-life
+example (Trac #10318) ::
+
+     class (Frac (Frac a) ~ Frac a,
+            Fractional (Frac a),
+            IntegralDomain (Frac a))
+         => IntegralDomain a where
+      type Frac a :: *
+
+Here the superclass cycle does terminate but it's not entirely straightforward
+to see that it does.
+
+With the language extension ``-XUndecidableSuperClasses`` GHC lifts all restrictions
+on superclass constraints. If there really *is* a loop, GHC will only
+expand it to finite depth.
+
 
 .. _type-families:
 
@@ -8157,6 +8287,7 @@ the source location of the call onto the ``CallStack`` in the
 environment. For example
 
 ::
+
    myerror :: (?callStack :: CallStack) => String -> a
    myerror msg = error (msg ++ "\n" ++ prettyCallStack ?callStack)
 
@@ -8173,10 +8304,11 @@ The ``CallStack`` will only extend as far as the types allow it, for
 example
 
 ::
+
    head :: (?callStack :: CallStack) => [a] -> a
    head []     = myerror "empty"
    head (x:xs) = x
-   
+
    bad :: Int
    bad = head []
 
@@ -8397,8 +8529,8 @@ example:
 
 As of GHC 7.10, this is deprecated. The
 ``-fwarn-context-quantification`` flag detects this situation and issues
-a warning. In GHC 7.12, declarations such as ``MkSwizzle'`` will cause
-an out-of-scope error.
+a warning. In GHC 8.0 this flag was deprecated and declarations such as
+``MkSwizzle'`` will cause an out-of-scope error.
 
 As for type signatures, implicit quantification happens for
 non-overloaded types too. So if you write this:
@@ -12852,27 +12984,17 @@ optionally had by adding ``!`` in front of a variable.
      let !pat = ...
 
    Adding ``~`` in front of ``x`` gives the regular lazy
-   behavior. Notice that we do not put bangs on nested patterns. For
-   example ::
+   behavior.
+   The general rule is that we add an implicit bang on the outermost pattern,
+   unless disabled with ``~``.
 
-     let (p,q) = if flob then (undefined, undefined) else (True, False)
-     in ...
+-  **Pattern matching in case expressions, lambdas, do-notation, etc**
 
-   will behave like ::
-
-     let !(p,q) = if flob then (undefined, undefined) else (True,False)
-     in ...
-
-   which will strictly evaluate the right hand side, and bind ``p``
-   and ``q`` to the components of the pair. But the pair itself is
-   lazy (unless we also compile the ``Prelude`` with ``Strict``; see
-   :ref:`strict-modularity` below). So ``p`` and ``q`` may end up bound to
-   undefined. See also :ref:`recursive-and-polymorphic-let-bindings` below.
-
--  **Case expressions.**
-
-   The patterns of a case expression get an implicit bang, unless
-   disabled with ``~``. For example ::
+   The outermost pattern of all pattern matches gets an implicit bang,
+   unless disabled with ``~``.
+   This applies to case expressions, patterns in lambda, do-notation,
+   list comprehension, and so on.
+   For example ::
 
        case x of (a,b) -> rhs
 
@@ -12896,6 +13018,33 @@ optionally had by adding ``!`` in front of a variable.
 
    is lazy in Haskell; but with ``Strict`` the added bang makes it
    strict.
+
+   Similarly ::
+
+      \ x -> body
+      do { x <- rhs; blah }
+      [ e | x <- rhs; blah }
+
+   all get implicit bangs on the ``x`` pattern.
+
+-  ** Nested patterns **
+
+   Notice that we do *not* put bangs on nested patterns. For
+   example ::
+
+     let (p,q) = if flob then (undefined, undefined) else (True, False)
+     in ...
+
+   will behave like ::
+
+     let !(p,q) = if flob then (undefined, undefined) else (True,False)
+     in ...
+
+   which will strictly evaluate the right hand side, and bind ``p``
+   and ``q`` to the components of the pair. But the pair itself is
+   lazy (unless we also compile the ``Prelude`` with ``Strict``; see
+   :ref:`strict-modularity` below). So ``p`` and ``q`` may end up bound to
+   undefined. See also :ref:`recursive-and-polymorphic-let-bindings` below.
 
 -  **Top level bindings.**
 
