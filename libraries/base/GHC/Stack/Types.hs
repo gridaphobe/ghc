@@ -1,4 +1,7 @@
 {-# LANGUAGE NoImplicitPrelude #-}
+{-# OPTIONS_HADDOCK hide #-}
+-- we hide this module from haddock to enforce GHC.Stack as the main
+-- access point.
 
 -----------------------------------------------------------------------------
 -- |
@@ -11,14 +14,14 @@
 -- Portability :  non-portable (GHC Extensions)
 --
 -- type definitions for call-stacks via implicit parameters.
--- Use GHC.Exts from the base package instead of importing this
+-- Use GHC.Stack from the base package instead of importing this
 -- module directly.
 --
 -----------------------------------------------------------------------------
 
 module GHC.Stack.Types (
     -- * Implicit parameter call stacks
-    CallStack, emptyCallStack, freezeCallStack, getCallStack, pushCallStack,
+    CallStack(..), emptyCallStack, freezeCallStack, getCallStack, pushCallStack,
     -- * Source locations
     SrcLoc(..)
   ) where
@@ -87,9 +90,13 @@ data CallStack
     -- ^ Freeze the stack at the given @CallStack@, preventing any further
     -- call-sites from being pushed onto it.
 
--- data CallStack = CallStack { getCallStack :: [([Char], SrcLoc)] }
   -- See Note [Overview of implicit CallStacks]
 
+-- | Extract a list of call-sites from the 'CallStack'.
+--
+-- The list is ordered by most recent call.
+--
+-- @since 4.8.1.0
 getCallStack :: CallStack -> [([Char], SrcLoc)]
 getCallStack stk = case stk of
   EmptyCallStack        -> []
@@ -115,6 +122,8 @@ getCallStack stk = case stk of
 
 -- | Push a call-site onto the stack.
 --
+-- This function has no effect on a frozen 'CallStack'.
+--
 -- @since 4.9.0.0
 pushCallStack :: ([Char], SrcLoc) -> CallStack -> CallStack
 pushCallStack cs stk = case stk of
@@ -122,11 +131,8 @@ pushCallStack cs stk = case stk of
   _                 -> PushCallStack cs stk
 {-# INLINE pushCallStack #-}
 
-{- RULES
-"pushCallStack/freeze" forall cs stk. pushCallStack cs (FreezeCallStack stk) = FreezeCallStack stk
-  -}
 
--- | The empty call-stack.
+-- | The empty 'CallStack'.
 --
 -- @since 4.9.0.0
 emptyCallStack :: CallStack

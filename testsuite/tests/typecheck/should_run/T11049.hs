@@ -1,5 +1,5 @@
-{-# LANGUAGE ImplicitParams #-}
-import GHC.Stack.Types
+{-# LANGUAGE ImplicitParams, RankNTypes #-}
+import GHC.Stack
 
 foo :: (?callStack :: CallStack) => [Int]
 foo = map (srcLocStartLine . snd) (getCallStack ?callStack)
@@ -14,3 +14,4 @@ main :: IO ()
 main = do
   print bar1
   print bar2
+  withFrozenCallStack (error "look ma, no stack!")

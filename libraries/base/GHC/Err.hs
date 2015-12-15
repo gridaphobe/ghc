@@ -36,6 +36,8 @@ error :: (?callStack :: CallStack) => [Char] -> a
 error s = raise# (errorCallWithCallStackException s ?callStack)
 
 -- | A variant of 'error' that does not produce a stack trace.
+--
+-- @since 4.9.0.0
 errorWithoutStackTrace :: [Char] -> a
 errorWithoutStackTrace s
   = let ?callStack = freezeCallStack ?callStack
