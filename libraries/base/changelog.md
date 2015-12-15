@@ -37,6 +37,10 @@
   * New `GHC.Stack.Types` module now contains the definition of
     `CallStack` and `SrcLoc`
 
+  * New `GHC.Stack.Types.emptyCallStack` function builds an empty `CallStack`
+
+  * New `GHC.Stack.Types.freezeCallStack` function freezes a `CallStack` preventing future `pushCallStack` operations from having any effect
+
   * New `GHC.Stack.Types.pushCallStack` function pushes a call-site onto a `CallStack`
 
   * `GHC.SrcLoc` has been removed

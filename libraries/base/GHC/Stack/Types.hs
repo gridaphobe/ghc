@@ -18,7 +18,7 @@
 
 module GHC.Stack.Types (
     -- * Implicit parameter call stacks
-    CallStack, getCallStack, pushCallStack,
+    CallStack, emptyCallStack, freezeCallStack, getCallStack, pushCallStack,
     -- * Source locations
     SrcLoc(..)
   ) where
@@ -80,8 +80,21 @@ import GHC.Integer ()
 -- ordered with the most recently called function at the head.
 --
 -- @since 4.8.1.0
-data CallStack = CallStack { getCallStack :: [([Char], SrcLoc)] }
+data CallStack
+  = EmptyCallStack
+  | PushCallStack ([Char], SrcLoc) CallStack
+  | FreezeCallStack CallStack
+    -- ^ Freeze the stack at the given @CallStack@, preventing any further
+    -- call-sites from being pushed onto it.
+
+-- data CallStack = CallStack { getCallStack :: [([Char], SrcLoc)] }
   -- See Note [Overview of implicit CallStacks]
+
+getCallStack :: CallStack -> [([Char], SrcLoc)]
+getCallStack stk = case stk of
+  EmptyCallStack        -> []
+  PushCallStack cs stk' -> cs : getCallStack stk'
+  FreezeCallStack stk'  -> getCallStack stk'
 
 
 -- Note [Definition of CallStack]
@@ -104,8 +117,30 @@ data CallStack = CallStack { getCallStack :: [([Char], SrcLoc)] }
 --
 -- @since 4.9.0.0
 pushCallStack :: ([Char], SrcLoc) -> CallStack -> CallStack
-pushCallStack callSite (CallStack stk)
-  = CallStack (callSite : stk)
+pushCallStack cs stk = case stk of
+  FreezeCallStack _ -> stk
+  _                 -> PushCallStack cs stk
+{-# INLINE pushCallStack #-}
+
+{- RULES
+"pushCallStack/freeze" forall cs stk. pushCallStack cs (FreezeCallStack stk) = FreezeCallStack stk
+  -}
+
+-- | The empty call-stack.
+--
+-- @since 4.9.0.0
+emptyCallStack :: CallStack
+emptyCallStack = EmptyCallStack
+{-# INLINE emptyCallStack #-}
+
+-- | Freeze a call-stack, preventing any further call-sites from being appended.
+--
+-- prop> pushCallStack callSite (freezeCallStack callStack) = freezeCallStack callStack
+--
+-- @since 4.9.0.0
+freezeCallStack :: CallStack -> CallStack
+freezeCallStack stk = FreezeCallStack stk
+{-# INLINE freezeCallStack #-}
 
 
 -- | A single location in the source code.

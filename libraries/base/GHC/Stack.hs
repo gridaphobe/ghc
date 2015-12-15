@@ -23,7 +23,8 @@ module GHC.Stack (
     errorWithStackTrace,
 
     -- * Implicit parameter call stacks
-    CallStack, getCallStack, pushCallStack, prettyCallStack,
+    CallStack, emptyCallStack, freezeCallStack, getCallStack, pushCallStack,
+    prettyCallStack,
 
     -- * Source locations
     SrcLoc(..), prettySrcLoc,
