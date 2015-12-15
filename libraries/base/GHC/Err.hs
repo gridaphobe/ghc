@@ -52,4 +52,4 @@ undefined =  error "Prelude.undefined"
 -- | Used for compiler-generated error message;
 -- encoding saves bytes of string junk.
 absentErr :: a
-absentErr = error "Oops! The program has entered an `absent' argument!\n"
+absentErr = errorWithoutStackTrace "Oops! The program has entered an `absent' argument!\n"
