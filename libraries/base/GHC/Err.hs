@@ -21,7 +21,7 @@
 --
 -----------------------------------------------------------------------------
 
-module GHC.Err( absentErr, error, undefined ) where
+module GHC.Err( absentErr, error, errorWithoutStackTrace, undefined ) where
 import GHC.CString ()
 import GHC.Types (Char)
 import GHC.Stack.Types
@@ -34,6 +34,13 @@ import {-# SOURCE #-} GHC.Exception( errorCallWithCallStackException )
 -- | 'error' stops execution and displays an error message.
 error :: (?callStack :: CallStack) => [Char] -> a
 error s = raise# (errorCallWithCallStackException s ?callStack)
+
+-- | A variant of 'error' that does not produce a stack trace.
+errorWithoutStackTrace :: [Char] -> a
+errorWithoutStackTrace s
+  = let ?callStack = freezeCallStack ?callStack
+    in error s
+{-# NOINLINE errorWithoutStackTrace #-}
 
 -- | A special case of 'error'.
 -- It is expected that compilers will recognize this and insert error

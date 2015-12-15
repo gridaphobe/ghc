@@ -4,6 +4,10 @@
 
   * Bundled with GHC 8.0
 
+  * `error` and `undefined` now print a partial stack-trace alongside the error message.
+
+  * New `errorWithoutStackTrace` function throws an error without printing the stack trace.
+
   * The restore operation provided by `mask` and `uninterruptibleMask` now
     restores the previous masking state whatever the current masking state is.
 
