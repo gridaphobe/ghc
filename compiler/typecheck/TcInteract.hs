@@ -170,11 +170,15 @@ solveSimpleWanteds simples
      = return (n,wc)
 
      | otherwise
-     = do { -- Solve
-            (unif_count, wc1) <- solve_simple_wanteds wc
-
+     = do {
             -- Run plugins
-          ; (rerun_plugin, wc2) <- runTcPluginsWanted wc1
+          ; (rerun_plugin, wc1) <- runTcPluginsWanted wc
+
+            -- Solve
+          ; (unif_count, wc2) <- solve_simple_wanteds wc1
+
+          ; traceTcS "solveSimpleWanteds done:" (ppr wc2)
+
              -- See Note [Running plugins on unflattened wanteds]
 
           ; if unif_count == 0 && not rerun_plugin
@@ -269,6 +273,8 @@ runTcPluginsWanted wc@(WC { wc_simple = simples1, wc_insol = insols1, wc_impl = 
        ; let (_, _,                solved_wanted)   = pluginSolvedCts p
              (_, unsolved_derived, unsolved_wanted) = pluginInputCts p
              new_wanted                             = pluginNewCts p
+
+       ; traceTcS "tc-plugin-done" (ppr (pluginBadCts p, unsolved_wanted))
 
 -- SLPJ: I'm deeply suspicious of this
 --       ; updInertCans (removeInertCts $ solved_givens ++ solved_deriveds)

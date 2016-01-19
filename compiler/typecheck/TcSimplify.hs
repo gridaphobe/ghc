@@ -520,7 +520,9 @@ simplifyInfer rhs_tclvl apply_mr sigs name_taus wanteds
                   -- the False says we don't really need to solve all Deriveds
               ; runTcSWithEvBinds False (Just ev_binds_var) $
                 solveWanteds (wanteds `addSimples` listToBag sig_derived) }
+       ; traceTc "simplifyInfer wanted_transformed:" (ppr wanted_transformed_incl_derivs)
        ; wanted_transformed_incl_derivs <- TcM.zonkWC wanted_transformed_incl_derivs
+       ; traceTc "simplifyInfer wanted_transformed:" (ppr wanted_transformed_incl_derivs)
 
        -- Find quant_pred_candidates, the predicates that
        -- we'll consider quantifying over
