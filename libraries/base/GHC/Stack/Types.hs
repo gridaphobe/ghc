@@ -1,4 +1,10 @@
 {-# LANGUAGE NoImplicitPrelude #-}
+{-# LANGUAGE ConstraintKinds   #-}
+{-# LANGUAGE ImplicitParams    #-}
+{-# LANGUAGE KindSignatures    #-}
+{-# LANGUAGE PolyKinds         #-}
+{-# LANGUAGE RankNTypes        #-}
+
 {-# OPTIONS_HADDOCK hide #-}
 -- we hide this module from haddock to enforce GHC.Stack as the main
 -- access point.
@@ -13,15 +19,17 @@
 -- Stability   :  internal
 -- Portability :  non-portable (GHC Extensions)
 --
--- type definitions for call-stacks via implicit parameters.
+-- type definitions for implicit call-stacks.
 -- Use "GHC.Stack" from the base package instead of importing this
 -- module directly.
 --
 -----------------------------------------------------------------------------
 
 module GHC.Stack.Types (
-    -- * Implicit parameter call stacks
-    CallStack(..), emptyCallStack, freezeCallStack, getCallStack, pushCallStack,
+    -- * Implicit call stacks
+    CallStack(..), HasCallStack,
+    emptyCallStack, freezeCallStack, getCallStack, pushCallStack, setCallStack,
+
     -- * Source locations
     SrcLoc(..)
   ) where
@@ -49,6 +57,11 @@ import GHC.Integer ()
 -- Explicit call-stacks built via ImplicitParams
 ----------------------------------------------------------------------
 
+-- | Request a CallStack.
+--
+-- @since 4.9.0.0
+type HasCallStack = (?callStack :: CallStack)
+
 -- | Implicit @CallStack@s are an alternate method of obtaining the call stack
 -- at a given point in the program.
 --
@@ -64,8 +77,8 @@ import GHC.Integer ()
 -- parameters. For example:
 --
 -- @
--- myerror :: (?callStack :: CallStack) => String -> a
--- myerror msg = error (msg ++ "\n" ++ prettyCallStack ?callStack)
+-- myerror :: HasCallStack => String -> a
+-- myerror msg = error (msg ++ "\n" ++ prettyCallStack callStack)
 -- @
 --
 -- Will produce the following when evaluated,
@@ -143,6 +156,7 @@ emptyCallStack :: CallStack
 emptyCallStack = EmptyCallStack
 {-# INLINE emptyCallStack #-}
 
+
 -- | Freeze a call-stack, preventing any further call-sites from being appended.
 --
 -- prop> pushCallStack callSite (freezeCallStack callStack) = freezeCallStack callStack
@@ -151,6 +165,19 @@ emptyCallStack = EmptyCallStack
 freezeCallStack :: CallStack -> CallStack
 freezeCallStack stk = FreezeCallStack stk
 {-# INLINE freezeCallStack #-}
+
+
+-- | Override the 'CallStack' for a computation.
+--
+-- @since 4.9.0.0
+
+-- setCallStack is levity-polymorphic because we use it in
+-- GHC.Err.errorWithoutStackTrace
+setCallStack :: forall (v :: Levity). forall (a :: TYPE v).
+                CallStack -> (HasCallStack => a) -> a
+setCallStack stk do_this =
+  let ?callStack = stk in do_this
+{-# INLINE setCallStack #-}
 
 
 -- | A single location in the source code.

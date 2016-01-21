@@ -17,14 +17,15 @@
 
 {-# LANGUAGE MagicHash, NoImplicitPrelude, ImplicitParams, RankNTypes #-}
 module GHC.Stack (
-    -- * Call stacks
+    -- * Profiling call stacks
     currentCallStack,
     whoCreated,
     errorWithStackTrace,
 
-    -- * Implicit parameter call stacks
-    CallStack, emptyCallStack, freezeCallStack, getCallStack, popCallStack,
-    prettyCallStack, pushCallStack, withFrozenCallStack,
+    -- * Implicit call stacks
+    CallStack, HasCallStack, callStack, emptyCallStack, freezeCallStack,
+    getCallStack, popCallStack, prettyCallStack, pushCallStack,
+    setCallStack, withFrozenCallStack,
 
     -- * Source locations
     SrcLoc(..), prettySrcLoc,
@@ -75,16 +76,23 @@ popCallStack stk = case stk of
   EmptyCallStack       -> errorWithoutStackTrace "popCallStack: empty stack"
   PushCallStack _ stk' -> stk'
   FreezeCallStack _    -> stk
+{-# INLINE popCallStack #-}
 
+-- | Return the current 'CallStack'.
+--
+-- @since 4.9.0.0
+callStack :: HasCallStack => CallStack
+callStack = popCallStack ?callStack
+{-# INLINE callStack #-}
 
 -- | Perform some computation without adding new entries to the 'CallStack'.
 --
 -- @since 4.9.0.0
-withFrozenCallStack :: (?callStack :: CallStack)
-                    => ( (?callStack :: CallStack) => a )
+withFrozenCallStack :: HasCallStack
+                    => ( HasCallStack => a )
                     -> a
 withFrozenCallStack do_this =
-                   -- we pop the stack before freezing it to remove
-                   -- withFrozenCallStack's call-site
-  let ?callStack = freezeCallStack (popCallStack ?callStack)
-  in do_this
+  -- we pop the stack before freezing it to remove
+  -- withFrozenCallStack's call-site
+  let stk = freezeCallStack (popCallStack callStack)
+  in setCallStack stk do_this
