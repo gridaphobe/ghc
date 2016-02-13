@@ -1707,12 +1707,12 @@ staticPtrInfoTyConKey = mkPreludeTyConUnique 181
 callStackTyConKey :: Unique
 callStackTyConKey = mkPreludeTyConUnique 182
 
+hasCallStackTyConKey :: Unique
+hasCallStackTyConKey = mkPreludeTyConUnique 183
+
 -- Typeables
 typeRepTyConKey :: Unique
-typeRepTyConKey = mkPreludeTyConUnique 183
-
-hasCallStackTyConKey :: Unique
-hasCallStackTyConKey = mkPreludeTyConUnique 184
+typeRepTyConKey = mkPreludeTyConUnique 184
 
 ---------------- Template Haskell -------------------
 --      THNames.hs: USES TyConUniques 200-299

@@ -56,7 +56,7 @@ import Util
 import BasicTypes
 import Outputable
 import Type(mkStrLitTy, tidyOpenType)
-import PrelNames( mkUnboundName, gHC_PRIM, ipClassName )
+import PrelNames( mkUnboundName, gHC_PRIM, ipClassName, hasCallStackTyConName )
 import TcValidity (checkValidType)
 import qualified GHC.LanguageExtensions as LangExt
 
@@ -830,9 +830,10 @@ chooseInferredQuantifiers :: TcThetaType   -- inferred
                           -> Maybe TcIdSigInfo
                           -> TcM ([TcTyBinder], TcThetaType)
 chooseInferredQuantifiers inferred_theta tau_tvs qtvs Nothing
-  = do { let free_tvs = closeOverKinds (growThetaTyVars inferred_theta tau_tvs)
+  = do { hasCallStack <- mkTyConTy <$> tcLookupTyCon hasCallStackTyConName
+       ; let free_tvs = closeOverKinds (growThetaTyVars inferred_theta tau_tvs)
                         -- Include kind variables!  Trac #7916
-             my_theta = pickQuantifiablePreds free_tvs inferred_theta
+             my_theta = pickQuantifiablePreds free_tvs hasCallStack inferred_theta
              binders  = [ mkNamedBinder tv Invisible
                         | tv <- qtvs
                         , tv `elemVarSet` free_tvs ]
@@ -854,9 +855,10 @@ chooseInferredQuantifiers inferred_theta tau_tvs qtvs
   | PartialSig { sig_cts = extra } <- bndr_info
   , Just loc <- extra
   = do { annotated_theta <- zonkTcTypes annotated_theta
+       ; hasCallStack <- mkTyConTy <$> tcLookupTyCon hasCallStackTyConName
        ; let free_tvs = closeOverKinds (tyCoVarsOfTypes annotated_theta
                                         `unionVarSet` tau_tvs)
-             my_theta = pickQuantifiablePreds free_tvs inferred_theta
+             my_theta = pickQuantifiablePreds free_tvs hasCallStack inferred_theta
 
        -- Report the inferred constraints for an extra-constraints wildcard/hole as
        -- an error message, unless the PartialTypeSignatures flag is enabled. In this

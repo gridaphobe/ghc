@@ -644,6 +644,16 @@ Important Details:
   preferring to default them to empty CallStacks at that point.
   (see TcSimplify.simplifyInfer and TcSimplify.dropCallStacks)
 
+- We try to hide the implicit parameter from the user, since the name
+  is irrelevant, and instead use a type synonym
+
+    type HasCallStack = ?callStack::CallStack
+
+  defined in GHC.Stack.Types. However, GHC will still infer
+  ?callStack::CallStack rather than HasCallStack, which is undesirable.
+  So we replace the inferred constraints with a HasCallStack constraint
+  in TcType.pickQuantifiablePreds.
+
 -}
 
 mkEvCast :: EvTerm -> TcCoercion -> EvTerm

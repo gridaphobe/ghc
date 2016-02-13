@@ -27,6 +27,7 @@ import Outputable
 import Pair
 import PrelInfo
 import PrelNames
+import TcEnv
 import TcErrors
 import TcEvidence
 import TcInteract
@@ -783,7 +784,8 @@ decideQuantification apply_mr sigs name_taus constraints
                  -- quantiyTyVars turned some meta tyvars into
                  -- quantified skolems, so we have to zonk again
 
-       ; let theta     = pickQuantifiablePreds (mkVarSet qtvs) constraints
+       ; hasCallStack <- mkTyConTy <$> tcLookupTyCon hasCallStackTyConName
+       ; let theta     = pickQuantifiablePreds (mkVarSet qtvs) hasCallStack constraints
              min_theta = mkMinimalBySCs theta
                -- See Note [Minimize by Superclasses]
 
