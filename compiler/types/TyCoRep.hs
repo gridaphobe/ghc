@@ -121,7 +121,8 @@ module TyCoRep (
 import {-# SOURCE #-} DataCon( dataConTyCon, dataConFullSig
                               , DataCon, eqSpecTyVar )
 import {-# SOURCE #-} Type( isPredTy, isCoercionTy, mkAppTy
-                          , partitionInvisibles, coreView, typeKind )
+                          , partitionInvisibles, coreView, typeKind
+                          , splitTyConApp_maybe )
    -- Transitively pulls in a LOT of stuff, better to break the loop
 
 import {-# SOURCE #-} Coercion
@@ -2626,6 +2627,13 @@ pprTyTcApp :: TyPrec -> TyCon -> [Type] -> SDoc
 -- Used for types only; so that we can make a
 -- special case for type-level lists
 pprTyTcApp p tc tys
+  | tc `hasKey` ipClassKey
+  , [LitTy (StrTyLit n),ty] <- tys
+  , n == fsLit "callStack"
+  , Just (tc', []) <- splitTyConApp_maybe ty
+  , tc' `hasKey` callStackTyConKey
+  = ppr hasCallStackTyConName
+
   | tc `hasKey` ipClassKey
   , [LitTy (StrTyLit n),ty] <- tys
   = maybeParen p FunPrec $

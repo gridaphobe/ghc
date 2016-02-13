@@ -328,7 +328,7 @@ basicKnownKeyNames
         ipClassName,
 
         -- Call Stacks
-        callStackTyConName,
+        callStackTyConName, hasCallStackTyConName,
         emptyCallStackName, pushCallStackName,
 
         -- Source Locations
@@ -1325,13 +1325,15 @@ ipClassName
 
 -- Source Locations
 callStackTyConName, emptyCallStackName, pushCallStackName,
-  srcLocDataConName :: Name
+  hasCallStackTyConName, srcLocDataConName :: Name
 callStackTyConName
   = tcQual gHC_STACK_TYPES  (fsLit "CallStack") callStackTyConKey
 emptyCallStackName
   = varQual gHC_STACK_TYPES (fsLit "emptyCallStack") emptyCallStackKey
 pushCallStackName
   = varQual gHC_STACK_TYPES (fsLit "pushCallStack") pushCallStackKey
+hasCallStackTyConName
+  = tcQual gHC_STACK_TYPES  (fsLit "HasCallStack") hasCallStackTyConKey
 srcLocDataConName
   = dcQual gHC_STACK_TYPES  (fsLit "SrcLoc")    srcLocDataConKey
 
@@ -1708,6 +1710,9 @@ callStackTyConKey = mkPreludeTyConUnique 182
 -- Typeables
 typeRepTyConKey :: Unique
 typeRepTyConKey = mkPreludeTyConUnique 183
+
+hasCallStackTyConKey :: Unique
+hasCallStackTyConKey = mkPreludeTyConUnique 184
 
 ---------------- Template Haskell -------------------
 --      THNames.hs: USES TyConUniques 200-299

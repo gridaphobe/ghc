@@ -2,5 +2,5 @@ AND HTrue HTrue :: *
 = HTrue
 AND (OR HFalse HTrue) (OR HTrue HFalse) :: *
 = HTrue
-t :: (?callStack::GHC.Stack.Types.CallStack) => HTrue
-t :: (?callStack::GHC.Stack.Types.CallStack) => HFalse
+t :: GHC.Stack.Types.HasCallStack => HTrue
+t :: GHC.Stack.Types.HasCallStack => HFalse
