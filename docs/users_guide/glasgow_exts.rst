@@ -12861,14 +12861,12 @@ GHC solves ``HasCallStack`` constraints in three steps:
    onto the existing ``CallStack``.
 
 2. If there is no ``CallStack`` in scope -- e.g. in the GHCi session
-   above -- and the enclosing definition does not have an explicit
-   type signature, GHC will infer a ``HasCallStack`` constraint for the
-   enclosing definition (subject to the monomorphism restriction).
+   above -- and are inside a local let-binder, GHC will infer a
+   ``HasCallStack`` constraint for the let-binder (subject to the
+   monomorphism restriction).
 
-3. If there is no ``CallStack`` in scope and the enclosing definition
-   has an explicit type signature, GHC will solve the ``HasCallStack``
-   constraint for the singleton ``CallStack`` containing just the
-   current call-site.
+3. Otherwise, GHC will solve the ``HasCallStack`` constraint for the
+   singleton ``CallStack`` containing just the current call-site.
 
 ``CallStack`` is kept abstract, but GHC provides a function ::
 

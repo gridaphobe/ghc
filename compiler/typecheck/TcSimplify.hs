@@ -569,12 +569,19 @@ simplifyInfer rhs_tclvl apply_mr sigs name_taus wanteds
 
        -- NB: quant_pred_candidates is already fully zonked
 
+       -- Don't quantify over CallStack constraints at the top-level.
+       -- See Note [Overview of implicit CallStacks]
+       ; let quant_without_callstack
+               = if rhs_tclvl == pushTcLevel topTcLevel
+                 then dropCallStacks sigs quant_pred_candidates
+                 else quant_pred_candidates
+
        -- Decide what type variables and constraints to quantify
        ; zonked_taus <- mapM (TcM.zonkTcType . snd) name_taus
        ; let zonked_tau_tkvs = splitDepVarsOfTypes zonked_taus
        ; (qtvs, bound_theta)
            <- decideQuantification apply_mr sigs name_taus
-                                   quant_pred_candidates zonked_tau_tkvs
+                                   quant_without_callstack zonked_tau_tkvs
 
          -- Promote any type variables that are free in the inferred type
          -- of the function:
@@ -650,6 +657,36 @@ mkSigDerivedWanteds (TISI { sig_bndr = PartialSig { sig_name = name }
                                            , ctev_loc = loc })
                | pred <- theta ] }
 mkSigDerivedWanteds _ = return []
+
+
+dropCallStacks :: [TcIdSigInfo] -> [PredType] -> [PredType]
+-- drop CallStack constraints if they don't appear in the sigs' theta
+-- see Note [Overview of implicit CallStacks]
+dropCallStacks sigs = filter keep_it
+  where
+  combined_theta = concatMap sig_theta sigs
+
+  elemType _ [] = False
+  elemType s (t:ts)
+    | s `eqType` t
+    = True
+    | otherwise
+    = elemType s ts
+
+  keep_it ty
+    -- this isn't quite right, as the combined_theta may come from two
+    -- mutually recursive functions, when only one might have had a
+    -- CallStack, yuck..
+    | ty `elemType` combined_theta
+    = True
+
+    | Just (_ip, ty') <- isIPPred_maybe ty
+    , Just (tc, [])   <- splitTyConApp_maybe ty'
+    , tc `hasKey` callStackTyConKey
+    = False
+
+    | otherwise
+    = True
 
 {- Note [Add deriveds for signature contexts]
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~

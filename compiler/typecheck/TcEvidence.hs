@@ -639,6 +639,11 @@ Important Details:
   This is a bit shady, but is how we ensure that the new wanted is
   solved like a regular IP.
 
+- We want CallStacks to be opt-in since they incur a runtime cost, so
+  we prevent quantification over CallStack constraints at the top-level,
+  preferring to default them to empty CallStacks at that point.
+  (see TcSimplify.simplifyInfer and TcSimplify.dropCallStacks)
+
 -}
 
 mkEvCast :: EvTerm -> TcCoercion -> EvTerm
