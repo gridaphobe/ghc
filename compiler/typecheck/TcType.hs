@@ -1741,6 +1741,10 @@ pickQuantifiablePreds top_lvl hasCallStack partial_theta qtvs theta
       | otherwise
       = False
 
+    -- Deciding whether to quantify over a CallStack implicit param is
+    -- a bit tricky. We want to avoid quantifying over them for top-level
+    -- definitions, but *must* quantify over them if we have a partial
+    -- sig that requests a CallStack. See Note [Overview of implicit CallStacks]
     handleCallStack str pred
       | isTopLevel top_lvl &&
         -- this isn't quite right, as the partial_theta may come
