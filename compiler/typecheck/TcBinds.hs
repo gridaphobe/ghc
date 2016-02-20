@@ -56,7 +56,7 @@ import Util
 import BasicTypes
 import Outputable
 import Type(mkStrLitTy, tidyOpenType)
-import PrelNames( mkUnboundName, gHC_PRIM, ipClassName, hasCallStackTyConName )
+import PrelNames( mkUnboundName, gHC_PRIM, ipClassName )
 import TcValidity (checkValidType)
 import qualified GHC.LanguageExtensions as LangExt
 
@@ -521,7 +521,7 @@ tcPolyBinds top_lvl sig_fn prag_fn rec_group rec_tc bind_list
     ; traceTc "Generalisation plan" (ppr plan)
     ; result@(tc_binds, poly_ids) <- case plan of
          NoGen              -> tcPolyNoGen rec_tc prag_fn sig_fn bind_list
-         InferGen mn        -> tcPolyInfer rec_tc prag_fn sig_fn mn bind_list
+         InferGen mn        -> tcPolyInfer rec_tc top_lvl prag_fn sig_fn mn bind_list
          CheckGen lbind sig -> tcPolyCheck rec_tc prag_fn sig lbind
 
         -- Check whether strict bindings are ok
@@ -668,11 +668,12 @@ Here are the details:
 tcPolyInfer
   :: RecFlag       -- Whether it's recursive after breaking
                    -- dependencies based on type signatures
+  -> TopLevelFlag
   -> TcPragEnv -> TcSigFun
   -> Bool         -- True <=> apply the monomorphism restriction
   -> [LHsBind Name]
   -> TcM (LHsBinds TcId, [TcId])
-tcPolyInfer rec_tc prag_fn tc_sig_fn mono bind_list
+tcPolyInfer rec_tc top_lvl prag_fn tc_sig_fn mono bind_list
   = do { (tclvl, wanted, (binds', mono_infos, wrappers, insted_tys))
              <- pushLevelAndCaptureConstraints  $
              do { (binds', mono_infos)
@@ -697,7 +698,7 @@ tcPolyInfer rec_tc prag_fn tc_sig_fn mono bind_list
 
        ; traceTc "simplifyInfer call" (ppr tclvl $$ ppr name_taus $$ ppr wanted)
        ; (qtvs, givens, ev_binds)
-                 <- simplifyInfer tclvl mono sigs name_taus wanted
+                 <- simplifyInfer tclvl top_lvl mono sigs name_taus wanted
 
        ; let inferred_theta = map evVarPred givens
        ; exports <- checkNoErrs $
@@ -830,10 +831,9 @@ chooseInferredQuantifiers :: TcThetaType   -- inferred
                           -> Maybe TcIdSigInfo
                           -> TcM ([TcTyBinder], TcThetaType)
 chooseInferredQuantifiers inferred_theta tau_tvs qtvs Nothing
-  = do { hasCallStack <- mkTyConTy <$> tcLookupTyCon hasCallStackTyConName
-       ; let free_tvs = closeOverKinds (growThetaTyVars inferred_theta tau_tvs)
+  = do { let free_tvs = closeOverKinds (growThetaTyVars inferred_theta tau_tvs)
                         -- Include kind variables!  Trac #7916
-             my_theta = pickQuantifiablePreds free_tvs hasCallStack inferred_theta
+             my_theta = pickQuantifiablePreds free_tvs inferred_theta
              binders  = [ mkNamedBinder tv Invisible
                         | tv <- qtvs
                         , tv `elemVarSet` free_tvs ]
@@ -855,10 +855,9 @@ chooseInferredQuantifiers inferred_theta tau_tvs qtvs
   | PartialSig { sig_cts = extra } <- bndr_info
   , Just loc <- extra
   = do { annotated_theta <- zonkTcTypes annotated_theta
-       ; hasCallStack <- mkTyConTy <$> tcLookupTyCon hasCallStackTyConName
        ; let free_tvs = closeOverKinds (tyCoVarsOfTypes annotated_theta
                                         `unionVarSet` tau_tvs)
-             my_theta = pickQuantifiablePreds free_tvs hasCallStack inferred_theta
+             my_theta = pickQuantifiablePreds free_tvs inferred_theta
 
        -- Report the inferred constraints for an extra-constraints wildcard/hole as
        -- an error message, unless the PartialTypeSignatures flag is enabled. In this

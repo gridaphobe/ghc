@@ -13,10 +13,11 @@ TcMatches: Typecheck some @Matches@
 
 module TcMatches ( tcMatchesFun, tcGRHS, tcGRHSsPat, tcMatchesCase, tcMatchLambda,
                    TcMatchCtxt(..), TcStmtChecker, TcExprStmtChecker, TcCmdStmtChecker,
-                   tcStmts, tcStmtsAndThen, tcDoStmts, tcBody,
+                   tcStmts, tcStmtsAndThen, tcStmtsAndThenWithLevel, tcDoStmts, tcBody,
                    tcDoStmt, tcGuardStmt
        ) where
 
+import BasicTypes
 import {-# SOURCE #-}   TcExpr( tcSyntaxOp, tcInferSigmaNC, tcInferSigma
                               , tcCheckId, tcMonoExpr, tcMonoExprNC, tcPolyExpr )
 
@@ -378,25 +379,42 @@ tcStmtsAndThen :: (Outputable (body Name)) => HsStmtContext Name
 -- Note the higher-rank type.  stmt_chk is applied at different
 -- types in the equations for tcStmts
 
-tcStmtsAndThen _ _ [] res_ty thing_inside
+tcStmtsAndThen = tcStmtsAndThenWithLevel NotTopLevel
+
+tcStmtsAndThenWithLevel
+  :: (Outputable (body Name))
+  => TopLevelFlag
+  -> HsStmtContext Name
+  -> TcStmtChecker body rho_type    -- NB: higher-rank type
+  -> [LStmt Name (Located (body Name))]
+  -> rho_type
+  -> (rho_type -> TcM thing)
+  -> TcM ([LStmt TcId (Located (body TcId))], thing)
+
+tcStmtsAndThenWithLevel _ _ _ [] res_ty thing_inside
   = do  { thing <- thing_inside res_ty
         ; return ([], thing) }
 
 -- LetStmts are handled uniformly, regardless of context
-tcStmtsAndThen ctxt stmt_chk (L loc (LetStmt (L l binds)) : stmts)
+tcStmtsAndThenWithLevel top_lvl ctxt stmt_chk (L loc (LetStmt (L l binds)) : stmts)
                                                              res_ty thing_inside
-  = do  { (binds', (stmts',thing)) <- tcLocalBinds binds $
-              tcStmtsAndThen ctxt stmt_chk stmts res_ty thing_inside
+  = do  { let inside = tcStmtsAndThenWithLevel top_lvl ctxt stmt_chk stmts res_ty thing_inside
+        ; (binds', (stmts',thing)) <-
+            case binds of
+              HsValBinds (ValBindsOut binds sigs) -> do
+                (binds', thing) <- tcValBinds top_lvl binds sigs inside
+                return (HsValBinds (ValBindsOut binds' sigs), thing)
+              _ -> tcLocalBinds binds inside
         ; return (L loc (LetStmt (L l binds')) : stmts', thing) }
 
 -- Don't set the error context for an ApplicativeStmt.  It ought to be
 -- possible to do this with a popErrCtxt in the tcStmt case for
 -- ApplicativeStmt, but it did someting strange and broke a test (ado002).
-tcStmtsAndThen ctxt stmt_chk (L loc stmt : stmts) res_ty thing_inside
+tcStmtsAndThenWithLevel top_lvl ctxt stmt_chk (L loc stmt : stmts) res_ty thing_inside
   | ApplicativeStmt{} <- stmt
   = do  { (stmt', (stmts', thing)) <-
              stmt_chk ctxt stmt res_ty $ \ res_ty' ->
-               tcStmtsAndThen ctxt stmt_chk stmts res_ty'  $
+               tcStmtsAndThenWithLevel top_lvl ctxt stmt_chk stmts res_ty'  $
                  thing_inside
         ; return (L loc stmt' : stmts', thing) }
 
@@ -407,7 +425,7 @@ tcStmtsAndThen ctxt stmt_chk (L loc stmt : stmts) res_ty thing_inside
                 addErrCtxt (pprStmtInCtxt ctxt stmt)        $
                 stmt_chk ctxt stmt res_ty                   $ \ res_ty' ->
                 popErrCtxt                                  $
-                tcStmtsAndThen ctxt stmt_chk stmts res_ty'  $
+                tcStmtsAndThenWithLevel top_lvl ctxt stmt_chk stmts res_ty'  $
                 thing_inside
         ; return (L loc stmt' : stmts', thing) }
 

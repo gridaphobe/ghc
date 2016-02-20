@@ -641,8 +641,10 @@ Important Details:
 
 - We want CallStacks to be opt-in since they incur a runtime cost, so
   we prevent quantification over CallStack constraints at the top-level,
-  preferring to default them to empty CallStacks at that point.
-  (see TcSimplify.simplifyInfer and TcSimplify.dropCallStacks)
+  preferring to default them to empty CallStacks at that point
+  (see TcSimplify.decideQuantification). However, if we're inferring with
+  a partial signature that includes the CallStack constraint, then we *do*
+  want to infer the CallStack.
 
 - We try to hide the implicit parameter from the user, since the name
   is irrelevant, and instead use a type synonym

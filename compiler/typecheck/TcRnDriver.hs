@@ -1880,8 +1880,9 @@ tcGhciStmts stmts
         let {
             ret_ty      = mkListTy unitTy ;
             io_ret_ty   = mkTyConApp ioTyCon [ret_ty] ;
-            tc_io_stmts = tcStmtsAndThen GhciStmtCtxt tcDoStmt stmts
-                                         (mkCheckExpType io_ret_ty) ;
+            tc_io_stmts = tcStmtsAndThenWithLevel TopLevel
+                            GhciStmtCtxt tcDoStmt stmts
+                            (mkCheckExpType io_ret_ty) ;
             names = collectLStmtsBinders stmts ;
          } ;
 
@@ -1982,6 +1983,9 @@ tcRnExpr hsc_env rdr_expr
     ((qtvs, dicts, _), lie_top) <- captureConstraints $
                                    {-# SCC "simplifyInfer" #-}
                                    simplifyInfer tclvl
+                                                 -- bare expressions are considered
+                                                 -- top-level
+                                                 TopLevel
                                                  False {- No MR for now -}
                                                  []    {- No sig vars -}
                                                  [(fresh_it, res_ty)]

@@ -19,6 +19,7 @@ import Bag
 import Class         ( Class, classKey, classTyCon )
 import DynFlags      ( WarningFlag ( Opt_WarnMonomorphism )
                      , DynFlags( solverIterations ) )
+import FastString
 import Inst
 import ListSetOps
 import Maybes
@@ -43,7 +44,7 @@ import Unify         ( tcMatchTy )
 import Util
 import Var
 import VarSet
-import BasicTypes    ( IntWithInf, intGtLimit )
+import BasicTypes    ( IntWithInf, intGtLimit, TopLevelFlag, isTopLevel )
 import ErrUtils      ( emptyMessages )
 import qualified GHC.LanguageExtensions as LangExt
 
@@ -483,6 +484,7 @@ the let binding.
 -}
 
 simplifyInfer :: TcLevel               -- Used when generating the constraints
+              -> TopLevelFlag          -- Are we at the top-level?
               -> Bool                  -- Apply monomorphism restriction
               -> [TcIdSigInfo]         -- Any signatures (possibly partial)
               -> [(Name, TcTauType)]   -- Variables to be generalised,
@@ -491,7 +493,7 @@ simplifyInfer :: TcLevel               -- Used when generating the constraints
               -> TcM ([TcTyVar],    -- Quantify over these type variables
                       [EvVar],      -- ... and these constraints (fully zonked)
                       TcEvBinds)    -- ... binding these evidence variables
-simplifyInfer rhs_tclvl apply_mr sigs name_taus wanteds
+simplifyInfer rhs_tclvl top_lvl apply_mr sigs name_taus wanteds
   | isEmptyWC wanteds
   = do { gbl_tvs <- tcGetGlobalTyCoVars
        ; qtkvs <- quantify_tvs sigs gbl_tvs $
@@ -570,19 +572,12 @@ simplifyInfer rhs_tclvl apply_mr sigs name_taus wanteds
 
        -- NB: quant_pred_candidates is already fully zonked
 
-       -- Don't quantify over CallStack constraints at the top-level.
-       -- See Note [Overview of implicit CallStacks]
-       ; let quant_without_callstack
-               = if rhs_tclvl == pushTcLevel topTcLevel
-                 then dropCallStacks sigs quant_pred_candidates
-                 else quant_pred_candidates
-
        -- Decide what type variables and constraints to quantify
        ; zonked_taus <- mapM (TcM.zonkTcType . snd) name_taus
        ; let zonked_tau_tkvs = splitDepVarsOfTypes zonked_taus
        ; (qtvs, bound_theta)
-           <- decideQuantification apply_mr sigs name_taus
-                                   quant_without_callstack zonked_tau_tkvs
+           <- decideQuantification apply_mr top_lvl sigs name_taus
+                                   quant_pred_candidates zonked_tau_tkvs
 
          -- Promote any type variables that are free in the inferred type
          -- of the function:
@@ -660,35 +655,6 @@ mkSigDerivedWanteds (TISI { sig_bndr = PartialSig { sig_name = name }
 mkSigDerivedWanteds _ = return []
 
 
-dropCallStacks :: [TcIdSigInfo] -> [PredType] -> [PredType]
--- drop CallStack constraints if they don't appear in the sigs' theta
--- see Note [Overview of implicit CallStacks]
-dropCallStacks sigs = filter keep_it
-  where
-  combined_theta = concatMap sig_theta sigs
-
-  elemType _ [] = False
-  elemType s (t:ts)
-    | s `eqType` t
-    = True
-    | otherwise
-    = elemType s ts
-
-  keep_it ty
-    -- this isn't quite right, as the combined_theta may come from two
-    -- mutually recursive functions, when only one might have had a
-    -- CallStack, yuck..
-    | ty `elemType` combined_theta
-    = True
-
-    | Just (_ip, ty') <- isIPPred_maybe ty
-    , Just (tc, [])   <- splitTyConApp_maybe ty'
-    , tc `hasKey` callStackTyConKey
-    = False
-
-    | otherwise
-    = True
-
 {- Note [Add deriveds for signature contexts]
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 Consider this (Trac #11016):
@@ -739,6 +705,7 @@ including all covars -- and the quantified constraints are empty/insoluble.
 
 decideQuantification
   :: Bool                  -- try the MR restriction?
+  -> TopLevelFlag
   -> [TcIdSigInfo]
   -> [(Name, TcTauType)]   -- variables to be generalised (for errors only)
   -> [PredType]            -- candidate theta
@@ -746,7 +713,7 @@ decideQuantification
   -> TcM ( [TcTyVar]       -- Quantify over these (skolems)
          , [PredType] )    -- and this context (fully zonked)
 -- See Note [Deciding quantification]
-decideQuantification apply_mr sigs name_taus constraints
+decideQuantification apply_mr top_lvl sigs name_taus constraints
                      zonked_pair@(Pair zonked_tau_kvs zonked_tau_tvs)
   | apply_mr     -- Apply the Monomorphism restriction
   = do { gbl_tvs <- tcGetGlobalTyCoVars
@@ -780,12 +747,16 @@ decideQuantification apply_mr sigs name_taus constraints
           -- only for defaulting, and we don't want (ever) to default a tv
           -- to *. So, don't grow the kvs.
 
-       ; constraints <- TcM.zonkTcTypes constraints
+       ; hasCallStack <- mkTyConTy <$> tcLookupTyCon hasCallStackTyConName
+
+                        -- replace ?callStack::CallStack with HasCallStack,
+                        -- or drop entirely if at top-level.
+                        -- see Note [Overview of implicit CallStacks]
+       ; constraints <- filterCallStacks hasCallStack <$> TcM.zonkTcTypes constraints
                  -- quantiyTyVars turned some meta tyvars into
                  -- quantified skolems, so we have to zonk again
 
-       ; hasCallStack <- mkTyConTy <$> tcLookupTyCon hasCallStackTyConName
-       ; let theta     = pickQuantifiablePreds (mkVarSet qtvs) hasCallStack constraints
+       ; let theta     = pickQuantifiablePreds (mkVarSet qtvs) constraints
              min_theta = mkMinimalBySCs theta
                -- See Note [Minimize by Superclasses]
 
@@ -803,6 +774,44 @@ decideQuantification apply_mr sigs name_taus constraints
     bndrs    = map fst name_taus
     pp_bndrs = pprWithCommas (quotes . ppr) bndrs
     equality_constraints = filter isEqPred constraints
+
+    combined_theta = concatMap sig_theta sigs
+
+
+    filterCallStacks hasCallStack = mapMaybe (filterOne hasCallStack)
+    filterOne hasCallStack pred
+      | Just (str, ty) <- isIPPred_maybe pred
+      , isCallStack ty
+      = if isTopLevel top_lvl &&
+           -- this isn't quite right, as the combined_theta may come
+           -- from two mutually recursive functions, when only one might
+           -- have had a CallStack, yuck..
+           pred `elemType` combined_theta
+        then Just $ rename_maybe hasCallStack str pred
+        else if isTopLevel top_lvl
+        then Nothing
+        else Just $ rename_maybe hasCallStack str pred
+
+      | otherwise
+      = Just pred
+
+    elemType _ [] = False
+    elemType s (t:ts)
+      | s `eqType` t
+      = True
+      | otherwise
+      = elemType s ts
+
+    rename_maybe hasCallStack str pred
+      | str == fsLit "callStack" = hasCallStack
+      | otherwise                = pred
+
+    isCallStack ty
+      | Just tc <- tyConAppTyCon_maybe ty
+      = tc `hasKey` callStackTyConKey
+      | otherwise
+      = False
+
 
 quantify_tvs :: [TcIdSigInfo]
              -> TcTyVarSet   -- the monomorphic tvs

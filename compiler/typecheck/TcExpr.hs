@@ -1434,7 +1434,7 @@ tcExprSig expr sig@(TISI { sig_bndr  = s_bndr
                                    tcExtendTyVarEnvFromSig sig $
                                    tcPolyExprNC expr tau
        ; (qtvs, givens, ev_binds)
-                 <- simplifyInfer tclvl False [sig] [(name, tau)] wanted
+                 <- simplifyInfer tclvl NotTopLevel False [sig] [(name, tau)] wanted
        ; tau <- zonkTcType tau
        ; let inferred_theta = map evVarPred givens
              tau_tvs        = tyCoVarsOfType tau
