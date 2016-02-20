@@ -19,7 +19,6 @@ import Bag
 import Class         ( Class, classKey, classTyCon )
 import DynFlags      ( WarningFlag ( Opt_WarnMonomorphism )
                      , DynFlags( solverIterations ) )
-import FastString
 import Inst
 import ListSetOps
 import Maybes
@@ -44,7 +43,7 @@ import Unify         ( tcMatchTy )
 import Util
 import Var
 import VarSet
-import BasicTypes    ( IntWithInf, intGtLimit, TopLevelFlag, isTopLevel )
+import BasicTypes    ( IntWithInf, intGtLimit, TopLevelFlag )
 import ErrUtils      ( emptyMessages )
 import qualified GHC.LanguageExtensions as LangExt
 
@@ -747,16 +746,15 @@ decideQuantification apply_mr top_lvl sigs name_taus constraints
           -- only for defaulting, and we don't want (ever) to default a tv
           -- to *. So, don't grow the kvs.
 
-       ; hasCallStack <- mkTyConTy <$> tcLookupTyCon hasCallStackTyConName
-
-                        -- replace ?callStack::CallStack with HasCallStack,
-                        -- or drop entirely if at top-level.
-                        -- see Note [Overview of implicit CallStacks]
-       ; constraints <- filterCallStacks hasCallStack <$> TcM.zonkTcTypes constraints
+       ; constraints <- TcM.zonkTcTypes constraints
                  -- quantiyTyVars turned some meta tyvars into
                  -- quantified skolems, so we have to zonk again
 
-       ; let theta     = pickQuantifiablePreds (mkVarSet qtvs) constraints
+       ; hasCallStack <- mkTyConTy <$> tcLookupTyCon hasCallStackTyConName
+       ; let partial_theta = concatMap sig_theta sigs
+       ; let theta     = pickQuantifiablePreds top_lvl hasCallStack
+                                               partial_theta
+                                               (mkVarSet qtvs) constraints
              min_theta = mkMinimalBySCs theta
                -- See Note [Minimize by Superclasses]
 
@@ -774,44 +772,6 @@ decideQuantification apply_mr top_lvl sigs name_taus constraints
     bndrs    = map fst name_taus
     pp_bndrs = pprWithCommas (quotes . ppr) bndrs
     equality_constraints = filter isEqPred constraints
-
-    combined_theta = concatMap sig_theta sigs
-
-
-    filterCallStacks hasCallStack = mapMaybe (filterOne hasCallStack)
-    filterOne hasCallStack pred
-      | Just (str, ty) <- isIPPred_maybe pred
-      , isCallStack ty
-      = if isTopLevel top_lvl &&
-           -- this isn't quite right, as the combined_theta may come
-           -- from two mutually recursive functions, when only one might
-           -- have had a CallStack, yuck..
-           pred `elemType` combined_theta
-        then Just $ rename_maybe hasCallStack str pred
-        else if isTopLevel top_lvl
-        then Nothing
-        else Just $ rename_maybe hasCallStack str pred
-
-      | otherwise
-      = Just pred
-
-    elemType _ [] = False
-    elemType s (t:ts)
-      | s `eqType` t
-      = True
-      | otherwise
-      = elemType s ts
-
-    rename_maybe hasCallStack str pred
-      | str == fsLit "callStack" = hasCallStack
-      | otherwise                = pred
-
-    isCallStack ty
-      | Just tc <- tyConAppTyCon_maybe ty
-      = tc `hasKey` callStackTyConKey
-      | otherwise
-      = False
-
 
 quantify_tvs :: [TcIdSigInfo]
              -> TcTyVarSet   -- the monomorphic tvs

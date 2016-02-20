@@ -1438,8 +1438,8 @@ tcExprSig expr sig@(TISI { sig_bndr  = s_bndr
        ; tau <- zonkTcType tau
        ; let inferred_theta = map evVarPred givens
              tau_tvs        = tyCoVarsOfType tau
-       ; (binders, my_theta) <- chooseInferredQuantifiers inferred_theta
-                                   tau_tvs qtvs (Just sig)
+       ; (binders, my_theta) <- chooseInferredQuantifiers NotTopLevel
+                                   inferred_theta tau_tvs qtvs (Just sig)
        ; let inferred_sigma = mkInvSigmaTy qtvs inferred_theta tau
              my_sigma       = mkForAllTys binders (mkPhiTy  my_theta tau)
        ; wrap <- if inferred_sigma `eqType` my_sigma -- NB: eqType ignores vis.

@@ -56,7 +56,7 @@ import Util
 import BasicTypes
 import Outputable
 import Type(mkStrLitTy, tidyOpenType)
-import PrelNames( mkUnboundName, gHC_PRIM, ipClassName )
+import PrelNames( mkUnboundName, gHC_PRIM, ipClassName, hasCallStackTyConName )
 import TcValidity (checkValidType)
 import qualified GHC.LanguageExtensions as LangExt
 
@@ -702,7 +702,7 @@ tcPolyInfer rec_tc top_lvl prag_fn tc_sig_fn mono bind_list
 
        ; let inferred_theta = map evVarPred givens
        ; exports <- checkNoErrs $
-                    zipWith3M (mkExport prag_fn qtvs inferred_theta)
+                    zipWith3M (mkExport top_lvl prag_fn qtvs inferred_theta)
                               mono_infos wrappers insted_tys
 
        ; loc <- getSrcSpanM
@@ -725,7 +725,8 @@ tcPolyInfer rec_tc top_lvl prag_fn tc_sig_fn mono bind_list
              deeplyInstantiate orig mono_ty }
 
 --------------
-mkExport :: TcPragEnv
+mkExport :: TopLevelFlag
+         -> TcPragEnv
          -> [TyVar] -> TcThetaType      -- Both already zonked
          -> MonoBindInfo
          -> HsWrapper -- the instantiation wrapper;
@@ -745,7 +746,7 @@ mkExport :: TcPragEnv
 
 -- Pre-condition: the qtvs and theta are already zonked
 
-mkExport prag_fn qtvs theta
+mkExport top_lvl prag_fn qtvs theta
          mono_info@(MBI { mbi_poly_name = poly_name
                         , mbi_sig       = mb_sig
                         , mbi_mono_id   = mono_id })
@@ -756,7 +757,7 @@ mkExport prag_fn qtvs theta
               Just sig | Just poly_id <- completeIdSigPolyId_maybe sig
                        -> return poly_id
               _other   -> checkNoErrs $
-                          mkInferredPolyId qtvs theta
+                          mkInferredPolyId top_lvl qtvs theta
                                            poly_name mb_sig inst_ty
               -- The checkNoErrs ensures that if the type is ambiguous
               -- we don't carry on to the impedence matching, and generate
@@ -796,10 +797,10 @@ mkExport prag_fn qtvs theta
     prag_sigs = lookupPragEnv prag_fn poly_name
     sig_ctxt  = InfSigCtxt poly_name
 
-mkInferredPolyId :: [TyVar] -> TcThetaType
+mkInferredPolyId :: TopLevelFlag -> [TyVar] -> TcThetaType
                  -> Name -> Maybe TcIdSigInfo -> TcType
                  -> TcM TcId
-mkInferredPolyId qtvs inferred_theta poly_name mb_sig mono_ty
+mkInferredPolyId top_lvl qtvs inferred_theta poly_name mb_sig mono_ty
   = do { fam_envs <- tcGetFamInstEnvs
        ; let (_co, mono_ty') = normaliseType fam_envs Nominal mono_ty
                -- Unification may not have normalised the type,
@@ -811,7 +812,7 @@ mkInferredPolyId qtvs inferred_theta poly_name mb_sig mono_ty
                -- We can discard the coercion _co, because we'll reconstruct
                -- it in the call to tcSubType below
 
-       ; (binders, theta') <- chooseInferredQuantifiers inferred_theta
+       ; (binders, theta') <- chooseInferredQuantifiers top_lvl inferred_theta
                                 (tyCoVarsOfType mono_ty') qtvs mb_sig
 
        ; let inferred_poly_ty = mkForAllTys binders (mkPhiTy theta' mono_ty')
@@ -825,21 +826,24 @@ mkInferredPolyId qtvs inferred_theta poly_name mb_sig mono_ty
        ; return (mkLocalIdOrCoVar poly_name inferred_poly_ty) }
 
 
-chooseInferredQuantifiers :: TcThetaType   -- inferred
+chooseInferredQuantifiers :: TopLevelFlag
+                          -> TcThetaType   -- inferred
                           -> TcTyVarSet    -- tvs free in tau type
                           -> [TcTyVar]     -- inferred quantified tvs
                           -> Maybe TcIdSigInfo
                           -> TcM ([TcTyBinder], TcThetaType)
-chooseInferredQuantifiers inferred_theta tau_tvs qtvs Nothing
-  = do { let free_tvs = closeOverKinds (growThetaTyVars inferred_theta tau_tvs)
+chooseInferredQuantifiers top_lvl inferred_theta tau_tvs qtvs Nothing
+  = do { hasCallStack <- mkTyConTy <$> tcLookupTyCon hasCallStackTyConName
+       ; let free_tvs = closeOverKinds (growThetaTyVars inferred_theta tau_tvs)
                         -- Include kind variables!  Trac #7916
-             my_theta = pickQuantifiablePreds free_tvs inferred_theta
+             my_theta = pickQuantifiablePreds top_lvl hasCallStack []
+                                              free_tvs inferred_theta
              binders  = [ mkNamedBinder tv Invisible
                         | tv <- qtvs
                         , tv `elemVarSet` free_tvs ]
        ; return (binders, my_theta) }
 
-chooseInferredQuantifiers inferred_theta tau_tvs qtvs
+chooseInferredQuantifiers top_lvl inferred_theta tau_tvs qtvs
                           (Just (TISI { sig_bndr = bndr_info
                                       , sig_ctxt = ctxt
                                       , sig_theta = annotated_theta
@@ -855,9 +859,11 @@ chooseInferredQuantifiers inferred_theta tau_tvs qtvs
   | PartialSig { sig_cts = extra } <- bndr_info
   , Just loc <- extra
   = do { annotated_theta <- zonkTcTypes annotated_theta
+       ; hasCallStack <- mkTyConTy <$> tcLookupTyCon hasCallStackTyConName
        ; let free_tvs = closeOverKinds (tyCoVarsOfTypes annotated_theta
                                         `unionVarSet` tau_tvs)
-             my_theta = pickQuantifiablePreds free_tvs inferred_theta
+             my_theta = pickQuantifiablePreds top_lvl hasCallStack []
+                                              free_tvs inferred_theta
 
        -- Report the inferred constraints for an extra-constraints wildcard/hole as
        -- an error message, unless the PartialTypeSignatures flag is enabled. In this

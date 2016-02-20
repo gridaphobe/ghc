@@ -1677,30 +1677,50 @@ evVarPred var
 -- implicit variables complicate the story. See Notes
 -- [Inheriting implicit parameters] and [Quantifying over equality constraints]
 pickQuantifiablePreds
-  :: TyVarSet           -- Quantifying over these
+  :: TopLevelFlag
+  -> Type               -- The HasCallStack type,
+                        -- see Note [Overview of implicit CallStacks]
+  -> TcThetaType        -- given theta from partial signatures
+  -> TyVarSet           -- Quantifying over these
   -> TcThetaType        -- Proposed constraints to quantify
   -> TcThetaType        -- A subset that we can actually quantify
 -- This function decides whether a particular constraint shoudl be
 -- quantified over, given the type variables that are being quantified
-pickQuantifiablePreds qtvs theta
+pickQuantifiablePreds top_lvl hasCallStack partial_theta qtvs theta
   = let flex_ctxt = True in  -- Quantify over non-tyvar constraints, even without
                              -- -XFlexibleContexts: see Trac #10608, #10351
          -- flex_ctxt <- xoptM Opt_FlexibleContexts
-    filter (pick_me flex_ctxt) theta
+    mapMaybe (pick_me flex_ctxt) theta
   where
     pick_me flex_ctxt pred
       = case classifyPredType pred of
 
           ClassPred cls tys
-            | isIPClass cls    -> True -- See note [Inheriting implicit parameters]
-            | otherwise        -> pick_cls_pred flex_ctxt cls tys
+            | Just (str, ty) <- isIPPred_maybe pred
+              -> if isCallStack ty
+                    -- replace ?callStack::CallStack with HasCallStack,
+                    -- or drop entirely if at top-level.
+                    -- see Note [Overview of implicit CallStacks]
+                 then handleCallStack str pred
+                 else Just pred          -- See note [Inheriting implicit parameters]
 
-          EqPred ReprEq ty1 ty2 -> pick_cls_pred flex_ctxt coercibleClass [ty1, ty2]
+            | pick_cls_pred flex_ctxt cls tys
+              -> Just pred
+
+          EqPred ReprEq ty1 ty2
+            | pick_cls_pred flex_ctxt coercibleClass [ty1, ty2]
               -- representational equality is like a class constraint
+              -> Just pred
 
-          EqPred NomEq ty1 ty2 -> quant_fun ty1 || quant_fun ty2
+          EqPred NomEq ty1 ty2
+            | quant_fun ty1 || quant_fun ty2
+              -> Just pred
 
-          IrredPred ty -> tyCoVarsOfType ty `intersectsVarSet` qtvs
+          IrredPred ty
+            | tyCoVarsOfType ty `intersectsVarSet` qtvs
+              -> Just pred
+
+          _ -> Nothing
 
     pick_cls_pred flex_ctxt cls tys
       = tyCoVarsOfTypes tys `intersectsVarSet` qtvs
@@ -1714,6 +1734,35 @@ pickQuantifiablePreds qtvs theta
           Just (tc, tys) | isTypeFamilyTyCon tc
                          -> tyCoVarsOfTypes tys `intersectsVarSet` qtvs
           _ -> False
+
+    isCallStack ty
+      | Just tc <- tyConAppTyCon_maybe ty
+      = tc `hasKey` callStackTyConKey
+      | otherwise
+      = False
+
+    handleCallStack str pred
+      | isTopLevel top_lvl &&
+        -- this isn't quite right, as the partial_theta may come
+        -- from two mutually recursive functions, when only one might
+        -- have had a CallStack, yuck..
+        pred `elemType` partial_theta
+      = Just $ rename_maybe hasCallStack str pred
+      | isTopLevel top_lvl
+      = Nothing
+      | otherwise
+      = Just $ rename_maybe hasCallStack str pred
+
+    elemType _ [] = False
+    elemType s (t:ts)
+      | s `eqType` t
+      = True
+      | otherwise
+      = elemType s ts
+
+    rename_maybe hasCallStack str pred
+      | str == fsLit "callStack" = hasCallStack
+      | otherwise                = pred
 
 -- Superclasses
 
