@@ -234,10 +234,11 @@ dsExpr (HsLamCase arg matches)
        ; return $ Lam arg_var $ bindNonRec discrim_var (Var arg_var) matching_code }
 
 dsExpr e@(HsApp fun arg)
+  = mkCoreAppDs (text "HsApp" <+> ppr e) <$> dsLExpr fun <*> dsLExpr arg
+
+dsExpr (HsAppTypeOut e _)
     -- ignore type arguments here; they're in the wrappers instead at this point
-  | isLHsTypeExpr arg = dsLExpr fun
-  | otherwise         = mkCoreAppDs (text "HsApp" <+> ppr e)
-                        <$> dsLExpr fun <*>  dsLExpr arg
+  = dsLExpr e
 
 
 {-
@@ -623,7 +624,7 @@ dsExpr expr@(RecordUpd { rupd_expr = record_expr, rupd_flds = fields
     mk_alt upd_fld_env con
       = do { let (univ_tvs, ex_tvs, eq_spec,
                   prov_theta, _req_theta, arg_tys, _) = conLikeFullSig con
-                 subst = mkTvSubstPrs (univ_tvs `zip` in_inst_tys)
+                 subst = zipTvSubst univ_tvs in_inst_tys
 
                 -- I'm not bothering to clone the ex_tvs
            ; eqs_vars   <- mapM newPredVarDs (substTheta subst (eqSpecPreds eq_spec))
@@ -730,15 +731,9 @@ dsExpr (EWildPat      {})  = panic "dsExpr:EWildPat"
 dsExpr (EAsPat        {})  = panic "dsExpr:EAsPat"
 dsExpr (EViewPat      {})  = panic "dsExpr:EViewPat"
 dsExpr (ELazyPat      {})  = panic "dsExpr:ELazyPat"
-dsExpr (HsType        {})  = panic "dsExpr:HsType" -- removed by typechecker
+dsExpr (HsAppType     {})  = panic "dsExpr:HsAppType" -- removed by typechecker
 dsExpr (HsDo          {})  = panic "dsExpr:HsDo"
 dsExpr (HsRecFld      {})  = panic "dsExpr:HsRecFld"
-
--- Normally handled in HsApp case, but a GHC API user might try to desugar
--- an HsTypeOut, since it is an HsExpr in a typechecked module after all.
--- (Such as ghci itself, in #11456.) So improve the error message slightly.
-dsExpr (HsTypeOut {})
-  = panic "dsExpr: tried to desugar a naked type application argument (HsTypeOut)"
 
 ------------------------------
 dsSyntaxExpr :: SyntaxExpr Id -> [CoreExpr] -> DsM CoreExpr
@@ -793,6 +788,12 @@ allocation in some nofib programs. Specifically
 Of course, if rules aren't turned on then there is pretty much no
 point doing this fancy stuff, and it may even be harmful.
 
+Moreover, for large lists (with a dynamic prefix longer than maxBuildLength) we
+choose not to perform this optimization as it will trade large static data for
+large code, which is generally a poor trade-off. See #11707 and the
+documentation for maxBuildLength.
+
+
 =======>  Note by SLPJ Dec 08.
 
 I'm unconvinced that we should *ever* generate a build for an explicit
@@ -808,9 +809,28 @@ We do not want to generate a build invocation on the LHS of this RULE!
 We fix this by disabling rules in rule LHSs, and testing that
 flag here; see Note [Desugaring RULE left hand sides] in Desugar
 
-To test this I've added a (static) flag -fsimple-list-literals, which
+To test this I've added a flag -fsimple-list-literals, which
 makes all list literals be generated via the simple route.
 -}
+
+{- | The longest list length which we will desugar using @build@.
+
+This is essentially a magic number and its setting is unfortunate rather
+arbitrary. The idea here, as mentioned in Note [Desugaring explicit lists],
+is to avoid deforesting large static data into large(r) code. Ideally we'd
+want a smaller threshold with larger consumers and vice-versa, but we have no
+way of knowing what will be consuming our list in the desugaring impossible to
+set generally correctly.
+
+The effect of reducing this number will be that 'build' fusion is applied
+less often. From a runtime performance perspective, applying 'build' more
+liberally on "moderately" sized lists should rarely hurt and will often it can
+only expose further optimization opportunities; if no fusion is possible it will
+eventually get rule-rewritten back to a list). We do, however, pay in compile
+time.
+-}
+maxBuildLength :: Int
+maxBuildLength = 32
 
 dsExplicitList :: Type -> Maybe (SyntaxExpr Id) -> [LHsExpr Id]
                -> DsM CoreExpr
@@ -820,6 +840,8 @@ dsExplicitList elt_ty Nothing xs
        ; xs' <- mapM dsLExpr xs
        ; let (dynamic_prefix, static_suffix) = spanTail is_static xs'
        ; if gopt Opt_SimpleListLiterals dflags        -- -fsimple-list-literals
+         || length dynamic_prefix > maxBuildLength
+                -- Don't generate builds if the list is very long.
          || not (gopt Opt_EnableRewriteRules dflags)  -- Rewrite rules off
                 -- Don't generate a build if there are no rules to eliminate it!
                 -- See Note [Desugaring RULE left hand sides] in Desugar
@@ -1005,8 +1027,8 @@ warnDiscardedDoBindings rhs rhs_ty
 
            -- Warn about discarding non-() things in 'monadic' binding
        ; if warn_unused && not (isUnitTy norm_elt_ty)
-         then warnDs (badMonadBind rhs elt_ty
-                           (text "-fno-warn-unused-do-bind"))
+         then warnDs (Reason Opt_WarnUnusedDoBind)
+                     (badMonadBind rhs elt_ty)
          else
 
            -- Warn about discarding m a things in 'monadic' binding of the same type,
@@ -1015,20 +1037,20 @@ warnDiscardedDoBindings rhs rhs_ty
                 do { case tcSplitAppTy_maybe norm_elt_ty of
                          Just (elt_m_ty, _)
                             | m_ty `eqType` topNormaliseType fam_inst_envs elt_m_ty
-                            -> warnDs (badMonadBind rhs elt_ty
-                                           (text "-fno-warn-wrong-do-bind"))
+                            -> warnDs (Reason Opt_WarnWrongDoBind)
+                                      (badMonadBind rhs elt_ty)
                          _ -> return () } } }
 
   | otherwise   -- RHS does have type of form (m ty), which is weird
   = return ()   -- but at lesat this warning is irrelevant
 
-badMonadBind :: LHsExpr Id -> Type -> SDoc -> SDoc
-badMonadBind rhs elt_ty flag_doc
+badMonadBind :: LHsExpr Id -> Type -> SDoc
+badMonadBind rhs elt_ty
   = vcat [ hang (text "A do-notation statement discarded a result of type")
               2 (quotes (ppr elt_ty))
          , hang (text "Suppress this warning by saying")
               2 (quotes $ text "_ <-" <+> ppr rhs)
-         , text "or by using the flag" <+>  flag_doc ]
+         ]
 
 {-
 ************************************************************************

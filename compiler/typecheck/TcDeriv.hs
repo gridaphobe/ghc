@@ -43,7 +43,6 @@ import Avail
 import Unify( tcUnifyTy )
 import Class
 import Type
-import Coercion
 import ErrUtils
 import DataCon
 import Maybes
@@ -560,7 +559,7 @@ deriveStandalone (L loc (DerivDecl deriv_ty overlap_mode))
 warnUselessTypeable :: TcM ()
 warnUselessTypeable
   = do { warn <- woptM Opt_WarnDerivingTypeable
-       ; when warn $ addWarnTc
+       ; when warn $ addWarnTc (Reason Opt_WarnDerivingTypeable)
                    $ text "Deriving" <+> quotes (ppr typeableClassName) <+>
                      text "has no effect: all types now auto-derive Typeable" }
 
@@ -642,7 +641,7 @@ deriveTyData tvs tc tc_args deriv_pred
                 --  (c) The type class args, or remaining tycon args,
                 --      do not mention any of the dropped type variables
                 --              newtype T a s = ... deriving( ST s )
-                --              newtype K a a = ... deriving( Monad )
+                --              newtype instance K a a = ... deriving( Monad )
 
         ; spec <- mkEqnHelp Nothing tkvs
                             cls final_cls_tys tc final_tc_args Nothing
@@ -935,7 +934,7 @@ inferConstraints main_cls cls_tys inst_ty rep_tc rep_tc_args
                  ++ sc_constraints
                  ++ arg_constraints) }
   where
-    (tc_binders, _) = splitPiTys (tyConKind rep_tc)
+    tc_binders = tyConBinders rep_tc
     choose_level bndr
       | isNamedBinder bndr = KindLevel
       | otherwise          = TypeLevel
@@ -1241,10 +1240,10 @@ no_cons_why rep_tc = quotes (pprSourceTyCon rep_tc) <+>
                      text "must have at least one data constructor"
 
 cond_RepresentableOk :: Condition
-cond_RepresentableOk (_, tc, tc_args) = canDoGenerics tc tc_args
+cond_RepresentableOk (dflags, tc, tc_args) = canDoGenerics dflags tc tc_args
 
 cond_Representable1Ok :: Condition
-cond_Representable1Ok (_, tc, tc_args) = canDoGenerics1 tc tc_args
+cond_Representable1Ok (dflags, tc, tc_args) = canDoGenerics1 dflags tc tc_args
 
 cond_enumOrProduct :: Class -> Condition
 cond_enumOrProduct cls = cond_isEnumeration `orCond`
@@ -1500,7 +1499,8 @@ mkNewTypeEqn dflags overlap_mode tvs
 
       -- CanDerive/DerivableViaInstance
       _ -> do when (newtype_deriving && deriveAnyClass) $
-                addWarnTc (sep [ text "Both DeriveAnyClass and GeneralizedNewtypeDeriving are enabled"
+                addWarnTc NoReason
+                          (sep [ text "Both DeriveAnyClass and GeneralizedNewtypeDeriving are enabled"
                                , text "Defaulting to the DeriveAnyClass strategy for instantiating" <+> ppr cls ])
               go_for_it
   where
@@ -1882,8 +1882,8 @@ simplifyDeriv pred tvs theta
        -- generated instance declaration
        ; defer <- goptM Opt_DeferTypeErrors
        ; (implic, _) <- buildImplicationFor tclvl skol_info tvs_skols [] unsolved
-                   -- The buildImplication is just to bind the skolems, in
-                   -- case they are mentioned in error messages
+                   -- The buildImplicationFor is just to bind the skolems,
+                   -- in case they are mentioned in error messages
                    -- See Trac #11347
        ; unless defer (reportAllUnsolved (mkImplicWC implic))
 
@@ -2107,8 +2107,7 @@ genDerivStuff loc clas dfun_name tycon inst_tys tyvars
            -- resort is -XDeriveAnyClass (since -XGeneralizedNewtypeDeriving
            -- fell through).
           let mini_env   = mkVarEnv (classTyVars clas `zip` inst_tys)
-              mini_subst = mkTCvSubst (mkInScopeSet (mkVarSet tyvars))
-                                      (mini_env, emptyCvSubstEnv)
+              mini_subst = mkTvSubst (mkInScopeSet (mkVarSet tyvars)) mini_env
 
          ; tyfam_insts <-
              ASSERT2( isNothing (canDeriveAnyClass dflags tycon clas)

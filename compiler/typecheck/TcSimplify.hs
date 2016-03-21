@@ -18,6 +18,7 @@ module TcSimplify(
 import Bag
 import Class         ( Class, classKey, classTyCon )
 import DynFlags      ( WarningFlag ( Opt_WarnMonomorphism )
+                     , WarnReason ( Reason )
                      , DynFlags( solverIterations ) )
 import Inst
 import ListSetOps
@@ -38,7 +39,7 @@ import TcSMonad  as TcS
 import TcType
 import TrieMap       () -- DV: for now
 import Type
-import TysWiredIn    ( liftedDataConTy )
+import TysWiredIn    ( ptrRepLiftedTy )
 import Unify         ( tcMatchTy )
 import Util
 import Var
@@ -98,11 +99,11 @@ simplifyTop wanteds
        ; return (evBindMapBinds binds1 `unionBags` binds2) }
 
 -- | Type-check a thing that emits only equality constraints, then
--- solve those constraints. Emits errors -- but does not fail --
--- if there is trouble.
+-- solve those constraints. Fails outright if there is trouble.
 solveEqualities :: TcM a -> TcM a
 solveEqualities thing_inside
-  = do { (result, wanted) <- captureConstraints thing_inside
+  = checkNoErrs $  -- See Note [Fail fast on kind errors]
+    do { (result, wanted) <- captureConstraints thing_inside
        ; traceTc "solveEqualities {" $ text "wanted = " <+> ppr wanted
        ; final_wc <- runTcSEqualities $ simpl_top wanted
        ; traceTc "End solveEqualities }" empty
@@ -125,10 +126,12 @@ simpl_top wanteds
       = return wc
       | otherwise
       = do { free_tvs <- TcS.zonkTyCoVarsAndFV (tyCoVarsOfWC wc)
-           ; let meta_tvs = varSetElems (filterVarSet isMetaTyVar free_tvs)
+           ; let meta_tvs = varSetElems $
+                            filterVarSet (isTyVar <&&> isMetaTyVar) free_tvs
                    -- zonkTyCoVarsAndFV: the wc_first_go is not yet zonked
                    -- filter isMetaTyVar: we might have runtime-skolems in GHCi,
                    -- and we definitely don't want to try to assign to those!
+                   -- the isTyVar needs to weed out coercion variables
 
            ; defaulted <- mapM defaultTyVarTcS meta_tvs   -- Has unification side effects
            ; if or defaulted
@@ -184,7 +187,27 @@ defaultCallStacks wanteds
     = return (Just ct)
 
 
-{-
+{- Note [Fail fast on kind errors]
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+solveEqualities is used to solve kind equalities when kind-checking
+user-written types. If solving fails we should fail outright, rather
+than just accumulate an error message, for two reasons:
+
+  * A kind-bogus type signature may cause a cascade of knock-on
+    errors if we let it pass
+
+  * More seriously, we don't have a convenient term-level place to add
+    deferred bindings for unsolved kind-equality constraints, so we
+    don't build evidence bindings (by usine reportAllUnsolved). That
+    means that we'll be left with with a type that has coercion holes
+    in it, something like
+           <type> |> co-hole
+    where co-hole is not filled in.  Eeek!  That un-filled-in
+    hole actually causes GHC to crash with "fvProv falls into a hole"
+    See Trac #11563, #11520, #11516, #11399
+
+So it's important to use 'checkNoErrs' here!
+
 Note [When to do type-class defaulting]
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 In GHC 7.6 and 7.8.2, we did type-class defaulting only if insolubleWC
@@ -397,13 +420,14 @@ simplifyDefault :: ThetaType    -- Wanted; has no type variables in it
                 -> TcM ()       -- Succeeds if the constraint is soluble
 simplifyDefault theta
   = do { traceTc "simplifyInteractive" empty
-       ; wanted <- newWanteds DefaultOrigin theta
-       ; unsolved <- simplifyWantedsTcM wanted
-
+       ; loc <- getCtLocM DefaultOrigin Nothing
+       ; let wanted = [ CtDerived { ctev_pred = pred
+                                  , ctev_loc  = loc }
+                      | pred <- theta ]
+       ; unsolved <- runTcSDeriveds (solveWanteds (mkSimpleWC wanted))
        ; traceTc "reportUnsolved {" empty
        ; reportAllUnsolved unsolved
        ; traceTc "reportUnsolved }" empty
-
        ; return () }
 
 ------------------
@@ -547,8 +571,8 @@ simplifyInfer rhs_tclvl top_lvl apply_mr sigs name_taus wanteds
                             -- again later. All we want here are the predicates over which to
                             -- quantify.
                             --
-                            -- If any meta-tyvar unifications take place (unlikely), we'll
-                            -- pick that up later.
+                            -- If any meta-tyvar unifications take place (unlikely),
+                            -- we'll pick that up later.
 
                       -- See Note [Promote _and_ default when inferring]
                       ; let def_tyvar tv
@@ -560,9 +584,10 @@ simplifyInfer rhs_tclvl top_lvl apply_mr sigs name_taus wanteds
                       ; WC { wc_simple = simples }
                            <- setTcLevel rhs_tclvl $
                               runTcSDeriveds       $
-                              solveSimpleWanteds $ mapBag toDerivedCt quant_cand
-                                -- NB: we don't want evidence, so used
-                                -- Derived constraints
+                              solveSimpleWanteds   $
+                              mapBag toDerivedCt quant_cand
+                                -- NB: we don't want evidence,
+                                -- so use Derived constraints
 
                       ; simples <- TcM.zonkSimples simples
 
@@ -724,7 +749,7 @@ decideQuantification apply_mr top_lvl sigs name_taus constraints
            -- Warn about the monomorphism restriction
        ; warn_mono <- woptM Opt_WarnMonomorphism
        ; let mr_bites = constrained_tvs `intersectsVarSet` zonked_tkvs
-       ; warnTc (warn_mono && mr_bites) $
+       ; warnTc (Reason Opt_WarnMonomorphism) (warn_mono && mr_bites) $
          hang (text "The Monomorphism Restriction applies to the binding"
                <> plural bndrs <+> text "for" <+> pp_bndrs)
              2 (text "Consider giving a type signature for"
@@ -969,7 +994,7 @@ This only half-works, but then let-generalisation only half-works.
 -}
 
 simplifyWantedsTcM :: [CtEvidence] -> TcM WantedConstraints
--- Zonk the input constraints, and simplify them
+-- Solve the specified Wanted constraints
 -- Discard the evidence binds
 -- Discards all Derived stuff in result
 -- Postcondition: fully zonked and unflattened constraints
@@ -1026,7 +1051,11 @@ simpl_loop n limit floated_eqs no_new_scs
   = return wc  -- Done!
 
   | n `intGtLimit` limit
-  = do { warnTcS (hang (text "solveWanteds: too many iterations"
+  = do { -- Add an error (not a warning) if we blow the limit,
+         -- Typically if we blow the limit we are going to report some other error
+         -- (an unsolved constraint), and we don't want that error to suppress
+         -- the iteration limit warning!
+         addErrTcS (hang (text "solveWanteds: too many iterations"
                    <+> parens (text "limit =" <+> ppr limit))
                 2 (vcat [ text "Unsolved:" <+> ppr wc
                         , ppUnless (isEmptyBag floated_eqs) $
@@ -1038,7 +1067,12 @@ simpl_loop n limit floated_eqs no_new_scs
        ; return wc }
 
   | otherwise
-  = do { traceTcS "simpl_loop, iteration" (int n)
+  = do { let n_floated = lengthBag floated_eqs
+       ; csTraceTcS $
+         text "simpl_loop iteration=" <> int n
+         <+> (parens $ hsep [ text "no new scs =" <+> ppr no_new_scs <> comma
+                            , int n_floated <+> text "floated eqs" <> comma
+                            , int (lengthBag simples) <+> text "simples to solve" ])
 
        -- solveSimples may make progress if either float_eqs hold
        ; (unifs1, wc1) <- reportUnifications $
@@ -1465,24 +1499,24 @@ promoteTyVarTcS tclvl tv
   | otherwise
   = return ()
 
--- | If the tyvar is a levity var, set it to Lifted. Returns whether or
+-- | If the tyvar is a RuntimeRep var, set it to PtrRepLifted. Returns whether or
 -- not this happened.
 defaultTyVar :: TcTyVar -> TcM ()
 -- Precondition: MetaTyVars only
 -- See Note [DefaultTyVar]
 defaultTyVar the_tv
-  | isLevityVar the_tv
-  = do { traceTc "defaultTyVar levity" (ppr the_tv)
-       ; writeMetaTyVar the_tv liftedDataConTy }
+  | isRuntimeRepVar the_tv
+  = do { traceTc "defaultTyVar RuntimeRep" (ppr the_tv)
+       ; writeMetaTyVar the_tv ptrRepLiftedTy }
 
   | otherwise = return ()    -- The common case
 
 -- | Like 'defaultTyVar', but in the TcS monad.
 defaultTyVarTcS :: TcTyVar -> TcS Bool
 defaultTyVarTcS the_tv
-  | isLevityVar the_tv
-  = do { traceTcS "defaultTyVarTcS levity" (ppr the_tv)
-       ; unifyTyVar the_tv liftedDataConTy
+  | isRuntimeRepVar the_tv
+  = do { traceTcS "defaultTyVarTcS RuntimeRep" (ppr the_tv)
+       ; unifyTyVar the_tv ptrRepLiftedTy
        ; return True }
   | otherwise
   = return False  -- the common case
@@ -1568,13 +1602,13 @@ There are two caveats:
 Note [DefaultTyVar]
 ~~~~~~~~~~~~~~~~~~~
 defaultTyVar is used on any un-instantiated meta type variables to
-default any levity variables to Lifted.  This is important
+default any RuntimeRep variables to PtrRepLifted.  This is important
 to ensure that instance declarations match.  For example consider
 
      instance Show (a->b)
      foo x = show (\_ -> True)
 
-Then we'll get a constraint (Show (p ->q)) where p has kind ArgKind,
+Then we'll get a constraint (Show (p ->q)) where p has kind (TYPE r),
 and that won't match the typeKind (*) in the instance decl.  See tests
 tc217 and tc175.
 
@@ -1584,7 +1618,7 @@ hand.  However we aren't ready to default them fully to () or
 whatever, because the type-class defaulting rules have yet to run.
 
 An alternate implementation would be to emit a derived constraint setting
-the levity variable to Lifted, but this seems unnecessarily indirect.
+the RuntimeRep variable to PtrRepLifted, but this seems unnecessarily indirect.
 
 Note [Promote _and_ default when inferring]
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -1757,12 +1791,12 @@ floatEqualities skols no_given_eqs
                 , wanteds { wc_simple = remaining_simples } ) }
   where
     skol_set = mkVarSet skols
-    (float_eqs, remaining_simples) = partitionBag (usefulToFloat is_useful) simples
-    is_useful pred = tyCoVarsOfType pred `disjointVarSet` skol_set
+    (float_eqs, remaining_simples) = partitionBag (usefulToFloat skol_set) simples
 
-usefulToFloat :: (TcPredType -> Bool) -> Ct -> Bool
-usefulToFloat is_useful_pred ct   -- The constraint is un-flattened and de-canonicalised
-  = is_meta_var_eq pred && is_useful_pred pred
+usefulToFloat :: VarSet -> Ct -> Bool
+usefulToFloat skol_set ct   -- The constraint is un-flattened and de-canonicalised
+  = is_meta_var_eq pred &&
+    (tyCoVarsOfType pred `disjointVarSet` skol_set)
   where
     pred = ctPred ct
 

@@ -32,7 +32,7 @@ module StgSyn (
         StgOp(..),
 
         -- utils
-        stgBindHasCafRefs, stgArgHasCafRefs, stgRhsArity,
+        topStgBindHasCafRefs, stgArgHasCafRefs, stgRhsArity,
         isDllConApp,
         stgArgType,
         stripStgTicksTop,
@@ -413,30 +413,32 @@ stgRhsArity (StgRhsCon _ _ _) = 0
 -- Note [CAF consistency]
 -- ~~~~~~~~~~~~~~~~~~~~~~
 --
--- `stgBindHasCafRefs` and `rhsHasCafRefs` are only used by an assert
--- (`consistentCafInfo` in `CoreToStg`) to make sure CAF-ness predicted by
--- `TidyPgm` is consistent with reality.
+-- `topStgBindHasCafRefs` is only used by an assert (`consistentCafInfo` in
+-- `CoreToStg`) to make sure CAF-ness predicted by `TidyPgm` is consistent with
+-- reality.
 --
 -- Specifically, if the RHS mentions any Id that itself is marked
--- `MayHaveCafRefs`; or if the binding is an updateable thunk; then the `Id` for
--- the binding should be marked `MayHaveCafRefs`. The potential trouble is that
--- `TidyPgm` computed the CAF info on the `Id` but some transformations have
--- taken place since then.
+-- `MayHaveCafRefs`; or if the binding is a top-level updateable thunk; then the
+-- `Id` for the binding should be marked `MayHaveCafRefs`. The potential trouble
+-- is that `TidyPgm` computed the CAF info on the `Id` but some transformations
+-- have taken place since then.
 
-stgBindHasCafRefs :: GenStgBinding bndr Id -> Bool
-stgBindHasCafRefs (StgNonRec _ rhs) = rhsHasCafRefs rhs
-stgBindHasCafRefs (StgRec binds)    = any rhsHasCafRefs (map snd binds)
+topStgBindHasCafRefs :: GenStgBinding bndr Id -> Bool
+topStgBindHasCafRefs (StgNonRec _ rhs)
+  = topRhsHasCafRefs rhs
+topStgBindHasCafRefs (StgRec binds)
+  = any topRhsHasCafRefs (map snd binds)
 
-rhsHasCafRefs :: GenStgRhs bndr Id -> Bool
-rhsHasCafRefs (StgRhsClosure _ _ _ upd _ body)
+topRhsHasCafRefs :: GenStgRhs bndr Id -> Bool
+topRhsHasCafRefs (StgRhsClosure _ _ _ upd _ body)
   = -- See Note [CAF consistency]
     isUpdatable upd || exprHasCafRefs body
-rhsHasCafRefs (StgRhsCon _ _ args)
+topRhsHasCafRefs (StgRhsCon _ _ args)
   = any stgArgHasCafRefs args
 
 exprHasCafRefs :: GenStgExpr bndr Id -> Bool
 exprHasCafRefs (StgApp f args)
-  = mayHaveCafRefs (idCafInfo f) || any stgArgHasCafRefs args
+  = stgIdHasCafRefs f || any stgArgHasCafRefs args
 exprHasCafRefs StgLit{}
   = False
 exprHasCafRefs (StgConApp _ args)
@@ -448,18 +450,39 @@ exprHasCafRefs (StgLam _ body)
 exprHasCafRefs (StgCase scrt _ _ alts)
   = exprHasCafRefs scrt || any altHasCafRefs alts
 exprHasCafRefs (StgLet bind body)
-  = stgBindHasCafRefs bind || exprHasCafRefs body
+  = bindHasCafRefs bind || exprHasCafRefs body
 exprHasCafRefs (StgLetNoEscape bind body)
-  = stgBindHasCafRefs bind || exprHasCafRefs body
+  = bindHasCafRefs bind || exprHasCafRefs body
 exprHasCafRefs (StgTick _ expr)
   = exprHasCafRefs expr
 
+bindHasCafRefs :: GenStgBinding bndr Id -> Bool
+bindHasCafRefs (StgNonRec _ rhs)
+  = rhsHasCafRefs rhs
+bindHasCafRefs (StgRec binds)
+  = any rhsHasCafRefs (map snd binds)
+
+rhsHasCafRefs :: GenStgRhs bndr Id -> Bool
+rhsHasCafRefs (StgRhsClosure _ _ _ _ _ body)
+  = exprHasCafRefs body
+rhsHasCafRefs (StgRhsCon _ _ args)
+  = any stgArgHasCafRefs args
+
 altHasCafRefs :: GenStgAlt bndr Id -> Bool
-altHasCafRefs (_, _, _, rhs) = exprHasCafRefs rhs
+altHasCafRefs (_, _, rhs) = exprHasCafRefs rhs
 
 stgArgHasCafRefs :: GenStgArg Id -> Bool
-stgArgHasCafRefs (StgVarArg id) = mayHaveCafRefs (idCafInfo id)
-stgArgHasCafRefs _ = False
+stgArgHasCafRefs (StgVarArg id)
+  = stgIdHasCafRefs id
+stgArgHasCafRefs _
+  = False
+
+stgIdHasCafRefs :: Id -> Bool
+stgIdHasCafRefs id =
+  -- We are looking for occurrences of an Id that is bound at top level, and may
+  -- have CAF refs. At this point (after TidyPgm) top-level Ids (whether
+  -- imported or defined in this module) are GlobalIds, so the test is easy.
+  isGlobalId id && mayHaveCafRefs (idCafInfo id)
 
 -- Here's the @StgBinderInfo@ type, and its combining op:
 
@@ -510,10 +533,6 @@ rather than from the scrutinee type.
 type GenStgAlt bndr occ
   = (AltCon,            -- alts: data constructor,
      [bndr],            -- constructor's parameters,
-     [Bool],            -- "use mask", same length as
-                        -- parameters; a True in a
-                        -- param's position if it is
-                        -- used in the ...
      GenStgExpr bndr occ)       -- ...right-hand side.
 
 data AltType
@@ -720,7 +739,7 @@ pprStgExpr (StgCase expr bndr alt_type alts)
 
 pprStgAlt :: (OutputableBndr bndr, Outputable occ, Ord occ)
           => GenStgAlt bndr occ -> SDoc
-pprStgAlt (con, params, _use_mask, expr)
+pprStgAlt (con, params, expr)
   = hang (hsep [ppr con, sep (map (pprBndr CaseBind) params), text "->"])
          4 (ppr expr <> semi)
 

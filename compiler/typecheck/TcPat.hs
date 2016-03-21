@@ -219,7 +219,8 @@ addInlinePrags poly_id prags
          warn_multiple_inlines inl2 inls
        | otherwise
        = setSrcSpan loc $
-         addWarnTc (hang (text "Multiple INLINE pragmas for" <+> ppr poly_id)
+         addWarnTc NoReason
+                     (hang (text "Multiple INLINE pragmas for" <+> ppr poly_id)
                        2 (vcat (text "Ignoring all but the first"
                                 : map pp_inl (inl1:inl2:inls))))
 
@@ -458,8 +459,8 @@ tc_pat penv (TuplePat pats boxity _) pat_ty thing_inside
               tc = tupleTyCon boxity arity
         ; (coi, arg_tys) <- matchExpectedPatTy (matchExpectedTyConApp tc)
                                                penv pat_ty
-                     -- Unboxed tuples have levity vars, which we discard:
-                     -- See Note [Unboxed tuple levity vars] in TyCon
+                     -- Unboxed tuples have RuntimeRep vars, which we discard:
+                     -- See Note [Unboxed tuple RuntimeRep vars] in TyCon
         ; let con_arg_tys = case boxity of Unboxed -> drop arity arg_tys
                                            Boxed   -> arg_tys
         ; (pats', res) <- tc_lpats penv pats (map mkCheckExpType con_arg_tys)
@@ -746,9 +747,14 @@ tcDataConPat penv (L con_span con_name) data_con pat_ty arg_pats thing_inside
 
               arg_tys' = substTys tenv arg_tys
 
-        ; traceTc "tcConPat" (vcat [ ppr con_name, ppr univ_tvs, ppr ex_tvs
+        ; traceTc "tcConPat" (vcat [ ppr con_name
+                                   , pprTvBndrs univ_tvs
+                                   , pprTvBndrs ex_tvs
                                    , ppr eq_spec
-                                   , ppr ex_tvs', ppr ctxt_res_tys, ppr arg_tys'
+                                   , ppr theta
+                                   , pprTvBndrs ex_tvs'
+                                   , ppr ctxt_res_tys
+                                   , ppr arg_tys'
                                    , ppr arg_pats ])
         ; if null ex_tvs && null eq_spec && null theta
           then do { -- The common case; no class bindings etc
@@ -815,7 +821,7 @@ tcPatSynPat penv (L con_span _) pat_syn pat_ty arg_pats thing_inside
               prov_theta' = substTheta tenv prov_theta
               req_theta'  = substTheta tenv req_theta
 
-        ; wrap <- tcSubTypeO (pe_orig penv) GenSigCtxt ty' pat_ty
+        ; wrap <- tcSubTypeET (pe_orig penv) pat_ty ty'
         ; traceTc "tcPatSynPat" (ppr pat_syn $$
                                  ppr pat_ty $$
                                  ppr ty' $$
@@ -1011,7 +1017,7 @@ addDataConStupidTheta data_con inst_tys
         -- The origin should always report "occurrence of C"
         -- even when C occurs in a pattern
     stupid_theta = dataConStupidTheta data_con
-    tenv = mkTvSubstPrs (dataConUnivTyVars data_con `zip` inst_tys)
+    tenv = zipTvSubst (dataConUnivTyVars data_con) inst_tys
          -- NB: inst_tys can be longer than the univ tyvars
          --     because the constructor might have existentials
     inst_theta = substTheta tenv stupid_theta

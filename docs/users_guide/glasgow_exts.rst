@@ -105,6 +105,9 @@ machine-addition that we all know and love—usually one instruction.
 Primitive (unboxed) types cannot be defined in Haskell, and are
 therefore built into the language and compiler. Primitive types are
 always unlifted; that is, a value of a primitive type cannot be bottom.
+(Note: a "boxed" type means that a value is represented by a pointer to a heap
+object; a "lifted" type means that terms of that type may be bottom. See
+the next paragraph for an example.)
 We use the convention (but it is only a convention) that primitive
 types, values, and operations have a ``#`` suffix (see
 :ref:`magic-hash`). For some primitive types we have special syntax for
@@ -113,28 +116,49 @@ literals, also described in the `same section <#magic-hash>`__.
 Primitive values are often represented by a simple bit-pattern, such as
 ``Int#``, ``Float#``, ``Double#``. But this is not necessarily the case:
 a primitive value might be represented by a pointer to a heap-allocated
-object. Examples include ``Array#``, the type of primitive arrays. A
+object. Examples include ``Array#``, the type of primitive arrays. Thus,
+``Array#`` is an unlifted, boxed type. A
 primitive array is heap-allocated because it is too big a value to fit
 in a register, and would be too expensive to copy around; in a sense, it
 is accidental that it is represented by a pointer. If a pointer
 represents a primitive value, then it really does point to that value:
-no unevaluated thunks, no indirections…nothing can be at the other end
+no unevaluated thunks, no indirections. Nothing can be at the other end
 of the pointer than the primitive value. A numerically-intensive program
 using unboxed types can go a *lot* faster than its “standard”
 counterpart—we saw a threefold speedup on one example.
 
-There are some restrictions on the use of primitive types:
+Unboxed type kinds
+------------------
 
--  The main restriction is that you can't pass a primitive value to a
-   polymorphic function or store one in a polymorphic data type. This
-   rules out things like ``[Int#]`` (i.e. lists of primitive integers).
-   The reason for this restriction is that polymorphic arguments and
-   constructor fields are assumed to be pointers: if an unboxed integer
-   is stored in one of these, the garbage collector would attempt to
-   follow it, leading to unpredictable space leaks. Or a ``seq``
-   operation on the polymorphic component may attempt to dereference the
-   pointer, with disastrous results. Even worse, the unboxed value might
-   be larger than a pointer (``Double#`` for instance).
+Because unboxed types are represented without the use of pointers, we
+cannot store them in use a polymorphic datatype at an unboxed type.
+For example, the ``Just`` node
+of ``Just 42#`` would have to be different from the ``Just`` node of
+``Just 42``; the former stores an integer directly, while the latter
+stores a pointer. GHC currently does not support this variety of ``Just``
+nodes (nor for any other datatype). Accordingly, the *kind* of an unboxed
+type is different from the kind of a boxed type.
+
+The Haskell Report describes that ``*`` is the kind of ordinary datatypes,
+such as ``Int``. Furthermore, type constructors can have kinds with arrows;
+for example, ``Maybe`` has kind ``* -> *``. Unboxed types have a kind that
+specifies their runtime representation. For example, the type ``Int#`` has
+kind ``TYPE 'IntRep`` and ``Double#`` has kind ``TYPE 'DoubleRep``. These
+kinds say that the runtime representation of an ``Int#`` is a machine integer,
+and the runtime representation of a ``Double#`` is a machine double-precision
+floating point. In constrast, the kind ``*`` is actually just a synonym
+for ``TYPE 'PtrRepLifted``. More details of the ``TYPE`` mechanisms appear in
+the `section on runtime representation polymorphism <#runtime-rep>`__.
+
+Given that ``Int#``'s kind is not ``*``, it then it follows that
+``Maybe Int#`` is disallowed. Similarly, because type variables tend
+to be of kind ``*`` (for example, in ``(.) :: (b -> c) -> (a -> b) -> a -> c``,
+all the type variables have kind ``*``), polymorphism tends not to work
+over primitive types. Stepping back, this makes some sense, because
+a polymorphic function needs to manipulate the pointers to its data,
+and most primitive types are unboxed.
+
+There are some restrictions on the use of primitive types:
 
 -  You cannot define a newtype whose representation type (the argument
    type of the data constructor) is an unboxed type. Thus, this is
@@ -385,11 +409,15 @@ instance, the binary integer literal ``0b11001001`` will be desugared into
 Pattern guards
 --------------
 
-Pattern guards (Glasgow extension) The discussion that follows is an
-abbreviated version of Simon Peyton Jones's original
-`proposal <http://research.microsoft.com/~simonpj/Haskell/guards.html>`__.
-(Note that the proposal was written before pattern guards were
-implemented, so refers to them as unimplemented.)
+.. ghc-flag:: -XPatternGuards
+
+   Enable pattern matches in guards.
+
+The discussion that follows is an abbreviated version of Simon Peyton Jones's
+original `proposal
+<http://research.microsoft.com/~simonpj/Haskell/guards.html>`__. (Note that the
+proposal was written before pattern guards were implemented, so refers to them
+as unimplemented.)
 
 Suppose we have an abstract data type of finite maps, with a lookup
 operation: ::
@@ -509,7 +537,7 @@ language as follows: ::
 
 The representation of Typ is held abstract, permitting implementations
 to use a fancy representation (e.g., hash-consing to manage sharing).
-Without view patterns, using this signature a little inconvenient: ::
+Without view patterns, using this signature is a little inconvenient: ::
 
     size :: Typ -> Integer
     size t = case view t of
@@ -616,422 +644,6 @@ follows:
    collected. However, the current implementation does not compare up to
    alpha-equivalence, so two instances of ``(x, view x -> y)`` will not
    be coalesced.
-
-.. _pattern-synonyms:
-
-Pattern synonyms
-----------------
-
-.. ghc-flag:: -XPatternSynonyms
-
-    :since: 7.8.1
-
-    Allow the definition of pattern synonyms.
-
-Pattern synonyms are enabled by the flag :ghc-flag:`-XPatternSynonyms`, which is
-required for defining them, but *not* for using them. More information
-and examples of view patterns can be found on the
-`Wiki page <PatternSynonyms>`.
-
-Pattern synonyms enable giving names to parametrized pattern schemes.
-They can also be thought of as abstract constructors that don't have a
-bearing on data representation. For example, in a programming language
-implementation, we might represent types of the language as follows: ::
-
-    data Type = App String [Type]
-
-Here are some examples of using said representation. Consider a few
-types of the ``Type`` universe encoded like this: ::
-
-      App "->" [t1, t2]          -- t1 -> t2
-      App "Int" []               -- Int
-      App "Maybe" [App "Int" []] -- Maybe Int
-
-This representation is very generic in that no types are given special
-treatment. However, some functions might need to handle some known types
-specially, for example the following two functions collect all argument
-types of (nested) arrow types, and recognize the ``Int`` type,
-respectively: ::
-
-      collectArgs :: Type -> [Type]
-      collectArgs (App "->" [t1, t2]) = t1 : collectArgs t2
-      collectArgs _                   = []
-
-      isInt :: Type -> Bool
-      isInt (App "Int" []) = True
-      isInt _              = False
-
-Matching on ``App`` directly is both hard to read and error prone to
-write. And the situation is even worse when the matching is nested: ::
-
-      isIntEndo :: Type -> Bool
-      isIntEndo (App "->" [App "Int" [], App "Int" []]) = True
-      isIntEndo _                                       = False
-
-Pattern synonyms permit abstracting from the representation to expose
-matchers that behave in a constructor-like manner with respect to
-pattern matching. We can create pattern synonyms for the known types we
-care about, without committing the representation to them (note that
-these don't have to be defined in the same module as the ``Type`` type): ::
-
-      pattern Arrow t1 t2 = App "->"    [t1, t2]
-      pattern Int         = App "Int"   []
-      pattern Maybe t     = App "Maybe" [t]
-
-Which enables us to rewrite our functions in a much cleaner style: ::
-
-      collectArgs :: Type -> [Type]
-      collectArgs (Arrow t1 t2) = t1 : collectArgs t2
-      collectArgs _             = []
-
-      isInt :: Type -> Bool
-      isInt Int = True
-      isInt _   = False
-
-      isIntEndo :: Type -> Bool
-      isIntEndo (Arrow Int Int) = True
-      isIntEndo _               = False
-
-In general there are three kinds of pattern synonyms. Unidirectional,
-bidirectional and explicitly bidirectional. The examples given so far are
-examples of bidirectional pattern synonyms. A bidirectional synonym
-behaves the same as an ordinary data constructor. We can use it in a pattern
-context to deconstruct values and in an expression context to construct values.
-For example, we can construct the value `intEndo` using the pattern synonyms
-`Arrow` and `Int` as defined previously. ::
-
-      intEndo :: Type
-      intEndo = Arrow Int Int
-
-This example is equivalent to the much more complicated construction if we had
-directly used the `Type` constructors. ::
-
-      intEndo :: Type
-      intEndo = App "->" [App "Int" [], App "Int" []]
-
-
-Unidirectional synonyms can only be used in a pattern context and are
-defined as follows:
-
-
-::
-
-      pattern Head x <- x:xs
-
-In this case, ``Head`` ⟨x⟩ cannot be used in expressions, only patterns,
-since it wouldn't specify a value for the ⟨xs⟩ on the right-hand side. However,
-we can define an explicitly bidirectional pattern synonym by separately
-specifying how to construct and deconstruct a type. The syntax for
-doing this is as follows:
-
-::
-
-      pattern HeadC x <- x:xs where
-        HeadC x = [x]
-
-We can then use ``HeadC`` in both expression and pattern contexts. In a pattern
-context it will match the head of any list with length at least one. In an
-expression context it will construct a singleton list.
-
-The table below summarises where each kind of pattern synonym can be used.
-
-+---------------+----------------+---------------+---------------------------+
-| Context       | Unidirectional | Bidirectional | Explicitly Bidirectional  |
-+===============+================+===============+===========================+
-| Pattern       | Yes            | Yes           | Yes                       |
-+---------------+----------------+---------------+---------------------------+
-| Expression    | No             | Yes (Inferred)| Yes (Explicit)            |
-+---------------+----------------+---------------+---------------------------+
-
-.. _record-patsyn:
-
-Record Pattern Synonyms
-~~~~~~~~~~~~~~~~~~~~~~~
-
-It is also possible to define pattern synonyms which behave just like record
-constructors. The syntax for doing this is as follows:
-
-::
-
-      pattern Point :: (Int, Int)
-      pattern Point{x, y} = (x, y)
-
-The idea is that we can then use ``Point`` just as if we had defined a new
-datatype ``MyPoint`` with two fields ``x`` and ``y``.
-
-::
-
-    data MyPoint = Point { x :: Int, y :: Int }
-
-Whilst a normal pattern synonym can be used in two ways, there are then seven
-ways in which to use ``Point``. Precisely the ways in which a normal record
-constructor can be used.
-
-=======================================   ==================================
-Usage                                     Example
-=======================================   ==================================
-As a constructor                          ``zero = Point 0 0``
-As a constructor with record syntax       ``zero = Point { x = 0, y = 0}``
-In a pattern context                      ``isZero (Point 0 0) = True``
-In a pattern context with record syntax   ``isZero (Point { x = 0, y = 0 }``
-In a pattern context with field puns      ``getX (Point {x}) = x``
-In a record update                        ``(0, 0) { x = 1 } == (1,0)``
-Using record selectors                    ``x (0,0) == 0``
-=======================================   ==================================
-
-For a unidirectional record pattern synonym we define record selectors but do
-not allow record updates or construction.
-
-The syntax and semantics of pattern synonyms are elaborated in the
-following subsections. See the :ghc-wiki:`Wiki page <PatternSynonyms>` for more
-details.
-
-Syntax and scoping of pattern synonyms
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-A pattern synonym declaration can be either unidirectional,
-bidirectional or explicitly bidirectional.
-The syntax for unidirectional pattern synonyms is: ::
-
-      pattern pat_lhs <- pat
-
-the syntax for bidirectional pattern synonyms is: ::
-
-      pattern pat_lhs = pat
-
-and the syntax for explicitly bidirectional pattern synonyms is: ::
-
-      pattern pat_lhs <- pat where
-        pat_lhs = expr
-
-We can define either prefix, infix or record pattern synonyms by modifying
-the form of `pat_lhs`. The syntax for these is as follows:
-
-======= ============================
-Prefix  ``Name args``
-------- ----------------------------
-Infix   ``arg1 `Name` arg2``
-        or ``arg1 op arg2``
-------- ----------------------------
-Record  ``Name{arg1,arg2,...,argn}``
-======= ============================
-
-
-Pattern synonym declarations can only occur in the top level of a
-module. In particular, they are not allowed as local definitions.
-
-The variables in the left-hand side of the definition are bound by the
-pattern on the right-hand side. For bidirectional pattern
-synonyms, all the variables of the right-hand side must also occur on
-the left-hand side; also, wildcard patterns and view patterns are not
-allowed. For unidirectional and explicitly bidirectional pattern
-synonyms, there is no restriction on the right-hand side pattern.
-
-Pattern synonyms cannot be defined recursively.
-
-.. _patsyn-impexp:
-
-Import and export of pattern synonyms
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-The name of the pattern synonym is in the same namespace as proper data
-constructors. Like normal data constructors, pattern synonyms can be imported
-and exported through association with a type constructor or independently.
-
-To export them on their own, in an export or import specification, you must
-prefix pattern names with the ``pattern`` keyword, e.g.: ::
-
-      module Example (pattern Zero) where
-
-      data MyNum = MkNum Int
-
-      pattern Zero :: MyNum
-      pattern Zero = MkNum 0
-
-Without the ``pattern`` prefix, ``Zero`` would be interpreted as a
-type constructor in the export list.
-
-You may also use the ``pattern`` keyword in an import/export
-specification to import or export an ordinary data constructor. For
-example: ::
-
-      import Data.Maybe( pattern Just )
-
-would bring into scope the data constructor ``Just`` from the ``Maybe``
-type, without also bringing the type constructor ``Maybe`` into scope.
-
-To bundle a pattern synonym with a type constructor, we list the pattern
-synonym in the export list of a module which exports the type constructor.
-For example, to bundle ``Zero`` with ``MyNum`` we could write the following: ::
-
-      module Example ( MyNum(Zero) ) where
-
-If a module was then to import ``MyNum`` from ``Example``, it would also import
-the pattern synonym ``Zero``.
-
-It is also possible to use the special token ``..`` in an export list to mean
-all currently bundled constructors. For example, we could write: ::
-
-      module Example ( MyNum(.., Zero) ) where
-
-in which case, ``Example`` would export the type constructor ``MyNum`` with
-the data constructor ``MkNum`` and also the pattern synonym ``Zero``.
-
-Bundled patterns synoyms are type checked to ensure that they are of the same
-type as the type constructor which they are bundled with. A pattern synonym
-``P`` can not be bundled with a type constructor ``T`` if ``P``\'s type is visibly
-incompatible with ``T``.
-
-A module which imports ``MyNum(..)`` from ``Example`` and then re-exports
-``MyNum(..)`` will also export any pattern synonyms bundled with ``MyNum`` in
-``Example``. A more complete specification can be found on the
-:ghc-wiki:`wiki. <PatternSynonyms/AssociatingSynonyms>`
-
-Typing of pattern synonyms
-~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-Given a pattern synonym definition of the form ::
-
-      pattern P var1 var2 ... varN <- pat
-
-it is assigned a *pattern type* of the form ::
-
-      pattern P :: CReq => CProv => t1 -> t2 -> ... -> tN -> t
-
-where ⟨CProv⟩ and ⟨CReq⟩ are type contexts, and ⟨t1⟩, ⟨t2⟩, ..., ⟨tN⟩
-and ⟨t⟩ are types. Notice the unusual form of the type, with two
-contexts ⟨CProv⟩ and ⟨CReq⟩:
-
--  ⟨CProv⟩ are the constraints *made available (provided)* by a
-   successful pattern match.
-
--  ⟨CReq⟩ are the constraints *required* to match the pattern.
-
-For example, consider ::
-
-    data T a where
-      MkT :: (Show b) => a -> b -> T a
-
-    f1 :: (Eq a, Num a) => T a -> String
-    f1 (MkT 42 x) = show x
-
-    pattern ExNumPat :: (Num a, Eq a) => (Show b) => b -> T a
-    pattern ExNumPat x = MkT 42 x
-
-    f2 :: (Eq a, Num a) => T a -> String
-    f2 (ExNumPat x) = show x
-
-Here ``f1`` does not use pattern synonyms. To match against the numeric
-pattern ``42`` *requires* the caller to satisfy the constraints
-``(Num a, Eq a)``, so they appear in ``f1``'s type. The call to ``show``
-generates a ``(Show b)`` constraint, where ``b`` is an existentially
-type variable bound by the pattern match on ``MkT``. But the same
-pattern match also *provides* the constraint ``(Show b)`` (see ``MkT``'s
-type), and so all is well.
-
-Exactly the same reasoning applies to ``ExNumPat``: matching against
-``ExNumPat`` *requires* the constraints ``(Num a, Eq a)``, and
-*provides* the constraint ``(Show b)``.
-
-Note also the following points
-
--  In the common case where ``Prov`` is empty, ``()``, it can be omitted
-   altogether.
-
--  You may specify an explicit *pattern signature*, as we did for
-   ``ExNumPat`` above, to specify the type of a pattern, just as you can
-   for a function. As usual, the type signature can be less polymorphic
-   than the inferred type. For example
-
-   ::
-
-         -- Inferred type would be 'a -> [a]'
-         pattern SinglePair :: (a, a) -> [(a, a)]
-         pattern SinglePair x = [x]
-
--  The GHCi :ghci-cmd:`:info` command shows pattern types in this format.
-
--  For a bidirectional pattern synonym, a use of the pattern synonym as
-   an expression has the type
-
-   ::
-
-         (CReq, CProv) => t1 -> t2 -> ... -> tN -> t
-
-   So in the previous example, when used in an expression, ``ExNumPat``
-   has type
-
-   ::
-
-         ExNumPat :: (Num a, Eq a, Show b) => b -> T t
-
-   Notice that this is a tiny bit more restrictive than the expression
-   ``MkT 42 x`` which would not require ``(Eq a)``.
-
--  Consider these two pattern synonyms: ::
-
-       data S a where
-          S1 :: Bool -> S Bool
-
-       pattern P1 :: Bool -> Maybe Bool
-       pattern P1 b = Just b
-
-       pattern P2 :: () => (b ~ Bool) => Bool -> S b
-       pattern P2 b = S1 b
-
-       f :: Maybe a -> String
-       f (P1 x) = "no no no"     -- Type-incorrect
-
-       g :: S a -> String
-       g (P2 b) = "yes yes yes"  -- Fine
-
-   Pattern ``P1`` can only match against a value of type ``Maybe Bool``,
-   so function ``f`` is rejected because the type signature is
-   ``Maybe a``. (To see this, imagine expanding the pattern synonym.)
-
-   On the other hand, function ``g`` works fine, because matching
-   against ``P2`` (which wraps the GADT ``S``) provides the local
-   equality ``(a~Bool)``. If you were to give an explicit pattern
-   signature ``P2 :: Bool -> S Bool``, then ``P2`` would become less
-   polymorphic, and would behave exactly like ``P1`` so that ``g`` would
-   then be rejected.
-
-   In short, if you want GADT-like behaviour for pattern synonyms, then
-   (unlike unlike concrete data constructors like ``S1``) you must write
-   its type with explicit provided equalities. For a concrete data
-   constructor like ``S1`` you can write its type signature as either
-   ``S1 :: Bool -> S Bool`` or ``S1 :: (b~Bool) => Bool -> S b``; the
-   two are equivalent. Not so for pattern synonyms: the two forms are
-   different, in order to distinguish the two cases above. (See
-   :ghc-ticket:`9953` for discussion of this choice.)
-
-Matching of pattern synonyms
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-A pattern synonym occurrence in a pattern is evaluated by first matching
-against the pattern synonym itself, and then on the argument patterns.
-For example, in the following program, ``f`` and ``f'`` are equivalent: ::
-
-    pattern Pair x y <- [x, y]
-
-    f (Pair True True) = True
-    f _                = False
-
-    f' [x, y] | True <- x, True <- y = True
-    f' _                              = False
-
-Note that the strictness of ``f`` differs from that of ``g`` defined
-below:
-
-.. code-block:: none
-
-    g [True, True] = True
-    g _            = False
-
-    *Main> f (False:undefined)
-    *** Exception: Prelude.undefined
-    *Main> g (False:undefined)
-    False
 
 .. _n-k-patterns:
 
@@ -1322,8 +934,26 @@ is as follows. If the do-expression has the following form: ::
 
 where none of the variables defined by ``p1...pn`` are mentioned in ``E1...En``,
 then the expression will only require ``Applicative``. Otherwise, the expression
-will require ``Monad``.
+will require ``Monad``. The block may return a pure expression ``E`` depending
+upon the results ``p1...pn`` with either ``return`` or ``pure``.
 
+When the statements of a ``do`` expression have dependencies between
+them, and ``ApplicativeDo`` cannot infer an ``Applicative`` type, it
+uses a heuristic algorithm to try to use ``<*>`` as much as possible.
+This algorithm usually finds the best solution, but in rare complex
+cases it might miss an opportunity.  There is an algorithm that finds
+the optimal solution, provided as an option:
+
+.. ghc-flag:: -foptimal-applicative-do
+
+    :since: 8.0.1
+
+    Enables an alternative algorithm for choosing where to use ``<*>``
+    in conjunction with the ``ApplicativeDo`` language extension.
+    This algorithm always finds the optimal solution, but it is
+    expensive: ``O(n^3)``, so this option can lead to long compile
+    times when there are very large ``do`` expressions (over 100
+    statements).  The default ``ApplicativeDo`` algorithm is ``O(n^2)``.
 
 .. _applicative-do-pitfall:
 
@@ -2165,72 +1795,6 @@ data constructor in an import or export list with the keyword
 ``pattern``, to allow the import or export of a data constructor without
 its parent type constructor (see :ref:`patsyn-impexp`).
 
-.. _visible-type-application:
-
-Visible type application
-~~~~~~~~~~~~~~~~~~~~~~~~
-
-.. ghc-flag:: -XTypeApplications
-
-    :implies: :ghc-flag:`-XAllowAmbiguousTypes`
-    :since: 8.0.1
-
-    Allow the use of type application syntax.
-
-The :ghc-flag:`-XTypeApplications` extension allows you to use
-*visible type application* in expressions. Here is an
-example: ``show (read @Int "5")``. The ``@Int``
-is the visible type application; it specifies the value of the type variable
-in ``read``'s type.
-
-A visible type application is preceded with an ``@``
-sign. (To disambiguate the syntax, the ``@`` must be
-preceded with a non-identifier letter, usually a space. For example,
-``read@Int 5`` would not parse.) It can be used whenever
-the full polymorphic type of the function is known. If the function
-is an identifier (the common case), its type is considered known only when
-the identifier has been given a type signature. If the identifier does
-not have a type signature, visible type application cannot be used.
-
-Here are the details:
-
-- If an identifier's type signature does not include an
-  explicit ``forall``, the type variable arguments appear
-  in the left-to-right order in which the variables appear in the type.
-  So, ``foo :: Monad m => a b -> m (a c)``
-  will have its type variables
-  ordered as ``m, a, b, c``.
-
-- If any of the variables depend on other variables (that is, if some
-  of the variables are *kind* variables), the variables are reordered
-  so that kind variables come before type variables, preserving the
-  left-to-right order as much as possible. That is, GHC performs a
-  stable topological sort on the variables.
-
-  For example: if we have ``bar :: Proxy (a :: (j, k)) -> b``, then
-  the variables are ordered ``j``, ``k``, ``a``, ``b``.
-
-- Class methods' type arguments include the class type
-  variables, followed by any variables an individual method is polymorphic
-  in. So, ``class Monad m where return :: a -> m a`` means
-  that ``return``'s type arguments are ``m, a``.
-
-- With the :ghc-flag:`-XRankNTypes` extension
-  (:ref:`universal-quantification`), it is possible to declare
-  type arguments somewhere other than the beginning of a type. For example,
-  we can have ``pair :: forall a. a -> forall b. b -> (a, b)``
-  and then say ``pair @Bool True @Char`` which would have
-  type ``Char -> (Bool, Char)``.
-
-- Partial type signatures (:ref:`partial-type-signatures`)
-  work nicely with visible type
-  application. If you want to specify only the second type argument to
-  ``wurble``, then you can say ``wurble @_ @Int``.
-  The first argument is a wildcard, just like in a partial type signature.
-  However, if used in a visible type application, it is *not*
-  necessary to specify :ghc-flag:`-XPartialTypeSignatures` and your
-  code will not generate a warning informing you of the omitted type.
-
 .. _syntax-stolen:
 
 Summary of stolen syntax
@@ -2288,7 +1852,15 @@ The following syntax is stolen:
 
     Stolen by: :ghc-flag:`-XImplicitParams`
 
-``[|``, ``[e|``, ``[p|``, ``[d|``, ``[t|``, ``$(``, ``$$(``, ``[||``, ``[e||``, ``$varid``, ``$$varid``
+``[|``, ``[e|``, ``[p|``, ``[d|``, ``[t|``, ``[||``, ``[e||``
+    .. index::
+       single: Quasi-quotes
+
+    Stolen by: :ghc-flag:`-XQuasiQuotes`. Moreover, this introduces an ambiguity
+    with list comprehension syntax. See
+    :ref:`quasi-quotes-list-comprehension-ambiguity` for details.
+
+``$(``, ``$$(``, ``$varid``, ``$$varid``
     .. index::
        single: Template Haskell
 
@@ -3931,8 +3503,11 @@ would generate the following instance::
 
 The algorithm for :ghc-flag:`-XDeriveFoldable` is adapted from the :ghc-flag:`-XDeriveFunctor`
 algorithm, but it generates definitions for ``foldMap`` and ``foldr`` instead
-of ``fmap``. Here are the differences between the generated code in each
-extension:
+of ``fmap``. In addition, :ghc-flag:`-XDeriveFoldable` filters out all
+constructor arguments on the RHS expression whose types do not mention the last
+type parameter, since those arguments do not need to be folded over.
+
+Here are the differences between the generated code in each extension:
 
 #. When a bare type variable ``a`` is encountered, :ghc-flag:`-XDeriveFunctor` would
    generate ``f a`` for an ``fmap`` definition. :ghc-flag:`-XDeriveFoldable` would
@@ -3942,10 +3517,6 @@ extension:
    contain ``a``, is encountered, :ghc-flag:`-XDeriveFunctor` recursively calls
    ``fmap`` on it. Similarly, :ghc-flag:`-XDeriveFoldable` would recursively call
    ``foldr`` and ``foldMap``.
-
-#. When a type that does not mention ``a`` is encountered, :ghc-flag:`-XDeriveFunctor`
-   leaves it alone. On the other hand, :ghc-flag:`-XDeriveFoldable` would generate
-   ``z`` (the state value) for ``foldr`` and ``mempty`` for ``foldMap``.
 
 #. :ghc-flag:`-XDeriveFunctor` puts everything back together again at the end by
    invoking the constructor. :ghc-flag:`-XDeriveFoldable`, however, builds up a value
@@ -4012,12 +3583,15 @@ would generate the following ``Traversable`` instance::
 
     instance Traversable Example where
       traverse f (Ex a1 a2 a3 a4)
-        = fmap Ex (f a1) <*> traverse f a3
+        = fmap (\b1 b3 -> Ex b1 a2 b3 a4) (f a1) <*> traverse f a3
 
 The algorithm for :ghc-flag:`-XDeriveTraversable` is adapted from the
 :ghc-flag:`-XDeriveFunctor` algorithm, but it generates a definition for ``traverse``
-instead of ``fmap``. Here are the differences between the generated code in
-each extension:
+instead of ``fmap``. In addition, :ghc-flag:`-XDeriveTraversable` filters out
+all constructor arguments on the RHS expression whose types do not mention the
+last type parameter, since those arguments do not produce any effects in a
+traversal. Here are the differences between the generated code in each
+extension:
 
 #. When a bare type variable ``a`` is encountered, both :ghc-flag:`-XDeriveFunctor` and
    :ghc-flag:`-XDeriveTraversable` would generate ``f a`` for an ``fmap`` and
@@ -4027,10 +3601,6 @@ each extension:
    contain ``a``, is encountered, :ghc-flag:`-XDeriveFunctor` recursively calls
    ``fmap`` on it. Similarly, :ghc-flag:`-XDeriveTraversable` would recursively call
    ``traverse``.
-
-#. When a type that does not mention ``a`` is encountered, :ghc-flag:`-XDeriveFunctor`
-   leaves it alone. On the other hand, :ghc-flag:`-XDeriveTraversable` would call
-   ``pure`` on the value of that type.
 
 #. :ghc-flag:`-XDeriveFunctor` puts everything back together again at the end by
    invoking the constructor. :ghc-flag:`-XDeriveTraversable` does something similar,
@@ -4444,6 +4014,422 @@ Note the following details
 
   and then the normal rules for filling in associated types from the
   default will apply, making ``Size Bar`` equal to ``Int``.
+
+.. _pattern-synonyms:
+
+Pattern synonyms
+================
+
+.. ghc-flag:: -XPatternSynonyms
+
+    :since: 7.8.1
+
+    Allow the definition of pattern synonyms.
+
+Pattern synonyms are enabled by the flag :ghc-flag:`-XPatternSynonyms`, which is
+required for defining them, but *not* for using them. More information
+and examples of view patterns can be found on the
+`Wiki page <PatternSynonyms>`.
+
+Pattern synonyms enable giving names to parametrized pattern schemes.
+They can also be thought of as abstract constructors that don't have a
+bearing on data representation. For example, in a programming language
+implementation, we might represent types of the language as follows: ::
+
+    data Type = App String [Type]
+
+Here are some examples of using said representation. Consider a few
+types of the ``Type`` universe encoded like this: ::
+
+      App "->" [t1, t2]          -- t1 -> t2
+      App "Int" []               -- Int
+      App "Maybe" [App "Int" []] -- Maybe Int
+
+This representation is very generic in that no types are given special
+treatment. However, some functions might need to handle some known types
+specially, for example the following two functions collect all argument
+types of (nested) arrow types, and recognize the ``Int`` type,
+respectively: ::
+
+      collectArgs :: Type -> [Type]
+      collectArgs (App "->" [t1, t2]) = t1 : collectArgs t2
+      collectArgs _                   = []
+
+      isInt :: Type -> Bool
+      isInt (App "Int" []) = True
+      isInt _              = False
+
+Matching on ``App`` directly is both hard to read and error prone to
+write. And the situation is even worse when the matching is nested: ::
+
+      isIntEndo :: Type -> Bool
+      isIntEndo (App "->" [App "Int" [], App "Int" []]) = True
+      isIntEndo _                                       = False
+
+Pattern synonyms permit abstracting from the representation to expose
+matchers that behave in a constructor-like manner with respect to
+pattern matching. We can create pattern synonyms for the known types we
+care about, without committing the representation to them (note that
+these don't have to be defined in the same module as the ``Type`` type): ::
+
+      pattern Arrow t1 t2 = App "->"    [t1, t2]
+      pattern Int         = App "Int"   []
+      pattern Maybe t     = App "Maybe" [t]
+
+Which enables us to rewrite our functions in a much cleaner style: ::
+
+      collectArgs :: Type -> [Type]
+      collectArgs (Arrow t1 t2) = t1 : collectArgs t2
+      collectArgs _             = []
+
+      isInt :: Type -> Bool
+      isInt Int = True
+      isInt _   = False
+
+      isIntEndo :: Type -> Bool
+      isIntEndo (Arrow Int Int) = True
+      isIntEndo _               = False
+
+In general there are three kinds of pattern synonyms. Unidirectional,
+bidirectional and explicitly bidirectional. The examples given so far are
+examples of bidirectional pattern synonyms. A bidirectional synonym
+behaves the same as an ordinary data constructor. We can use it in a pattern
+context to deconstruct values and in an expression context to construct values.
+For example, we can construct the value `intEndo` using the pattern synonyms
+`Arrow` and `Int` as defined previously. ::
+
+      intEndo :: Type
+      intEndo = Arrow Int Int
+
+This example is equivalent to the much more complicated construction if we had
+directly used the `Type` constructors. ::
+
+      intEndo :: Type
+      intEndo = App "->" [App "Int" [], App "Int" []]
+
+
+Unidirectional synonyms can only be used in a pattern context and are
+defined as follows:
+
+
+::
+
+      pattern Head x <- x:xs
+
+In this case, ``Head`` ⟨x⟩ cannot be used in expressions, only patterns,
+since it wouldn't specify a value for the ⟨xs⟩ on the right-hand side. However,
+we can define an explicitly bidirectional pattern synonym by separately
+specifying how to construct and deconstruct a type. The syntax for
+doing this is as follows:
+
+::
+
+      pattern HeadC x <- x:xs where
+        HeadC x = [x]
+
+We can then use ``HeadC`` in both expression and pattern contexts. In a pattern
+context it will match the head of any list with length at least one. In an
+expression context it will construct a singleton list.
+
+The table below summarises where each kind of pattern synonym can be used.
+
++---------------+----------------+---------------+---------------------------+
+| Context       | Unidirectional | Bidirectional | Explicitly Bidirectional  |
++===============+================+===============+===========================+
+| Pattern       | Yes            | Yes           | Yes                       |
++---------------+----------------+---------------+---------------------------+
+| Expression    | No             | Yes (Inferred)| Yes (Explicit)            |
++---------------+----------------+---------------+---------------------------+
+
+.. _record-patsyn:
+
+Record Pattern Synonyms
+-----------------------
+
+It is also possible to define pattern synonyms which behave just like record
+constructors. The syntax for doing this is as follows:
+
+::
+
+      pattern Point :: (Int, Int)
+      pattern Point{x, y} = (x, y)
+
+The idea is that we can then use ``Point`` just as if we had defined a new
+datatype ``MyPoint`` with two fields ``x`` and ``y``.
+
+::
+
+    data MyPoint = Point { x :: Int, y :: Int }
+
+Whilst a normal pattern synonym can be used in two ways, there are then seven
+ways in which to use ``Point``. Precisely the ways in which a normal record
+constructor can be used.
+
+=======================================   ==================================
+Usage                                     Example
+=======================================   ==================================
+As a constructor                          ``zero = Point 0 0``
+As a constructor with record syntax       ``zero = Point { x = 0, y = 0}``
+In a pattern context                      ``isZero (Point 0 0) = True``
+In a pattern context with record syntax   ``isZero (Point { x = 0, y = 0 }``
+In a pattern context with field puns      ``getX (Point {x}) = x``
+In a record update                        ``(0, 0) { x = 1 } == (1,0)``
+Using record selectors                    ``x (0,0) == 0``
+=======================================   ==================================
+
+For a unidirectional record pattern synonym we define record selectors but do
+not allow record updates or construction.
+
+The syntax and semantics of pattern synonyms are elaborated in the
+following subsections. See the :ghc-wiki:`Wiki page <PatternSynonyms>` for more
+details.
+
+Syntax and scoping of pattern synonyms
+--------------------------------------
+
+A pattern synonym declaration can be either unidirectional,
+bidirectional or explicitly bidirectional.
+The syntax for unidirectional pattern synonyms is: ::
+
+      pattern pat_lhs <- pat
+
+the syntax for bidirectional pattern synonyms is: ::
+
+      pattern pat_lhs = pat
+
+and the syntax for explicitly bidirectional pattern synonyms is: ::
+
+      pattern pat_lhs <- pat where
+        pat_lhs = expr
+
+We can define either prefix, infix or record pattern synonyms by modifying
+the form of `pat_lhs`. The syntax for these is as follows:
+
+======= ============================
+Prefix  ``Name args``
+------- ----------------------------
+Infix   ``arg1 `Name` arg2``
+        or ``arg1 op arg2``
+------- ----------------------------
+Record  ``Name{arg1,arg2,...,argn}``
+======= ============================
+
+
+Pattern synonym declarations can only occur in the top level of a
+module. In particular, they are not allowed as local definitions.
+
+The variables in the left-hand side of the definition are bound by the
+pattern on the right-hand side. For bidirectional pattern
+synonyms, all the variables of the right-hand side must also occur on
+the left-hand side; also, wildcard patterns and view patterns are not
+allowed. For unidirectional and explicitly bidirectional pattern
+synonyms, there is no restriction on the right-hand side pattern.
+
+Pattern synonyms cannot be defined recursively.
+
+.. _patsyn-impexp:
+
+Import and export of pattern synonyms
+-------------------------------------
+
+The name of the pattern synonym is in the same namespace as proper data
+constructors. Like normal data constructors, pattern synonyms can be imported
+and exported through association with a type constructor or independently.
+
+To export them on their own, in an export or import specification, you must
+prefix pattern names with the ``pattern`` keyword, e.g.: ::
+
+      module Example (pattern Zero) where
+
+      data MyNum = MkNum Int
+
+      pattern Zero :: MyNum
+      pattern Zero = MkNum 0
+
+Without the ``pattern`` prefix, ``Zero`` would be interpreted as a
+type constructor in the export list.
+
+You may also use the ``pattern`` keyword in an import/export
+specification to import or export an ordinary data constructor. For
+example: ::
+
+      import Data.Maybe( pattern Just )
+
+would bring into scope the data constructor ``Just`` from the ``Maybe``
+type, without also bringing the type constructor ``Maybe`` into scope.
+
+To bundle a pattern synonym with a type constructor, we list the pattern
+synonym in the export list of a module which exports the type constructor.
+For example, to bundle ``Zero`` with ``MyNum`` we could write the following: ::
+
+      module Example ( MyNum(Zero) ) where
+
+If a module was then to import ``MyNum`` from ``Example``, it would also import
+the pattern synonym ``Zero``.
+
+It is also possible to use the special token ``..`` in an export list to mean
+all currently bundled constructors. For example, we could write: ::
+
+      module Example ( MyNum(.., Zero) ) where
+
+in which case, ``Example`` would export the type constructor ``MyNum`` with
+the data constructor ``MkNum`` and also the pattern synonym ``Zero``.
+
+Bundled patterns synoyms are type checked to ensure that they are of the same
+type as the type constructor which they are bundled with. A pattern synonym
+``P`` can not be bundled with a type constructor ``T`` if ``P``\'s type is visibly
+incompatible with ``T``.
+
+A module which imports ``MyNum(..)`` from ``Example`` and then re-exports
+``MyNum(..)`` will also export any pattern synonyms bundled with ``MyNum`` in
+``Example``. A more complete specification can be found on the
+:ghc-wiki:`wiki. <PatternSynonyms/AssociatingSynonyms>`
+
+Typing of pattern synonyms
+--------------------------
+
+Given a pattern synonym definition of the form ::
+
+      pattern P var1 var2 ... varN <- pat
+
+it is assigned a *pattern type* of the form ::
+
+      pattern P :: CReq => CProv => t1 -> t2 -> ... -> tN -> t
+
+where ⟨CProv⟩ and ⟨CReq⟩ are type contexts, and ⟨t1⟩, ⟨t2⟩, ..., ⟨tN⟩
+and ⟨t⟩ are types. Notice the unusual form of the type, with two
+contexts ⟨CProv⟩ and ⟨CReq⟩:
+
+-  ⟨CProv⟩ are the constraints *made available (provided)* by a
+   successful pattern match.
+
+-  ⟨CReq⟩ are the constraints *required* to match the pattern.
+
+For example, consider ::
+
+    data T a where
+      MkT :: (Show b) => a -> b -> T a
+
+    f1 :: (Eq a, Num a) => T a -> String
+    f1 (MkT 42 x) = show x
+
+    pattern ExNumPat :: (Num a, Eq a) => (Show b) => b -> T a
+    pattern ExNumPat x = MkT 42 x
+
+    f2 :: (Eq a, Num a) => T a -> String
+    f2 (ExNumPat x) = show x
+
+Here ``f1`` does not use pattern synonyms. To match against the numeric
+pattern ``42`` *requires* the caller to satisfy the constraints
+``(Num a, Eq a)``, so they appear in ``f1``'s type. The call to ``show``
+generates a ``(Show b)`` constraint, where ``b`` is an existentially
+type variable bound by the pattern match on ``MkT``. But the same
+pattern match also *provides* the constraint ``(Show b)`` (see ``MkT``'s
+type), and so all is well.
+
+Exactly the same reasoning applies to ``ExNumPat``: matching against
+``ExNumPat`` *requires* the constraints ``(Num a, Eq a)``, and
+*provides* the constraint ``(Show b)``.
+
+Note also the following points
+
+-  In the common case where ``Prov`` is empty, ``()``, it can be omitted
+   altogether.
+
+-  You may specify an explicit *pattern signature*, as we did for
+   ``ExNumPat`` above, to specify the type of a pattern, just as you can
+   for a function. As usual, the type signature can be less polymorphic
+   than the inferred type. For example
+
+   ::
+
+         -- Inferred type would be 'a -> [a]'
+         pattern SinglePair :: (a, a) -> [(a, a)]
+         pattern SinglePair x = [x]
+
+-  The GHCi :ghci-cmd:`:info` command shows pattern types in this format.
+
+-  For a bidirectional pattern synonym, a use of the pattern synonym as
+   an expression has the type
+
+   ::
+
+         (CReq, CProv) => t1 -> t2 -> ... -> tN -> t
+
+   So in the previous example, when used in an expression, ``ExNumPat``
+   has type
+
+   ::
+
+         ExNumPat :: (Num a, Eq a, Show b) => b -> T t
+
+   Notice that this is a tiny bit more restrictive than the expression
+   ``MkT 42 x`` which would not require ``(Eq a)``.
+
+-  Consider these two pattern synonyms: ::
+
+       data S a where
+          S1 :: Bool -> S Bool
+
+       pattern P1 :: Bool -> Maybe Bool
+       pattern P1 b = Just b
+
+       pattern P2 :: () => (b ~ Bool) => Bool -> S b
+       pattern P2 b = S1 b
+
+       f :: Maybe a -> String
+       f (P1 x) = "no no no"     -- Type-incorrect
+
+       g :: S a -> String
+       g (P2 b) = "yes yes yes"  -- Fine
+
+   Pattern ``P1`` can only match against a value of type ``Maybe Bool``,
+   so function ``f`` is rejected because the type signature is
+   ``Maybe a``. (To see this, imagine expanding the pattern synonym.)
+
+   On the other hand, function ``g`` works fine, because matching
+   against ``P2`` (which wraps the GADT ``S``) provides the local
+   equality ``(a~Bool)``. If you were to give an explicit pattern
+   signature ``P2 :: Bool -> S Bool``, then ``P2`` would become less
+   polymorphic, and would behave exactly like ``P1`` so that ``g`` would
+   then be rejected.
+
+   In short, if you want GADT-like behaviour for pattern synonyms, then
+   (unlike unlike concrete data constructors like ``S1``) you must write
+   its type with explicit provided equalities. For a concrete data
+   constructor like ``S1`` you can write its type signature as either
+   ``S1 :: Bool -> S Bool`` or ``S1 :: (b~Bool) => Bool -> S b``; the
+   two are equivalent. Not so for pattern synonyms: the two forms are
+   different, in order to distinguish the two cases above. (See
+   :ghc-ticket:`9953` for discussion of this choice.)
+
+Matching of pattern synonyms
+----------------------------
+
+A pattern synonym occurrence in a pattern is evaluated by first matching
+against the pattern synonym itself, and then on the argument patterns.
+For example, in the following program, ``f`` and ``f'`` are equivalent: ::
+
+    pattern Pair x y <- [x, y]
+
+    f (Pair True True) = True
+    f _                = False
+
+    f' [x, y] | True <- x, True <- y = True
+    f' _                              = False
+
+Note that the strictness of ``f`` differs from that of ``g`` defined
+below:
+
+.. code-block:: none
+
+    g [True, True] = True
+    g _            = False
+
+    *Main> f (False:undefined)
+    *** Exception: Prelude.undefined
+    *Main> g (False:undefined)
+    False
 
 .. _type-class-extensions:
 
@@ -6086,8 +6072,8 @@ following is not possible: ::
     data instance T Int  = A
     data instance T Char = B
     foo :: T a -> Int
-    foo A = 1             -- WRONG: These two equations together...
-    foo B = 2             -- ...will produce a type error.
+    foo A = 1
+    foo B = 2
 
 Instead, you would have to write ``foo`` as a class operation, thus: ::
 
@@ -6100,7 +6086,7 @@ Instead, you would have to write ``foo`` as a class operation, thus: ::
 
 Given the functionality provided by GADTs (Generalised Algebraic Data
 Types), it might seem as if a definition, such as the above, should be
-feasible. However, type families are - in contrast to GADTs - are
+feasible. However, type families - in contrast to GADTs - are
 *open;* i.e., new instances can always be added, possibly in other
 modules. Supporting pattern matching across different data instances
 would require a form of extensible case construct.
@@ -6891,324 +6877,6 @@ Note that for the purpose of injectivity check in bullets (4) and (5)
 GHC uses a special variant of unification algorithm that treats type
 family applications as possibly unifying with anything.
 
-.. _kind-polymorphism:
-
-Kind polymorphism
-=================
-
-.. ghc-flag:: -XPolyKinds
-
-    :implies: :ghc-flag:`-XKindSignatures`
-    :since: 7.4.1
-
-    Allow kind polymorphic types.
-
-This section describes *kind polymorphism*, and extension enabled by
-:ghc-flag:`-XPolyKinds`. It is described in more detail in the paper `Giving
-Haskell a Promotion <http://dreixel.net/research/pdf/ghp.pdf>`__, which
-appeared at TLDI 2012.
-
-Overview of kind polymorphism
------------------------------
-
-Currently there is a lot of code duplication in the way ``Typeable`` is
-implemented (:ref:`deriving-typeable`): ::
-
-    class Typeable (t :: *) where
-      typeOf :: t -> TypeRep
-
-    class Typeable1 (t :: * -> *) where
-      typeOf1 :: t a -> TypeRep
-
-    class Typeable2 (t :: * -> * -> *) where
-      typeOf2 :: t a b -> TypeRep
-
-Kind polymorphism (with :ghc-flag:`-XPolyKinds`) allows us to merge all these
-classes into one: ::
-
-    data Proxy t = Proxy
-
-    class Typeable t where
-      typeOf :: Proxy t -> TypeRep
-
-    instance Typeable Int  where typeOf _ = TypeRep
-    instance Typeable []   where typeOf _ = TypeRep
-
-Note that the datatype ``Proxy`` has kind ``forall k. k -> *`` (inferred
-by GHC), and the new ``Typeable`` class has kind
-``forall k. k -> Constraint``.
-
-Note the following specific points:
-
--  Generally speaking, with :ghc-flag:`-XPolyKinds`, GHC will infer a
-   polymorphic kind for un-decorated declarations, whenever possible.
-   For example, in GHCi ::
-
-       ghci> :set -XPolyKinds
-       ghci> data T m a = MkT (m a)
-       ghci> :k T
-       T :: (k -> *) -> k -> *
-
--  GHC does not usually print explicit ``forall``\ s, including kind
-   ``forall``\ s. You can make GHC show them explicitly with
-   :ghc-flag:`-fprint-explicit-foralls` (see :ref:`options-help`): ::
-
-       ghci> :set -XPolyKinds
-       ghci> :set -fprint-explicit-foralls
-       ghci> data T m a = MkT (m a)
-       ghci> :k T
-       T :: forall (k :: BOX). (k -> *) -> k -> *
-
--  Just as in the world of terms, you can restrict polymorphism using a
-   kind signature (sometimes called a kind annotation) ::
-
-       data T m (a :: *) = MkT (m a)
-       -- GHC now infers kind   T :: (* -> *) -> * -> *
-
-   NB: :ghc-flag:`-XPolyKinds` implies :ghc-flag:`-XKindSignatures` (see
-   :ref:`kinding`).
-
--  The source language does not support an explicit ``forall`` for kind
-   variables. Instead, when binding a type variable, you can simply
-   mention a kind variable in a kind annotation for that type-variable
-   binding, thus: ::
-
-       data T (m :: k -> *) a = MkT (m a)
-       -- GHC now infers kind   T :: forall k. (k -> *) -> k -> *
-
--  The (implicit) kind "forall" is placed just outside the outermost
-   type-variable binding whose kind annotation mentions the kind
-   variable. For example ::
-
-       f1 :: (forall a m. m a -> Int) -> Int
-                -- f1 :: forall (k::BOX).
-                --       (forall (a::k) (m::k->*). m a -> Int)
-                --       -> Int
-
-       f2 :: (forall (a::k) m. m a -> Int) -> Int
-                -- f2 :: (forall (k::BOX) (a::k) (m::k->*). m a -> Int)
-                --       -> Int
-
-   Here in ``f1`` there is no kind annotation mentioning the polymorphic
-   kind variable, so ``k`` is generalised at the top level of the
-   signature for ``f1``. But in the case of of ``f2`` we give a kind
-   annotation in the ``forall (a:k)`` binding, and GHC therefore puts
-   the kind ``forall`` right there too. This design decision makes
-   default case (``f1``) as polymorphic as possible; remember that a
-   *more* polymorphic argument type (as in ``f2`` makes the overall
-   function *less* polymorphic, because there are fewer acceptable
-   arguments.
-
-.. note::
-
-   These rules are a bit indirect and clumsy. Perhaps GHC should
-   allow explicit kind quantification. But the implicit quantification
-   (e.g. in the declaration for data type T above) is certainly very
-   convenient, and it is not clear what the syntax for explicit
-   quantification should be.
-
-Principles of kind inference
-----------------------------
-
-Generally speaking, when :ghc-flag:`-XPolyKinds` is on, GHC tries to infer the
-most general kind for a declaration. For example: ::
-
-    data T f a = MkT (f a)   -- GHC infers:
-                             -- T :: forall k. (k->*) -> k -> *
-
-In this case the definition has a right-hand side to inform kind
-inference. But that is not always the case. Consider ::
-
-    type family F a
-
-Type family declarations have no right-hand side, but GHC must still
-infer a kind for ``F``. Since there are no constraints, it could infer
-``F :: forall k1 k2. k1 -> k2``, but that seems *too* polymorphic. So
-GHC defaults those entirely-unconstrained kind variables to ``*`` and we
-get ``F :: * -> *``. You can still declare ``F`` to be kind-polymorphic
-using kind signatures: ::
-
-    type family F1 a               -- F1 :: * -> *
-    type family F2 (a :: k)        -- F2 :: forall k. k -> *
-    type family F3 a :: k          -- F3 :: forall k. * -> k
-    type family F4 (a :: k1) :: k  -- F4 :: forall k1 k2. k1 -> k2
-
-The general principle is this:
-
--  *When there is a right-hand side, GHC infers the most polymorphic
-   kind consistent with the right-hand side.* Examples: ordinary data
-   type and GADT declarations, class declarations. In the case of a
-   class declaration the role of "right hand side" is played by the
-   class method signatures.
-
--  *When there is no right hand side, GHC defaults argument and result
-   kinds to ``*``, except when directed otherwise by a kind signature*.
-   Examples: data and type family declarations.
-
-This rule has occasionally-surprising consequences (see
-:ghc-ticket:`10132`. ::
-
-    class C a where    -- Class declarations are generalised
-                       -- so C :: forall k. k -> Constraint
-      data D1 a        -- No right hand side for these two family
-      type F1 a        -- declarations, but the class forces (a :: k)
-                       -- so   D1, F1 :: forall k. k -> *
-
-    data D2 a   -- No right-hand side so D2 :: * -> *
-    type F2 a   -- No right-hand side so F2 :: * -> *
-
-The kind-polymorphism from the class declaration makes ``D1``
-kind-polymorphic, but not so ``D2``; and similarly ``F1``, ``F1``.
-
-.. _complete-kind-signatures:
-
-Polymorphic kind recursion and complete kind signatures
--------------------------------------------------------
-
-Just as in type inference, kind inference for recursive types can only
-use *monomorphic* recursion. Consider this (contrived) example: ::
-
-    data T m a = MkT (m a) (T Maybe (m a))
-    -- GHC infers kind  T :: (* -> *) -> * -> *
-
-The recursive use of ``T`` forced the second argument to have kind
-``*``. However, just as in type inference, you can achieve polymorphic
-recursion by giving a *complete kind signature* for ``T``. A complete
-kind signature is present when all argument kinds and the result kind
-are known, without any need for inference. For example: ::
-
-    data T (m :: k -> *) :: k -> * where
-      MkT :: m a -> T Maybe (m a) -> T m a
-
-The complete user-supplied kind signature specifies the polymorphic kind
-for ``T``, and this signature is used for all the calls to ``T``
-including the recursive ones. In particular, the recursive use of ``T``
-is at kind ``*``.
-
-What exactly is considered to be a "complete user-supplied kind
-signature" for a type constructor? These are the forms:
-
--  For a datatype, every type variable must be annotated with a kind. In
-   a GADT-style declaration, there may also be a kind signature (with a
-   top-level ``::`` in the header), but the presence or absence of this
-   annotation does not affect whether or not the declaration has a
-   complete signature. ::
-
-       data T1 :: (k -> *) -> k -> *       where ...
-       -- Yes  T1 :: forall k. (k->*) -> k -> *
-
-       data T2 (a :: k -> *) :: k -> *     where ...
-       -- Yes  T2 :: forall k. (k->*) -> k -> *
-
-       data T3 (a :: k -> *) (b :: k) :: * where ...
-       -- Yes  T3 :: forall k. (k->*) -> k -> *
-
-       data T4 (a :: k -> *) (b :: k)      where ...
-       -- Yes  T4 :: forall k. (k->*) -> k -> *
-
-       data T5 a (b :: k) :: *             where ...
-       -- No  kind is inferred
-
-       data T6 a b                         where ...
-       -- No  kind is inferred
-
--  For a class, every type variable must be annotated with a kind.
-
--  For a type synonym, every type variable and the result type must all
-   be annotated with kinds: ::
-
-       type S1 (a :: k) = (a :: k)    -- Yes   S1 :: forall k. k -> k
-       type S2 (a :: k) = a           -- No    kind is inferred
-       type S3 (a :: k) = Proxy a     -- No    kind is inferred
-
-   Note that in ``S2`` and ``S3``, the kind of the right-hand side is
-   rather apparent, but it is still not considered to have a complete
-   signature -- no inference can be done before detecting the signature.
-
--  An open type or data family declaration *always* has a complete
-   user-specified kind signature; un-annotated type variables default to
-   kind ``*``: ::
-
-       data family D1 a               -- D1 :: * -> *
-       data family D2 (a :: k)        -- D2 :: forall k. k -> *
-       data family D3 (a :: k) :: *   -- D3 :: forall k. k -> *
-       type family S1 a :: k -> *     -- S1 :: forall k. * -> k -> *
-
-       class C a where                -- C  :: k -> Constraint
-         type AT a b                  -- AT :: k -> * -> *
-
-   In the last example, the variable ``a`` has an implicit kind variable
-   annotation from the class declaration. It keeps its polymorphic kind
-   in the associated type declaration. The variable ``b``, however, gets
-   defaulted to ``*``.
-
--  A closed type family has a complete signature when all of its type
-   variables are annotated and a return kind (with a top-level ``::``)
-   is supplied.
-
-Kind inference in closed type families
---------------------------------------
-
-Although all open type families are considered to have a complete
-user-specified kind signature, we can relax this condition for closed
-type families, where we have equations on which to perform kind
-inference. GHC will infer kinds for the arguments and result types of a
-closed type family.
-
-GHC supports *kind-indexed* type families, where the family matches both
-on the kind and type. GHC will *not* infer this behaviour without a
-complete user-supplied kind signature, as doing so would sometimes infer
-non-principal types.
-
-For example: ::
-
-    type family F1 a where
-      F1 True  = False
-      F1 False = True
-      F1 x     = x
-    -- F1 fails to compile: kind-indexing is not inferred
-
-    type family F2 (a :: k) where
-      F2 True  = False
-      F2 False = True
-      F2 x     = x
-    -- F2 fails to compile: no complete signature
-
-    type family F3 (a :: k) :: k where
-      F3 True  = False
-      F3 False = True
-      F3 x     = x
-    -- OK
-
-Kind inference in class instance declarations
----------------------------------------------
-
-Consider the following example of a poly-kinded class and an instance
-for it: ::
-
-    class C a where
-      type F a
-
-    instance C b where
-      type F b = b -> b
-
-In the class declaration, nothing constrains the kind of the type ``a``,
-so it becomes a poly-kinded type variable ``(a :: k)``. Yet, in the
-instance declaration, the right-hand side of the associated type
-instance ``b -> b`` says that ``b`` must be of kind ``*``. GHC could
-theoretically propagate this information back into the instance head,
-and make that instance declaration apply only to type of kind ``*``, as
-opposed to types of any kind. However, GHC does *not* do this.
-
-In short: GHC does *not* propagate kind information from the members of
-a class instance declaration into the instance declaration head.
-
-This lack of kind inference is simply an engineering problem within GHC,
-but getting it to work would make a substantial change to the inference
-infrastructure, and it's not clear the payoff is worth it. If you want
-to restrict ``b``\ 's kind in the instance above, just use a kind
-signature in the instance head.
-
 .. _promotion:
 
 Datatype promotion
@@ -7231,9 +6899,9 @@ Motivation
 
 Standard Haskell has a rich type language. Types classify terms and
 serve to avoid many common programming mistakes. The kind language,
-however, is relatively simple, distinguishing only lifted types (kind
-``*``), type constructors (e.g. kind ``* -> * -> *``), and unlifted
-types (:ref:`glasgow-unboxed`). In particular when using advanced type
+however, is relatively simple, distinguishing only regular types (kind
+``*``) and type constructors (e.g. kind ``* -> * -> *``).
+In particular when using advanced type
 system features, such as type families (:ref:`type-families`) or GADTs
 (:ref:`gadt`), this simple kind system is insufficient, and fails to
 prevent simple errors. Consider the example of type-level natural
@@ -7246,7 +6914,7 @@ numbers, and length-indexed vectors: ::
       Nil  :: Vec a Ze
       Cons :: a -> Vec a n -> Vec a (Su n)
 
-The kind of ``Vec`` is ``* -> * -> *``. This means that eg.
+The kind of ``Vec`` is ``* -> * -> *``. This means that, e.g.,
 ``Vec Int Char`` is a well-kinded type, even though this is not what we
 intend when defining length-indexed vectors.
 
@@ -7255,8 +6923,8 @@ With :ghc-flag:`-XDataKinds`, the example above can then be rewritten to: ::
     data Nat = Ze | Su Nat
 
     data Vec :: * -> Nat -> * where
-      Nil  :: Vec a Ze
-      Cons :: a -> Vec a n -> Vec a (Su n)
+      Nil  :: Vec a 'Ze
+      Cons :: a -> Vec a n -> Vec a ('Su n)
 
 With the improved kind of ``Vec``, things like ``Vec Int Char`` are now
 ill-kinded, and GHC will report an error.
@@ -7264,11 +6932,11 @@ ill-kinded, and GHC will report an error.
 Overview
 --------
 
-With :ghc-flag:`-XDataKinds`, GHC automatically promotes every suitable datatype
-to be a kind, and its (value) constructors to be type constructors. The
+With :ghc-flag:`-XDataKinds`, GHC automatically promotes every datatype
+to be a kind and its (value) constructors to be type constructors. The
 following types ::
 
-    data Nat = Ze | Su Nat
+    data Nat = Zero | Succ Nat
 
     data List a = Nil | Cons a (List a)
 
@@ -7276,31 +6944,28 @@ following types ::
 
     data Sum a b = L a | R b
 
-give rise to the following kinds and type constructors: ::
+give rise to the following kinds and type constructors (where promoted
+constructors are prefixed by a tick ``'``): ::
 
-    Nat :: BOX
-    Ze :: Nat
-    Su :: Nat -> Nat
+    Nat :: *
+    'Zero :: Nat
+    'Succ :: Nat -> Nat
 
-    List k :: BOX
-    Nil  :: List k
-    Cons :: k -> List k -> List k
+    List :: * -> *
+    'Nil  :: forall k. List k
+    'Cons :: forall k. k -> List k -> List k
 
-    Pair k1 k2 :: BOX
-    Pair :: k1 -> k2 -> Pair k1 k2
+    Pair  :: * -> * -> *
+    'Pair :: forall k1 k2. k1 -> k2 -> Pair k1 k2
 
-    Sum k1 k2 :: BOX
-    L :: k1 -> Sum k1 k2
-    R :: k2 -> Sum k1 k2
-
-where ``BOX`` is the (unique) sort that classifies kinds. Note that
-``List``, for instance, does not get sort ``BOX -> BOX``, because we do
-not further classify kinds; all kinds have sort ``BOX``.
+    Sum :: * -> * -> *
+    'L :: k1 -> Sum k1 k2
+    'R :: k2 -> Sum k1 k2
 
 The following restrictions apply to promotion:
 
--  We promote ``data`` types and ``newtypes``, but not type synonyms, or
-   type/data families (:ref:`type-families`).
+-  We promote ``data`` types and ``newtypes``; type synonyms and
+   type/data families are not promoted (:ref:`type-families`).
 
 -  We only promote types whose kinds are of the form
    ``* -> ... -> * -> *``. In particular, we do not promote
@@ -7312,33 +6977,49 @@ The following restrictions apply to promotion:
    involve constraints, mention type or data families, or involve types
    that are not promotable.
 
+The flag :ghc-flag:`-XTypeInType` (which implies :ghc-flag:`-XDataKinds`)
+relaxes some of these restrictions, allowing:
+
+-  Promotion of type synonyms and type families, but not data families.
+   GHC's type theory just isn't up to the task of promoting data families,
+   which requires full dependent types.
+
+-  All datatypes, even those with rich kinds, get promoted. For example: ::
+
+     data Proxy a = Proxy
+     data App f a = MkApp (f a)   -- App :: forall k. (k -> *) -> k -> *
+     x = Proxy :: Proxy ('MkApp ('Just 'True))
+
 .. _promotion-syntax:
 
 Distinguishing between types and constructors
 ---------------------------------------------
 
-Since constructors and types share the same namespace, with promotion
-you can get ambiguous type names: ::
+In the examples above, all promoted constructors are prefixed with a single
+quote mark ``'``. This mark tells GHC to look in the data constructor namespace
+for a name, not the type (constructor) namespace. Consider ::
 
-    data P          -- 1
+    data P = MkP    -- 1
 
     data Prom = P   -- 2
 
-    type T = P      -- 1 or promoted 2?
+We can thus distinguish the type ``P`` (which has a constructor ``MkP``)
+from the promoted data constructor ``'P`` (of kind ``Prom``).
 
-In these cases, if you want to refer to the promoted constructor, you
-should prefix its name with a quote: ::
+As a convenience, GHC allows you to omit the quote mark when the name is
+unambiguous. However, our experience has shown that the quote mark helps
+to make code more readable and less error-prone. GHC thus supports
+:ghc-flag:`-Wunticked-promoted-constructors` that will warn you if you
+use a promoted data constructor without a preceding quote mark.
 
-    type T1 = P     -- 1
+Just as in the case of Template Haskell (:ref:`th-syntax`), GHC gets
+confused if you put a quote mark before a data constructor whose second
+character is a quote mark. In this case, just put a space between the
+promotion quote and the data constructor: ::
 
-    type T2 = 'P    -- promoted 2
-
-Note that promoted datatypes give rise to named kinds. Since these can
-never be ambiguous, we do not allow quotes in kind names.
-
-Just as in the case of Template Haskell (:ref:`th-syntax`), there is no
-way to quote a data constructor or type constructor whose second
-character is a single quote.
+  data T = A'
+  type S = 'A'   -- ERROR: looks like a character
+  type R = ' A'  -- OK: promoted `A'`
 
 .. _promoted-lists-and-tuples:
 
@@ -7400,10 +7081,11 @@ not mentioned in the arguments, and thus it would seem that an instance
 would have to return a member of ``k`` *for any* ``k``. However, this is
 not the case. The type family ``UnEx`` is a kind-indexed type family.
 The return kind ``k`` is an implicit parameter to ``UnEx``. The
-elaborated definitions are as follows: ::
+elaborated definitions are as follows (where implicit parameters are
+denoted by braces): ::
 
-    type family UnEx (k :: BOX) (ex :: Ex) :: k
-    type instance UnEx k (MkEx k x) = x
+    type family UnEx {k :: *} (ex :: Ex) :: k
+    type instance UnEx {k} (MkEx @k x) = x
 
 Thus, the instance triggers only when the implicit parameter to ``UnEx``
 matches the implicit parameter to ``MkEx``. Because ``k`` is actually a
@@ -7412,16 +7094,657 @@ above code is valid.
 
 See also :ghc-ticket:`7347`.
 
-Promoting type operators
+.. _type-in-type:
+.. _kind-polymorphism:
+
+Kind polymorphism and Type-in-Type
+==================================
+
+.. ghc-flag: -XTypeInType
+
+    :implies: :ghc-flag:`-XPolyKinds`, :ghc-flag:`-XDataKinds`, :ghc-flag:`-XKindSignatures`
+    :since: 8.0.1
+
+    Allow kinds to be as intricate as types, allowing explicit quantification
+    over kind variables, higher-rank kinds, and the use of type synonyms and
+    families in kinds, among other features.
+
+.. ghc-flag:: -XPolyKinds
+
+    :implies: :ghc-flag:`-XKindSignatures`
+    :since: 7.4.1
+
+    Allow kind polymorphic types.
+
+This section describes GHC's kind system, as it appears in version 8.0 and beyond.
+The kind system as described here is always in effect, with or without extensions,
+although it is a conservative extension beyond standard Haskell. The extensions
+above simply enable syntax and tweak the inference algorithm to allow users to
+take advantage of the extra expressiveness of GHC's kind system.
+
+The difference between :ghc-flag:`-XTypeInType` and :ghc-flag:`-XPolyKinds`
+---------------------------------------------------------------------------
+
+It is natural to consider :ghc-flag:`-XTypeInType` as an extension of
+:ghc-flag:`-XPolyKinds`. The latter simply enables fewer features of GHC's
+rich kind system than does the former. The need for two separate extensions
+stems from their history: :ghc-flag:`-XPolyKinds` was introduced for GHC 7.4,
+when it was experimental and temperamental. The wrinkles were smoothed out for
+GHC 7.6. :ghc-flag:`-XTypeInType` was introduced for GHC 8.0, and is currently
+experimental and temperamental, with the wrinkles to be smoothed out in due
+course. The intent of having the two extensions is that users can rely on
+:ghc-flag:`-XPolyKinds` to work properly while being duly sceptical of
+:ghc-flag:`-XTypeInType`. In particular, we recommend enabling
+:ghc-flag:`-dcore-lint` whenever using :ghc-flag:`-XTypeInType`; that flag
+turns on a set of internal checks within GHC that will discover bugs in the
+implementation of :ghc-flag:`-XTypeInType`. Please report bugs at `our bug
+tracker <https://ghc.haskell.org/trac/ghc/wiki/ReportABug>`__.
+
+Although we have tried to allow the new behavior only when
+:ghc-flag:`-XTypeInType` is enabled, some particularly thorny cases may have
+slipped through. It is thus possible that some construct is available in GHC
+8.0 with :ghc-flag:`-XPolyKinds` that was not possible in GHC 7.x. If you spot
+such a case, you are welcome to submit that as a bug as well. We flag
+newly-available capabilities below.
+
+Overview of kind polymorphism
+-----------------------------
+
+Consider inferring the kind for ::
+
+  data App f a = MkApp (f a)
+
+In Haskell 98, the inferred kind for ``App`` is ``(* -> *) -> * -> *``.
+But this is overly specific, because another suitable Haskell 98 kind for
+``App`` is ``((* -> *) -> *) -> (* -> *) -> *``, where the kind assigned
+to ``a`` is ``* -> *``. Indeed, without kind signatures
+(:ghc-flag:`-XKindSignatures`), it is necessary to use a dummy constructor
+to get a Haskell compiler to infer the second kind. With kind polymorphism
+(:ghc-flag:`-XPolyKinds`), GHC infers the kind ``forall k. (k -> *) -> k -> *``
+for ``App``, which is its most general kind.
+
+Thus, the chief benefit of kind polymorphism is that we can now infer these
+most general kinds and use ``App`` at a variety of kinds: ::
+
+  App Maybe Int   -- `k` is instantiated to *
+
+  data T a = MkT (a Int)    -- `a` is inferred to have kind (* -> *)
+  App T Maybe     -- `k` is instantiated to (* -> *)
+
+Overview of Type-in-Type
 ------------------------
 
-Type operators are *not* promoted to the kind level. Why not? Because
-``*`` is a kind, parsed the way identifiers are. Thus, if a programmer
-tried to write ``Either * Bool``, would it be ``Either`` applied to
-``*`` and ``Bool``? Or would it be ``*`` applied to ``Either`` and
-``Bool``. To avoid this quagmire, we simply forbid promoting type
-operators to the kind level.
+GHC 8 extends the idea of kind polymorphism by declaring that types and kinds
+are indeed one and the same. Nothing within GHC distinguishes between types
+and kinds. Another way of thinking about this is that the type ``Bool`` and
+the "promoted kind" ``Bool`` are actually identical. (Note that term
+``True`` and the type ``'True`` are still distinct, because the former can
+be used in expressions and the latter in types.) This lack of distinction
+between types and kinds is a hallmark of dependently typed languages.
+Full dependently typed languages also remove the difference between expressions
+and types, but doing that in GHC is a story for another day.
 
+One simplification allowed by combining types and kinds is that the type
+of ``*`` is just ``*``. It is true that the ``* :: *`` axiom can lead to
+non-termination, but this is not a problem in GHC, as we already have other
+means of non-terminating programs in both types and expressions. This
+decision (among many, many others) *does* mean that despite the expressiveness
+of GHC's type system, a "proof" you write in Haskell is not an irrefutable
+mathematical proof. GHC promises only partial correctness, that if your
+programs compile and run to completion, their results indeed have the types
+assigned. It makes no claim about programs that do not finish in a finite
+amount of time.
+
+To learn more about this decision and the design of GHC under the hood
+please see the `paper <http://www.seas.upenn.edu/~sweirich/papers/fckinds.pdf>`__
+introducing this kind system to GHC/Haskell.
+
+Principles of kind inference
+----------------------------
+
+Generally speaking, when :ghc-flag:`-XPolyKinds` is on, GHC tries to infer the
+most general kind for a declaration.
+In this case the definition has a right-hand side to inform kind
+inference. But that is not always the case. Consider ::
+
+    type family F a
+
+Type family declarations have no right-hand side, but GHC must still
+infer a kind for ``F``. Since there are no constraints, it could infer
+``F :: forall k1 k2. k1 -> k2``, but that seems *too* polymorphic. So
+GHC defaults those entirely-unconstrained kind variables to ``*`` and we
+get ``F :: * -> *``. You can still declare ``F`` to be kind-polymorphic
+using kind signatures: ::
+
+    type family F1 a                -- F1 :: * -> *
+    type family F2 (a :: k)         -- F2 :: forall k. k -> *
+    type family F3 a :: k           -- F3 :: forall k. * -> k
+    type family F4 (a :: k1) :: k2  -- F4 :: forall k1 k2. k1 -> k2
+
+The general principle is this:
+
+-  *When there is a right-hand side, GHC infers the most polymorphic
+   kind consistent with the right-hand side.* Examples: ordinary data
+   type and GADT declarations, class declarations. In the case of a
+   class declaration the role of "right hand side" is played by the
+   class method signatures.
+
+-  *When there is no right hand side, GHC defaults argument and result
+   kinds to ``*``, except when directed otherwise by a kind signature*.
+   Examples: data and open type family declarations.
+
+This rule has occasionally-surprising consequences (see
+:ghc-ticket:`10132`. ::
+
+    class C a where    -- Class declarations are generalised
+                       -- so C :: forall k. k -> Constraint
+      data D1 a        -- No right hand side for these two family
+      type F1 a        -- declarations, but the class forces (a :: k)
+                       -- so   D1, F1 :: forall k. k -> *
+
+    data D2 a   -- No right-hand side so D2 :: * -> *
+    type F2 a   -- No right-hand side so F2 :: * -> *
+
+The kind-polymorphism from the class declaration makes ``D1``
+kind-polymorphic, but not so ``D2``; and similarly ``F1``, ``F1``.
+
+.. index::
+   single: CUSK
+   single: complete user-supplied kind signature
+
+.. _complete-kind-signatures:
+
+Complete user-supplied kind signatures and polymorphic recursion
+----------------------------------------------------------------
+
+Just as in type inference, kind inference for recursive types can only
+use *monomorphic* recursion. Consider this (contrived) example: ::
+
+    data T m a = MkT (m a) (T Maybe (m a))
+    -- GHC infers kind  T :: (* -> *) -> * -> *
+
+The recursive use of ``T`` forced the second argument to have kind
+``*``. However, just as in type inference, you can achieve polymorphic
+recursion by giving a *complete user-supplied kind signature* (or CUSK)
+for ``T``. A CUSK is present when all argument kinds and the result kind
+are known, without any need for inference. For example: ::
+
+    data T (m :: k -> *) :: k -> * where
+      MkT :: m a -> T Maybe (m a) -> T m a
+
+The complete user-supplied kind signature specifies the polymorphic kind
+for ``T``, and this signature is used for all the calls to ``T``
+including the recursive ones. In particular, the recursive use of ``T``
+is at kind ``*``.
+
+What exactly is considered to be a "complete user-supplied kind
+signature" for a type constructor? These are the forms:
+
+-  For a datatype, every type variable must be annotated with a kind. In
+   a GADT-style declaration, there may also be a kind signature (with a
+   top-level ``::`` in the header), but the presence or absence of this
+   annotation does not affect whether or not the declaration has a
+   complete signature. ::
+
+       data T1 :: (k -> *) -> k -> *       where ...
+       -- Yes;  T1 :: forall k. (k->*) -> k -> *
+
+       data T2 (a :: k -> *) :: k -> *     where ...
+       -- Yes;  T2 :: forall k. (k->*) -> k -> *
+
+       data T3 (a :: k -> *) (b :: k) :: * where ...
+       -- Yes;  T3 :: forall k. (k->*) -> k -> *
+
+       data T4 (a :: k -> *) (b :: k)      where ...
+       -- Yes;  T4 :: forall k. (k->*) -> k -> *
+
+       data T5 a (b :: k) :: *             where ...
+       -- No;  kind is inferred
+
+       data T6 a b                         where ...
+       -- No;  kind is inferred
+
+-  For a datatype with a top-level ``::`` when :ghc-flag:`-XTypeInType`
+   is in effect: all kind variables introduced after the ``::`` must
+   be explicitly quantified. ::
+
+     -- -XTypeInType is on
+     data T1 :: k -> *            -- No CUSK: `k` is not explicitly quantified
+     data T2 :: forall k. k -> *  -- CUSK: `k` is bound explicitly
+     data T3 :: forall (k :: *). k -> *   -- still a CUSK
+
+   Note that the first example would indeed have a CUSK without
+   :ghc-flag:`-XTypeInType`.
+
+-  For a class, every type variable must be annotated with a kind.
+
+-  For a type synonym, every type variable and the result type must all
+   be annotated with kinds: ::
+
+       type S1 (a :: k) = (a :: k)    -- Yes   S1 :: forall k. k -> k
+       type S2 (a :: k) = a           -- No    kind is inferred
+       type S3 (a :: k) = Proxy a     -- No    kind is inferred
+
+   Note that in ``S2`` and ``S3``, the kind of the right-hand side is
+   rather apparent, but it is still not considered to have a complete
+   signature -- no inference can be done before detecting the signature.
+
+-  An un-associated open type or data family declaration *always* has a CUSK;
+   un-annotated type variables default to
+   kind ``*``: ::
+
+       data family D1 a               -- D1 :: * -> *
+       data family D2 (a :: k)        -- D2 :: forall k. k -> *
+       data family D3 (a :: k) :: *   -- D3 :: forall k. k -> *
+       type family S1 a :: k -> *     -- S1 :: forall k. * -> k -> *
+
+-  An associated type or data family declaration has a CUSK precisely if
+   its enclosing class has a CUSK. ::
+       
+       class C a where                -- no CUSK
+         type AT a b                  -- no CUSK, b is defaulted
+
+       class D (a :: k) where         -- yes CUSK
+         type AT2 a b                 -- yes CUSK, b is defaulted
+
+-  A closed type family has a complete signature when all of its type
+   variables are annotated and a return kind (with a top-level ``::``)
+   is supplied.
+
+With :ghc-flag:`-XTypeInType` enabled, it is possible to write a datatype
+that syntactically has a CUSK (according to the rules above)
+but actually requires some inference. As a very contrived example, consider ::
+
+  data Proxy a           -- Proxy :: forall k. k -> *
+  data X (a :: Proxy k)
+
+According to the rules above ``X`` has a CUSK. Yet, what is the kind of ``k``?
+It is impossible to know. This code is thus rejected as masquerading as having
+a CUSK, but not really. If you wish ``k`` to be polykinded, it is straightforward
+to specify this: ::
+
+  data X (a :: Proxy (k1 :: k2))
+
+The above definition is indeed fully fixed, with no masquerade.
+
+Kind inference in closed type families
+--------------------------------------
+
+Although all open type families are considered to have a complete
+user-supplied kind signature, we can relax this condition for closed
+type families, where we have equations on which to perform kind
+inference. GHC will infer kinds for the arguments and result types of a
+closed type family.
+
+GHC supports *kind-indexed* type families, where the family matches both
+on the kind and type. GHC will *not* infer this behaviour without a
+complete user-supplied kind signature, as doing so would sometimes infer
+non-principal types. Indeed, we can see kind-indexing as a form
+of polymorphic recursion, where a type is used at a kind other than
+its most general in its own definition.
+
+For example: ::
+
+    type family F1 a where
+      F1 True  = False
+      F1 False = True
+      F1 x     = x
+    -- F1 fails to compile: kind-indexing is not inferred
+
+    type family F2 (a :: k) where
+      F2 True  = False
+      F2 False = True
+      F2 x     = x
+    -- F2 fails to compile: no complete signature
+
+    type family F3 (a :: k) :: k where
+      F3 True  = False
+      F3 False = True
+      F3 x     = x
+    -- OK
+
+Kind inference in class instance declarations
+---------------------------------------------
+
+Consider the following example of a poly-kinded class and an instance
+for it: ::
+
+    class C a where
+      type F a
+
+    instance C b where
+      type F b = b -> b
+
+In the class declaration, nothing constrains the kind of the type ``a``,
+so it becomes a poly-kinded type variable ``(a :: k)``. Yet, in the
+instance declaration, the right-hand side of the associated type
+instance ``b -> b`` says that ``b`` must be of kind ``*``. GHC could
+theoretically propagate this information back into the instance head,
+and make that instance declaration apply only to type of kind ``*``, as
+opposed to types of any kind. However, GHC does *not* do this.
+
+In short: GHC does *not* propagate kind information from the members of
+a class instance declaration into the instance declaration head.
+
+This lack of kind inference is simply an engineering problem within GHC,
+but getting it to work would make a substantial change to the inference
+infrastructure, and it's not clear the payoff is worth it. If you want
+to restrict ``b``\ 's kind in the instance above, just use a kind
+signature in the instance head.
+
+Kind inference in type signatures
+---------------------------------
+
+When kind-checking a type, GHC considers only what is written in that
+type when figuring out how to generalise the type's kind.
+
+For example,
+consider these definitions (with :ghc-flag:`-XScopedTypeVariables`): ::
+
+  data Proxy a    -- Proxy :: forall k. k -> *
+  p :: forall a. Proxy a
+  p = Proxy :: Proxy (a :: *)
+
+GHC reports an error, saying that the kind of ``a`` should be a kind variable
+``k``, not ``*``. This is because, by looking at the type signature
+``forall a. Proxy a``, GHC assumes ``a``'s kind should be generalised, not
+restricted to be ``*``. The function definition is then rejected for being
+more specific than its type signature.
+
+Explicit kind quantification
+----------------------------
+
+Enabled by :ghc-flag:`-XTypeInType`, GHC now supports explicit kind quantification,
+as in these examples: ::
+  
+  data Proxy :: forall k. k -> *
+  f :: (forall k (a :: k). Proxy a -> ()) -> Int
+
+Note that the second example has a ``forall`` that binds both a kind ``k`` and
+a type variable ``a`` of kind ``k``. In general, there is no limit to how
+deeply nested this sort of dependency can work. However, the dependency must
+be well-scoped: ``forall (a :: k) k. ...`` is an error.
+
+For backward compatibility, kind variables *do not* need to be bound explicitly,
+even if the type starts with ``forall``.
+
+Accordingly, the rule for kind quantification in higher-rank contexts has
+changed slightly. In GHC 7, if a kind variable was mentioned for the first
+time in the kind of a variable bound in a non-top-level ``forall``, the kind
+variable was bound there, too.
+That is, in ``f :: (forall (a :: k). ...) -> ...``, the ``k`` was bound
+by the same ``forall`` as the ``a``. In GHC 8, however, all kind variables
+mentioned in a type are bound at the outermost level. If you want one bound
+in a higher-rank ``forall``, include it explicitly.
+
+Kind-indexed GADTs
+------------------
+
+Consider the type ::
+
+  data G (a :: k) where
+    GInt    :: G Int
+    GMaybe  :: G Maybe
+
+This datatype ``G`` is GADT-like in both its kind and its type. Suppose you
+have ``g :: G a``, where ``a :: k``. Then pattern matching to discover that
+``g`` is in fact ```GMaybe`` tells you both that ``k ~ (* -> *)`` and
+``a ~ Maybe``. The definition for ``G`` requires that :ghc-flag:`-XTypeInType`
+be in effect, but pattern-matching on ``G`` requires no extension beyond
+:ghc-flag:`-XGADTs`. That this works is actually a straightforward extension
+of regular GADTs and a consequence of the fact that kinds and types are the
+same.
+
+Note that the datatype ``G`` is used at different kinds in its body, and
+therefore that kind-indexed GADTs use a form of polymorphic recursion.
+It is thus only possible to use this feature if you have provided a
+complete user-supplied kind signature
+for the datatype (:ref:`complete-kind-signatures`).
+
+Constraints in kinds
+--------------------
+
+As kinds and types are the same, kinds can now (with :ghc-flag:`-XTypeInType`)
+contain type constraints. Only equality constraints are currently supported,
+however. We expect this to extend to other constraints in the future.
+
+Here is an example of a constrained kind: ::
+
+  type family IsTypeLit a where
+    IsTypeLit Nat    = 'True
+    IsTypeLit Symbol = 'True
+    IsTypeLit a      = 'False
+
+  data T :: forall a. (IsTypeLit a ~ 'True) => a -> * where
+    MkNat    :: T 42
+    MkSymbol :: T "Don't panic!"
+
+The declarations above are accepted. However, if we add ``MkOther :: T Int``,
+we get an error that the equality constraint is not satisfied; ``Int`` is
+not a type literal. Note that explicitly quantifying with ``forall a`` is
+not necessary here.
+
+The kind ``*``
+--------------
+
+The kind ``*`` classifies ordinary types. Without :ghc-flag:`-XTypeInType`,
+this identifier is always in scope when writing a kind. However, with
+:ghc-flag:`-XTypeInType`, a user may wish to use ``*`` in a type or a
+type operator ``*`` in a kind. To make this all more manageable, ``*``
+becomes an (almost) ordinary name with :ghc-flag:`-XTypeInType` enabled.
+So as not to cause naming collisions, it is not imported by default;
+you must ``import Data.Kind`` to get ``*`` (but only with :ghc-flag:`-XTypeInType`
+enabled).
+
+The only way ``*`` is unordinary is in its parsing. In order to be backward
+compatible, ``*`` is parsed as if it were an alphanumeric idenfifier; note
+that we do not write ``Int :: (*)`` but just plain ``Int :: *``. Due to the
+bizarreness with which ``*`` is parsed-and the fact that it is the only such
+operator in GHC-there are some corner cases that are
+not handled. We are aware of two:
+
+- In a Haskell-98-style data constructor, you must put parentheses around
+  ``*``, like this: ::
+
+    data Universe = Ty (*) | Num Int | ...
+
+- In an import/export list, you must put parentheses around ``*``, like this: ::
+
+    import Data.Kind ( type (*) )
+
+  Note that the keyword ``type`` there is just to disambiguate the import
+  from a term-level ``(*)``. (:ref:`explicit-namespaces`)
+
+The ``Data.Kind`` module also exports ``Type`` as a synonym for ``*``.
+Now that type synonyms work in kinds, it is conceivable that we will deprecate
+``*`` when there is a good migration story for everyone to use ``Type``.
+If you like neither of these names, feel free to write your own synonym: ::
+
+  type Set = *   -- silly Agda programmers...
+
+All the affordances for ``*`` also apply to ``★``, the Unicode variant
+of ``*``.
+
+Inferring dependency in datatype declarations
+---------------------------------------------
+
+If a type variable ``a`` in a datatype, class, or type family declaration
+depends on another such variable ``k`` in the same declaration, two properties
+must hold:
+
+-  ``a`` must appear after ``k`` in the declaration, and
+
+-  ``k`` must appear explicitly in the kind of *some* type variable in that
+   declaration.
+
+The first bullet simply means that the dependency must be well-scoped. The
+second bullet concerns GHC's ability to infer dependency. Inferring this
+dependency is difficult, and GHC currently requires the dependency to be
+made explicit, meaning that ``k`` must appear in the kind of a type variable,
+making it obvious to GHC that dependency is intended. For example: ::
+
+  data Proxy k (a :: k)            -- OK: dependency is "obvious"
+  data Proxy2 k a = P (Proxy k a)  -- ERROR: dependency is unclear
+
+In the second declaration, GHC cannot immediately tell that ``k`` should
+be a dependent variable, and so the declaration is rejected.
+
+It is conceivable that this restriction will be relaxed in the future,
+but it is (at the time of writing) unclear if the difficulties around this
+scenario are theoretical (inferring this dependency would mean our type
+system does not have principal types) or merely practical (inferring this
+dependency is hard, given GHC's implementation). So, GHC takes the easy
+way out and requires a little help from the user.
+
+Kind defaulting without :ghc-flag:`-XPolyKinds`
+-----------------------------------------------
+
+Without :ghc-flag:`-XPolyKinds` or :ghc-flag:`-XTypeInType` enabled, GHC
+refuses to generalise over kind variables. It thus defaults kind variables
+to ``*`` when possible; when this is not possible, an error is issued.
+
+Here is an example of this in action: ::
+
+  {-# LANGUAGE TypeInType #-}
+  data Proxy a = P   -- inferred kind: Proxy :: k -> *
+  data Compose f g x = MkCompose (f (g x))
+    -- inferred kind: Compose :: (b -> *) -> (a -> b) -> a -> *
+
+  -- separate module having imported the first
+  {-# LANGUAGE NoPolyKinds, DataKinds #-}
+  z = Proxy :: Proxy 'MkCompose
+
+In the last line, we use the promoted constructor ``'MkCompose``, which has
+kind ::
+  
+  forall (a :: *) (b :: *) (f :: b -> *) (g :: a -> b) (x :: a).
+    f (g x) -> Compose f g x
+
+Now we must infer a type for ``z``. To do so without generalising over kind
+variables, we must default the kind variables of ``'MkCompose``. We can
+easily default ``a`` and ``b`` to ``*``, but ``f`` and ``g`` would be ill-kinded
+if defaulted. The definition for ``z`` is thus an error.
+
+Pretty-printing in the presence of kind polymorphism
+----------------------------------------------------
+
+With kind polymorphism, there is quite a bit going on behind the scenes that
+may be invisible to a Haskell programmer. GHC supports several flags that
+control how types are printed in error messages and at the GHCi prompt.
+See :ref:`pretty-printing-types` for the details. If you are using
+kind polymorphism and are confused as to why GHC is rejecting (or accepting)
+your program, we encourage you to turn on these flags, especially
+:ghc-flag:`-fprint-explicit-kinds`.
+
+.. index::
+   single: TYPE
+   single: runtime representation polymorphism
+   
+.. _runtime-rep:
+
+Runtime representation polymorphism
+===================================
+
+In order to allow full flexibility in how kinds are used, it is necessary
+to use the kind system to differentiate between boxed, lifted types
+(normal, everyday types like ``Int`` and ``[Bool]``) and unboxed, primitive
+types (:ref:`primitives`) like ``Int#``. We thus have so-called representation
+polymorphism.
+
+.. note::
+   For quite some time, this idea was known as *levity* polymorphism, when
+   it differentiated between only lifted and unlifted types. Now that it
+   differentiates between any runtime representations, the name has been
+   changed. But anything you've read or heard about levity polymorphism
+   likely applies to the story told here -- this is just a small generalisation.
+
+Here are the key definitions, all available from ``GHC.Exts``: ::
+
+  TYPE :: RuntimeRep -> *   -- highly magical, built into GHC
+
+  data RuntimeRep = PtrRepLifted     -- for things like `Int`
+                  | PtrRepUnlifted   -- for things like `Array#`
+                  | IntRep           -- for things like `Int#`
+                  | ...
+  
+  type * = TYPE PtrRepLifted    -- * is just an ordinary type synonym
+
+The idea is that we have a new fundamental type constant ``TYPE``, which
+is parameterised by a ``RuntimeRep``. We thus get ``Int# :: TYPE 'IntRep``
+and ``Bool :: TYPE 'PtrRepLifted``. Anything with a type of the form
+``TYPE x`` can appear to either side of a function arrow ``->``. We can
+thus say that ``->`` has type
+``TYPE r1 -> TYPE r2 -> TYPE 'PtrRepLifted``. The result is always lifted
+because all functions are lifted in GHC.
+
+No representation-polymorphic variables
+---------------------------------------
+
+If GHC didn't have to compile programs that run in the real world, that
+would be the end of the story. But representation polymorphism can cause
+quite a bit of trouble for GHC's code generator. Consider ::
+
+  bad :: forall (r1 :: RuntimeRep) (r2 :: RuntimeRep)
+                (a :: TYPE r1) (b :: TYPE r2).
+         (a -> b) -> a -> b
+  bad f x = f x
+
+This seems like a generalisation of the standard ``$`` operator. If we
+think about compiling this to runnable code, though, problems appear.
+In particular, when we call ``bad``, we must somehow pass ``x`` into
+``bad``. How wide (that is, how many bits) is ``x``? Is it a pointer?
+What kind of register (floating-point or integral) should ``x`` go in?
+It's all impossible to say, because ``x``'s type, ``TYPE r2`` is
+representation polymorphic. We thus forbid such constructions, via the
+following straightforward rule:
+
+    No variable may have a representation-polymorphic type.
+
+This eliminates ``bad`` because the variable ``x`` would have a
+representation-polymorphic type.
+
+However, not all is lost. We can still do this: ::
+
+  ($) :: forall r (a :: *) (b :: TYPE r).
+         (a -> b) -> a -> b
+  f $ x = f x
+
+Here, only ``b`` is representation polymorphic. There are no variables
+with a representation polymorphic type. And the code generator has no
+trouble with this. Indeed, this is the true type of GHC's ``$`` operator,
+slightly more general than the Haskell 98 version.
+
+Representation-polymorphic bottoms
+----------------------------------
+
+We can use representation polymorphism to good effect with ``error``
+and ``undefined``, whose types are given here: ::
+
+  undefined :: forall (r :: RuntimeRep) (a :: TYPE r).
+               HasCallStack => a
+  error :: forall (r :: RuntimeRep) (a :: TYPE r).
+           HasCallStack => String -> a
+
+These functions do not bind a representation-polymorphic variable, and
+so are accepted. Their polymorphism allows users to use these to conveniently
+stub out functions that return unboxed types.
+
+Printing representation-polymorphic types
+-----------------------------------------
+
+.. ghc-flag:: -Wprint-explicit-runtime-rep
+
+  Print ``RuntimeRep`` parameters as they appear; otherwise, they are
+  defaulted to ``'PtrRepLifted``.
+
+Most GHC users will not need to worry about representation polymorphism
+or unboxed types. For these users, see the representation polymorphism
+in the type of ``$`` is unhelpful. And thus, by default, it is suppressed,
+by supposing all type variables of type ``RuntimeType`` to be ``'PtrRepLifted``
+when printing, and printing ``TYPE 'PtrRepLifted`` as ``*``.
+
+Should you wish to see representation polymorphism in your types, enable
+the flag :ghc-flag:`-fprint-explicit-runtime-reps`.
 
 .. _type-level-literals:
 
@@ -7544,10 +7867,13 @@ the type level:
     GHC.TypeLits> natVal (lg (Proxy :: Proxy 2) (Proxy :: Proxy 8))
     3
 
+Constraints in types
+====================
+
 .. _equality-constraints:
 
 Equality constraints
-====================
+--------------------
 
 A type context can include equality constraints of the form ``t1 ~ t2``,
 which denote that the types ``t1`` and ``t2`` need to be the same. In
@@ -7581,6 +7907,34 @@ dependency. In class instances, we define the type instances of FD
 families in accordance with the class head. Method signatures are not
 affected by that process.
 
+.. index::
+   pair: Type equality constraints; kind heterogeneous
+
+Heterogeneous equality
+----------------------
+
+GHC also supports *kind-heterogeneous* equality, which relates two types of
+potentially different kinds. Heterogeneous equality is spelled ``~~``. Here
+are the kinds of ``~`` and ``~~`` to better understand their difference: ::
+
+  (~)  :: forall k. k -> k -> Constraint
+  (~~) :: forall k1 k2. k1 -> k2 -> Constraint
+
+Users will most likely want ``~``, but ``~~`` is available if GHC cannot know,
+a priori, that the two types of interest have the same kind. Evidence that
+``(a :: k1) ~~ (b :: k2)`` tells GHC both that ``k1`` and ``k2`` are the same
+and that ``a`` and ``b`` are the same.
+
+Because ``~`` is the more common equality relation, GHC prints out ``~~`` like
+``~`` unless :ghc-flag:`-fprint-equality-relations` is set.
+
+Unlifted heterogeneous equality
+-------------------------------
+
+Internal to GHC is yet a third equality relation ``(~#)``. It is heterogeneous
+(like ``~~``) and is used only internally. It may appear in error messages
+and other output only when :ghc-flag:`-fprint-equality-relations` is enabled.
+
 .. _coercible:
 
 The ``Coercible`` constraint
@@ -7597,7 +7951,7 @@ the paper
 .. _constraint-kind:
 
 The ``Constraint`` kind
-=======================
+-----------------------
 
 .. ghc-flag:: -XConstraintKinds
 
@@ -7673,10 +8027,10 @@ contexts and superclasses, but to do so you must use
 :ghc-flag:`-XUndecidableInstances` to signal that you don't mind if the type
 checker fails to terminate.
 
-.. _other-type-extensions:
+.. _extensions-to-type-signatures:
 
-Other type system extensions
-============================
+Extensions to type signatures
+=============================
 
 .. _explicit-foralls:
 
@@ -7698,18 +8052,26 @@ means this: ::
 
     g :: forall b. (b -> b)
 
-The two are treated identically.
+The two are treated identically, except that the latter may bring type variables
+into scope (see :ref:`scoped-type-variables`).
 
-Of course ``forall`` becomes a keyword; you can't use ``forall`` as a
-type variable any more!
+Notes:
 
-If the :ghc-flag:`-Wunused-foralls` flag is enabled, a warning will be emitted
-when you write a type variable in an explicit ``forall`` statement that is
-otherwise unused. For instance: ::
+- With :ghc-flag:`-XExplicitForAll`, ``forall`` becomes a keyword; you can't use ``forall`` as a
+  type variable any more!
+
+- As well in type signatures, you can also use an explicit ``forall``
+  in an instance declaration: ::
+
+      instance forall a. Eq a => Eq [a] where ...
+
+- If the :ghc-flag:`-Wunused-foralls` flag is enabled, a warning will be emitted
+  when you write a type variable in an explicit ``forall`` statement that is
+  otherwise unused. For instance: ::
 
     g :: forall a b. (b -> b)
 
-would warn about the unused type variable `a`.
+  would warn about the unused type variable `a`.
 
 .. _flexible-contexts:
 
@@ -7841,206 +8203,6 @@ function that can *never* be called, such as this one: ::
         quantified type variables ``tvi``. These ad-hoc restrictions are
         completely subsumed by the new ambiguity check.
 
-.. _implicit-parameters:
-
-Implicit parameters
--------------------
-
-.. ghc-flag:: -XImplicitParams
-
-    Allow definition of functions expecting implicit parameters.
-
-Implicit parameters are implemented as described in [Lewis2000]_ and enabled
-with the option :ghc-flag:`-XImplicitParams`. (Most of the following, still rather
-incomplete, documentation is due to Jeff Lewis.)
-
-.. [Lewis2000]
-    "Implicit parameters: dynamic scoping with static types",
-    J Lewis, MB Shields, E Meijer, J Launchbury,
-    *27th ACM Symposium on Principles of Programming Languages (POPL'00)*,
-    Boston, Jan 2000.
-
-A variable is called *dynamically bound* when it is bound by the calling
-context of a function and *statically bound* when bound by the callee's
-context. In Haskell, all variables are statically bound. Dynamic binding
-of variables is a notion that goes back to Lisp, but was later discarded
-in more modern incarnations, such as Scheme. Dynamic binding can be very
-confusing in an untyped language, and unfortunately, typed languages, in
-particular Hindley-Milner typed languages like Haskell, only support
-static scoping of variables.
-
-However, by a simple extension to the type class system of Haskell, we
-can support dynamic binding. Basically, we express the use of a
-dynamically bound variable as a constraint on the type. These
-constraints lead to types of the form ``(?x::t') => t``, which says
-"this function uses a dynamically-bound variable ``?x`` of type ``t'``".
-For example, the following expresses the type of a sort function,
-implicitly parameterised by a comparison function named ``cmp``. ::
-
-      sort :: (?cmp :: a -> a -> Bool) => [a] -> [a]
-
-The dynamic binding constraints are just a new form of predicate in the
-type class system.
-
-An implicit parameter occurs in an expression using the special form
-``?x``, where ``x`` is any valid identifier (e.g. ``ord ?x`` is a valid
-expression). Use of this construct also introduces a new dynamic-binding
-constraint in the type of the expression. For example, the following
-definition shows how we can define an implicitly parameterised sort
-function in terms of an explicitly parameterised ``sortBy`` function: ::
-
-      sortBy :: (a -> a -> Bool) -> [a] -> [a]
-
-      sort   :: (?cmp :: a -> a -> Bool) => [a] -> [a]
-      sort    = sortBy ?cmp
-
-Implicit-parameter type constraints
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-Dynamic binding constraints behave just like other type class
-constraints in that they are automatically propagated. Thus, when a
-function is used, its implicit parameters are inherited by the function
-that called it. For example, our ``sort`` function might be used to pick
-out the least value in a list: ::
-
-      least   :: (?cmp :: a -> a -> Bool) => [a] -> a
-      least xs = head (sort xs)
-
-Without lifting a finger, the ``?cmp`` parameter is propagated to become
-a parameter of ``least`` as well. With explicit parameters, the default
-is that parameters must always be explicit propagated. With implicit
-parameters, the default is to always propagate them.
-
-An implicit-parameter type constraint differs from other type class
-constraints in the following way: All uses of a particular implicit
-parameter must have the same type. This means that the type of
-``(?x, ?x)`` is ``(?x::a) => (a,a)``, and not
-``(?x::a, ?x::b) => (a, b)``, as would be the case for type class
-constraints.
-
-You can't have an implicit parameter in the context of a class or
-instance declaration. For example, both these declarations are illegal: ::
-
-      class (?x::Int) => C a where ...
-      instance (?x::a) => Foo [a] where ...
-
-Reason: exactly which implicit parameter you pick up depends on exactly
-where you invoke a function. But the "invocation" of instance
-declarations is done behind the scenes by the compiler, so it's hard to
-figure out exactly where it is done. Easiest thing is to outlaw the
-offending types.
-
-Implicit-parameter constraints do not cause ambiguity. For example,
-consider: ::
-
-       f :: (?x :: [a]) => Int -> Int
-       f n = n + length ?x
-
-       g :: (Read a, Show a) => String -> String
-       g s = show (read s)
-
-Here, ``g`` has an ambiguous type, and is rejected, but ``f`` is fine.
-The binding for ``?x`` at ``f``\ 's call site is quite unambiguous, and
-fixes the type ``a``.
-
-Implicit-parameter bindings
-~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-An implicit parameter is *bound* using the standard ``let`` or ``where``
-binding forms. For example, we define the ``min`` function by binding
-``cmp``. ::
-
-      min :: Ord a => [a] -> a
-      min  = let ?cmp = (<=) in least
-
-A group of implicit-parameter bindings may occur anywhere a normal group
-of Haskell bindings can occur, except at top level. That is, they can
-occur in a ``let`` (including in a list comprehension, or do-notation,
-or pattern guards), or a ``where`` clause. Note the following points:
-
--  An implicit-parameter binding group must be a collection of simple
-   bindings to implicit-style variables (no function-style bindings, and
-   no type signatures); these bindings are neither polymorphic or
-   recursive.
-
--  You may not mix implicit-parameter bindings with ordinary bindings in
-   a single ``let`` expression; use two nested ``let``\ s instead. (In
-   the case of ``where`` you are stuck, since you can't nest ``where``
-   clauses.)
-
--  You may put multiple implicit-parameter bindings in a single binding
-   group; but they are *not* treated as a mutually recursive group (as
-   ordinary ``let`` bindings are). Instead they are treated as a
-   non-recursive group, simultaneously binding all the implicit
-   parameter. The bindings are not nested, and may be re-ordered without
-   changing the meaning of the program. For example, consider: ::
-
-         f t = let { ?x = t; ?y = ?x+(1::Int) } in ?x + ?y
-
-   The use of ``?x`` in the binding for ``?y`` does not "see" the
-   binding for ``?x``, so the type of ``f`` is ::
-
-         f :: (?x::Int) => Int -> Int
-
-Implicit parameters and polymorphic recursion
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-Consider these two definitions: ::
-
-      len1 :: [a] -> Int
-      len1 xs = let ?acc = 0 in len_acc1 xs
-
-      len_acc1 [] = ?acc
-      len_acc1 (x:xs) = let ?acc = ?acc + (1::Int) in len_acc1 xs
-
-      ------------
-
-      len2 :: [a] -> Int
-      len2 xs = let ?acc = 0 in len_acc2 xs
-
-      len_acc2 :: (?acc :: Int) => [a] -> Int
-      len_acc2 [] = ?acc
-      len_acc2 (x:xs) = let ?acc = ?acc + (1::Int) in len_acc2 xs
-
-The only difference between the two groups is that in the second group
-``len_acc`` is given a type signature. In the former case, ``len_acc1``
-is monomorphic in its own right-hand side, so the implicit parameter
-``?acc`` is not passed to the recursive call. In the latter case,
-because ``len_acc2`` has a type signature, the recursive call is made to
-the *polymorphic* version, which takes ``?acc`` as an implicit
-parameter. So we get the following results in GHCi:
-
-.. code-block:: none
-
-      Prog> len1 "hello"
-      0
-      Prog> len2 "hello"
-      5
-
-Adding a type signature dramatically changes the result! This is a
-rather counter-intuitive phenomenon, worth watching out for.
-
-Implicit parameters and monomorphism
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-GHC applies the dreaded Monomorphism Restriction (section 4.5.5 of the
-Haskell Report) to implicit parameters. For example, consider: ::
-
-     f :: Int -> Int
-     f v = let ?x = 0     in
-           let y = ?x + v in
-           let ?x = 5     in
-           y
-
-Since the binding for ``y`` falls under the Monomorphism Restriction it
-is not generalised, so the type of ``y`` is simply ``Int``, not
-``(?x::Int) => Int``. Hence, ``(f 9)`` returns result ``9``. If you add
-a type signature for ``y``, then ``y`` will get type
-``(?x::Int) => Int``, so the occurrence of ``y`` in the body of the
-``let`` will see the inner binding of ``?x``, so ``(f 9)`` will return
-``14``.
-
-
 .. _kinding:
 
 Explicitly-kinded quantification
@@ -8105,8 +8267,650 @@ The parentheses are required.
 
 .. _universal-quantification:
 
-Arbitrary-rank polymorphism
+.. _scoped-type-variables:
+
+Lexically scoped type variables
+===============================
+
+.. ghc-flag:: -XScopedTypeVariables
+
+    :implies: :ghc-flag:`-XRelaxedPolyRec`
+    :implies: :ghc-flag:`-XExplicitForAll`
+
+    Enable lexical scoping of type variables explicitly introduced with
+    ``forall``.
+
+GHC supports *lexically scoped type variables*, without which some type
+signatures are simply impossible to write. For example: ::
+
+    f :: forall a. [a] -> [a]
+    f xs = ys ++ ys
+         where
+           ys :: [a]
+           ys = reverse xs
+
+The type signature for ``f`` brings the type variable ``a`` into scope,
+because of the explicit ``forall`` (:ref:`decl-type-sigs`). The type
+variables bound by a ``forall`` scope over the entire definition of the
+accompanying value declaration. In this example, the type variable ``a``
+scopes over the whole definition of ``f``, including over the type
+signature for ``ys``. In Haskell 98 it is not possible to declare a type
+for ``ys``; a major benefit of scoped type variables is that it becomes
+possible to do so.
+
+Lexically-scoped type variables are enabled by
+:ghc-flag:`-XScopedTypeVariables`. This flag implies :ghc-flag:`-XRelaxedPolyRec`.
+
+Overview
+--------
+
+The design follows the following principles
+
+-  A scoped type variable stands for a type *variable*, and not for a
+   *type*. (This is a change from GHC's earlier design.)
+
+-  Furthermore, distinct lexical type variables stand for distinct type
+   variables. This means that every programmer-written type signature
+   (including one that contains free scoped type variables) denotes a
+   *rigid* type; that is, the type is fully known to the type checker,
+   and no inference is involved.
+
+-  Lexical type variables may be alpha-renamed freely, without changing
+   the program.
+
+A *lexically scoped type variable* can be bound by:
+
+-  A declaration type signature (:ref:`decl-type-sigs`)
+
+-  An expression type signature (:ref:`exp-type-sigs`)
+
+-  A pattern type signature (:ref:`pattern-type-sigs`)
+
+-  Class and instance declarations (:ref:`cls-inst-scoped-tyvars`)
+
+In Haskell, a programmer-written type signature is implicitly quantified
+over its free type variables (`Section
+4.1.2 <http://www.haskell.org/onlinereport/decls.html#sect4.1.2>`__ of
+the Haskell Report). Lexically scoped type variables affect this
+implicit quantification rules as follows: any type variable that is in
+scope is *not* universally quantified. For example, if type variable
+``a`` is in scope, then ::
+
+      (e :: a -> a)     means     (e :: a -> a)
+      (e :: b -> b)     means     (e :: forall b. b->b)
+      (e :: a -> b)     means     (e :: forall b. a->b)
+
+.. _decl-type-sigs:
+
+Declaration type signatures
 ---------------------------
+
+A declaration type signature that has *explicit* quantification (using
+``forall``) brings into scope the explicitly-quantified type variables,
+in the definition of the named function. For example: ::
+
+      f :: forall a. [a] -> [a]
+      f (x:xs) = xs ++ [ x :: a ]
+
+The "``forall a``" brings "``a``" into scope in the definition of
+"``f``".
+
+This only happens if:
+
+-  The quantification in ``f``\'s type signature is explicit. For
+   example: ::
+
+         g :: [a] -> [a]
+         g (x:xs) = xs ++ [ x :: a ]
+
+   This program will be rejected, because "``a``" does not scope over
+   the definition of "``g``", so "``x::a``" means "``x::forall a. a``"
+   by Haskell's usual implicit quantification rules.
+
+-  The signature gives a type for a function binding or a bare variable
+   binding, not a pattern binding. For example: ::
+
+         f1 :: forall a. [a] -> [a]
+         f1 (x:xs) = xs ++ [ x :: a ]   -- OK
+
+         f2 :: forall a. [a] -> [a]
+         f2 = \(x:xs) -> xs ++ [ x :: a ]   -- OK
+
+         f3 :: forall a. [a] -> [a]
+         Just f3 = Just (\(x:xs) -> xs ++ [ x :: a ])   -- Not OK!
+
+   The binding for ``f3`` is a pattern binding, and so its type
+   signature does not bring ``a`` into scope. However ``f1`` is a
+   function binding, and ``f2`` binds a bare variable; in both cases the
+   type signature brings ``a`` into scope.
+
+.. _exp-type-sigs:
+
+Expression type signatures
+--------------------------
+
+An expression type signature that has *explicit* quantification (using
+``forall``) brings into scope the explicitly-quantified type variables,
+in the annotated expression. For example: ::
+
+    f = runST ( (op >>= \(x :: STRef s Int) -> g x) :: forall s. ST s Bool )
+
+Here, the type signature ``forall s. ST s Bool`` brings the type
+variable ``s`` into scope, in the annotated expression
+``(op >>= \(x :: STRef s Int) -> g x)``.
+
+.. _pattern-type-sigs:
+
+Pattern type signatures
+-----------------------
+
+A type signature may occur in any pattern; this is a *pattern type
+signature*. For example: ::
+
+    -- f and g assume that 'a' is already in scope
+    f = \(x::Int, y::a) -> x
+
+    g (x::a) = x
+
+    h ((x,y) :: (Int,Bool)) = (y,x)
+
+In the case where all the type variables in the pattern type signature
+are already in scope (i.e. bound by the enclosing context), matters are
+simple: the signature simply constrains the type of the pattern in the
+obvious way.
+
+Unlike expression and declaration type signatures, pattern type
+signatures are not implicitly generalised. The pattern in a *pattern
+binding* may only mention type variables that are already in scope. For
+example: ::
+
+    f :: forall a. [a] -> (Int, [a])
+    f xs = (n, zs)
+      where
+        (ys::[a], n) = (reverse xs, length xs) -- OK
+        zs::[a] = xs ++ ys                     -- OK
+
+        Just (v::b) = ...  -- Not OK; b is not in scope
+
+Here, the pattern signatures for ``ys`` and ``zs`` are fine, but the one
+for ``v`` is not because ``b`` is not in scope.
+
+However, in all patterns *other* than pattern bindings, a pattern type
+signature may mention a type variable that is not in scope; in this
+case, *the signature brings that type variable into scope*. This is
+particularly important for existential data constructors. For example: ::
+
+    data T = forall a. MkT [a]
+
+    k :: T -> T
+    k (MkT [t::a]) =
+        MkT t3
+      where
+        t3::[a] = [t,t,t]
+
+Here, the pattern type signature ``(t::a)`` mentions a lexical type
+variable that is not already in scope. Indeed, it *cannot* already be in
+scope, because it is bound by the pattern match. GHC's rule is that in
+this situation (and only then), a pattern type signature can mention a
+type variable that is not already in scope; the effect is to bring it
+into scope, standing for the existentially-bound type variable.
+
+When a pattern type signature binds a type variable in this way, GHC
+insists that the type variable is bound to a *rigid*, or fully-known,
+type variable. This means that any user-written type signature always
+stands for a completely known type.
+
+If all this seems a little odd, we think so too. But we must have *some*
+way to bring such type variables into scope, else we could not name
+existentially-bound type variables in subsequent type signatures.
+
+This is (now) the *only* situation in which a pattern type signature is
+allowed to mention a lexical variable that is not already in scope. For
+example, both ``f`` and ``g`` would be illegal if ``a`` was not already
+in scope.
+
+.. _cls-inst-scoped-tyvars:
+
+Class and instance declarations
+-------------------------------
+
+The type variables in the head of a ``class`` or ``instance``
+declaration scope over the methods defined in the ``where`` part. You do
+not even need an explicit ``forall`` (although you are allowed an explicit
+``forall`` in an ``instance`` declaration; see :ref:`explicit-foralls`).
+For example: ::
+
+      class C a where
+        op :: [a] -> a
+
+        op xs = let ys::[a]
+                    ys = reverse xs
+                in
+                head ys
+
+      instance C b => C [b] where
+        op xs = reverse (head (xs :: [[b]]))
+
+Bindings and generalisation
+===========================
+
+.. _monomorphism:
+
+Switching off the dreaded Monomorphism Restriction
+--------------------------------------------------
+
+.. ghc-flag:: -XNoMonomorphismRestriction
+
+    :default: on
+
+    Prevents the compiler from applying the monomorphism restriction to
+    bindings lacking explicit type signatures.
+
+Haskell's monomorphism restriction (see `Section
+4.5.5 <http://www.haskell.org/onlinereport/decls.html#sect4.5.5>`__ of
+the Haskell Report) can be completely switched off by
+:ghc-flag:`-XNoMonomorphismRestriction`. Since GHC 7.8.1, the monomorphism
+restriction is switched off by default in GHCi's interactive options
+(see :ref:`ghci-interactive-options`).
+
+.. _typing-binds:
+
+Generalised typing of mutually recursive bindings
+-------------------------------------------------
+
+.. ghc-flag:: -XRelaxedPolyRec
+
+    Allow the typechecker to ignore references to bindings with
+    explicit type signatures.
+
+The Haskell Report specifies that a group of bindings (at top level, or
+in a ``let`` or ``where``) should be sorted into strongly-connected
+components, and then type-checked in dependency order
+(`Haskell Report, Section
+4.5.1 <http://www.haskell.org/onlinereport/decls.html#sect4.5.1>`__). As
+each group is type-checked, any binders of the group that have an
+explicit type signature are put in the type environment with the
+specified polymorphic type, and all others are monomorphic until the
+group is generalised (`Haskell Report, Section
+4.5.2 <http://www.haskell.org/onlinereport/decls.html#sect4.5.2>`__).
+
+Following a suggestion of Mark Jones, in his paper `Typing Haskell in
+Haskell <http://citeseer.ist.psu.edu/424440.html>`__, GHC implements a
+more general scheme. If :ghc-flag:`-XRelaxedPolyRec` is specified: *the
+dependency analysis ignores references to variables that have an
+explicit type signature*. As a result of this refined dependency
+analysis, the dependency groups are smaller, and more bindings will
+typecheck. For example, consider: ::
+
+      f :: Eq a => a -> Bool
+      f x = (x == x) || g True || g "Yes"
+
+      g y = (y <= y) || f True
+
+This is rejected by Haskell 98, but under Jones's scheme the definition
+for ``g`` is typechecked first, separately from that for ``f``, because
+the reference to ``f`` in ``g``\'s right hand side is ignored by the
+dependency analysis. Then ``g``\'s type is generalised, to get ::
+
+      g :: Ord a => a -> Bool
+
+Now, the definition for ``f`` is typechecked, with this type for ``g``
+in the type environment.
+
+The same refined dependency analysis also allows the type signatures of
+mutually-recursive functions to have different contexts, something that
+is illegal in Haskell 98 (Section 4.5.2, last sentence). With
+:ghc-flag:`-XRelaxedPolyRec` GHC only insists that the type signatures of a
+*refined* group have identical type signatures; in practice this means
+that only variables bound by the same pattern binding must have the same
+context. For example, this is fine: ::
+
+      f :: Eq a => a -> Bool
+      f x = (x == x) || g True
+
+      g :: Ord a => a -> Bool
+      g y = (y <= y) || f True
+
+.. _mono-local-binds:
+
+Let-generalisation
+------------------
+
+.. ghc-flag:: -XMonoLocalBinds
+
+    Infer less polymorphic types for local bindings by default.
+
+An ML-style language usually generalises the type of any ``let``\-bound or
+``where``\-bound variable, so that it is as polymorphic as possible. With the
+flag :ghc-flag:`-XMonoLocalBinds` GHC implements a slightly more conservative
+policy, using the following rules:
+
+-  A variable is *closed* if and only if
+
+   -  the variable is let-bound
+
+   -  one of the following holds:
+
+      -  the variable has an explicit type signature that has no free
+         type variables, or
+
+      -  its binding group is fully generalised (see next bullet)
+
+-  A binding group is *fully generalised* if and only if
+
+   -  each of its free variables is either imported or closed, and
+
+   -  the binding is not affected by the monomorphism restriction
+      (`Haskell Report, Section
+      4.5.5 <http://www.haskell.org/onlinereport/decls.html#sect4.5.5>`__)
+
+For example, consider ::
+
+    f x = x + 1
+    g x = let h y = f y * 2
+              k z = z+x
+          in  h x + k x
+
+Here ``f`` is generalised because it has no free variables; and its
+binding group is unaffected by the monomorphism restriction; and hence
+``f`` is closed. The same reasoning applies to ``g``, except that it has
+one closed free variable, namely ``f``. Similarly ``h`` is closed, *even
+though it is not bound at top level*, because its only free variable
+``f`` is closed. But ``k`` is not closed, because it mentions ``x``
+which is not closed (because it is not let-bound).
+
+Notice that a top-level binding that is affected by the monomorphism
+restriction is not closed, and hence may in turn prevent generalisation
+of bindings that mention it.
+
+The rationale for this more conservative strategy is given in `the
+papers <http://research.microsoft.com/~simonpj/papers/constraints/index.htm>`__
+"Let should not be generalised" and "Modular type inference with local
+assumptions", and a related `blog post <http://ghc.haskell.org/trac/ghc/blog/LetGeneralisationInGhc7>`__.
+
+The flag :ghc-flag:`-XMonoLocalBinds` is implied by :ghc-flag:`-XTypeFamilies`
+and :ghc-flag:`-XGADTs`. You can switch it off again with
+:ghc-flag:`-XNoMonoLocalBinds <-XMonoLocalBinds>` but type inference becomes
+less predicatable if you do so. (Read the papers!)
+
+.. _visible-type-application:
+
+Visible type application
+========================
+
+.. ghc-flag:: -XTypeApplications
+
+    :implies: :ghc-flag:`-XAllowAmbiguousTypes`
+    :since: 8.0.1
+
+    Allow the use of type application syntax.
+
+The :ghc-flag:`-XTypeApplications` extension allows you to use
+*visible type application* in expressions. Here is an
+example: ``show (read @Int "5")``. The ``@Int``
+is the visible type application; it specifies the value of the type variable
+in ``read``'s type.
+
+A visible type application is preceded with an ``@``
+sign. (To disambiguate the syntax, the ``@`` must be
+preceded with a non-identifier letter, usually a space. For example,
+``read@Int 5`` would not parse.) It can be used whenever
+the full polymorphic type of the function is known. If the function
+is an identifier (the common case), its type is considered known only when
+the identifier has been given a type signature. If the identifier does
+not have a type signature, visible type application cannot be used.
+
+Here are the details:
+
+- If an identifier's type signature does not include an
+  explicit ``forall``, the type variable arguments appear
+  in the left-to-right order in which the variables appear in the type.
+  So, ``foo :: Monad m => a b -> m (a c)``
+  will have its type variables
+  ordered as ``m, a, b, c``.
+
+- If any of the variables depend on other variables (that is, if some
+  of the variables are *kind* variables), the variables are reordered
+  so that kind variables come before type variables, preserving the
+  left-to-right order as much as possible. That is, GHC performs a
+  stable topological sort on the variables.
+
+  For example: if we have ``bar :: Proxy (a :: (j, k)) -> b``, then
+  the variables are ordered ``j``, ``k``, ``a``, ``b``.
+
+- Visible type application is available to instantiate only user-specified
+  type variables. This means that in ``data Proxy a = Proxy``, the unmentioned
+  kind variable used in ``a``'s kind is *not* available for visible type
+  application.
+
+- Class methods' type arguments include the class type
+  variables, followed by any variables an individual method is polymorphic
+  in. So, ``class Monad m where return :: a -> m a`` means
+  that ``return``'s type arguments are ``m, a``.
+
+- With the :ghc-flag:`-XRankNTypes` extension
+  (:ref:`universal-quantification`), it is possible to declare
+  type arguments somewhere other than the beginning of a type. For example,
+  we can have ``pair :: forall a. a -> forall b. b -> (a, b)``
+  and then say ``pair @Bool True @Char`` which would have
+  type ``Char -> (Bool, Char)``.
+
+- Partial type signatures (:ref:`partial-type-signatures`)
+  work nicely with visible type
+  application. If you want to specify only the second type argument to
+  ``wurble``, then you can say ``wurble @_ @Int``.
+  The first argument is a wildcard, just like in a partial type signature.
+  However, if used in a visible type application, it is *not*
+  necessary to specify :ghc-flag:`-XPartialTypeSignatures` and your
+  code will not generate a warning informing you of the omitted type.
+
+- When printing types with :ghc-flag:`-fprint-explicit-foralls` enabled,
+  type variables not available for visible type application are printed
+  in braces. Thus, if you write ``myLength = length`` without a type
+  signature, ``myLength``'s inferred type will be
+  ``forall {f} {a}. Foldable f => f a -> Int``.
+
+.. _implicit-parameters:
+
+Implicit parameters
+===================
+
+.. ghc-flag:: -XImplicitParams
+
+    Allow definition of functions expecting implicit parameters.
+
+Implicit parameters are implemented as described in [Lewis2000]_ and enabled
+with the option :ghc-flag:`-XImplicitParams`. (Most of the following, still rather
+incomplete, documentation is due to Jeff Lewis.)
+
+.. [Lewis2000]
+    "Implicit parameters: dynamic scoping with static types",
+    J Lewis, MB Shields, E Meijer, J Launchbury,
+    *27th ACM Symposium on Principles of Programming Languages (POPL'00)*,
+    Boston, Jan 2000.
+
+A variable is called *dynamically bound* when it is bound by the calling
+context of a function and *statically bound* when bound by the callee's
+context. In Haskell, all variables are statically bound. Dynamic binding
+of variables is a notion that goes back to Lisp, but was later discarded
+in more modern incarnations, such as Scheme. Dynamic binding can be very
+confusing in an untyped language, and unfortunately, typed languages, in
+particular Hindley-Milner typed languages like Haskell, only support
+static scoping of variables.
+
+However, by a simple extension to the type class system of Haskell, we
+can support dynamic binding. Basically, we express the use of a
+dynamically bound variable as a constraint on the type. These
+constraints lead to types of the form ``(?x::t') => t``, which says
+"this function uses a dynamically-bound variable ``?x`` of type ``t'``".
+For example, the following expresses the type of a sort function,
+implicitly parameterised by a comparison function named ``cmp``. ::
+
+      sort :: (?cmp :: a -> a -> Bool) => [a] -> [a]
+
+The dynamic binding constraints are just a new form of predicate in the
+type class system.
+
+An implicit parameter occurs in an expression using the special form
+``?x``, where ``x`` is any valid identifier (e.g. ``ord ?x`` is a valid
+expression). Use of this construct also introduces a new dynamic-binding
+constraint in the type of the expression. For example, the following
+definition shows how we can define an implicitly parameterised sort
+function in terms of an explicitly parameterised ``sortBy`` function: ::
+
+      sortBy :: (a -> a -> Bool) -> [a] -> [a]
+
+      sort   :: (?cmp :: a -> a -> Bool) => [a] -> [a]
+      sort    = sortBy ?cmp
+
+Implicit-parameter type constraints
+-----------------------------------
+
+Dynamic binding constraints behave just like other type class
+constraints in that they are automatically propagated. Thus, when a
+function is used, its implicit parameters are inherited by the function
+that called it. For example, our ``sort`` function might be used to pick
+out the least value in a list: ::
+
+      least   :: (?cmp :: a -> a -> Bool) => [a] -> a
+      least xs = head (sort xs)
+
+Without lifting a finger, the ``?cmp`` parameter is propagated to become
+a parameter of ``least`` as well. With explicit parameters, the default
+is that parameters must always be explicit propagated. With implicit
+parameters, the default is to always propagate them.
+
+An implicit-parameter type constraint differs from other type class
+constraints in the following way: All uses of a particular implicit
+parameter must have the same type. This means that the type of
+``(?x, ?x)`` is ``(?x::a) => (a,a)``, and not
+``(?x::a, ?x::b) => (a, b)``, as would be the case for type class
+constraints.
+
+You can't have an implicit parameter in the context of a class or
+instance declaration. For example, both these declarations are illegal: ::
+
+      class (?x::Int) => C a where ...
+      instance (?x::a) => Foo [a] where ...
+
+Reason: exactly which implicit parameter you pick up depends on exactly
+where you invoke a function. But the "invocation" of instance
+declarations is done behind the scenes by the compiler, so it's hard to
+figure out exactly where it is done. Easiest thing is to outlaw the
+offending types.
+
+Implicit-parameter constraints do not cause ambiguity. For example,
+consider: ::
+
+       f :: (?x :: [a]) => Int -> Int
+       f n = n + length ?x
+
+       g :: (Read a, Show a) => String -> String
+       g s = show (read s)
+
+Here, ``g`` has an ambiguous type, and is rejected, but ``f`` is fine.
+The binding for ``?x`` at ``f``\ 's call site is quite unambiguous, and
+fixes the type ``a``.
+
+Implicit-parameter bindings
+---------------------------
+
+An implicit parameter is *bound* using the standard ``let`` or ``where``
+binding forms. For example, we define the ``min`` function by binding
+``cmp``. ::
+
+      min :: Ord a => [a] -> a
+      min  = let ?cmp = (<=) in least
+
+A group of implicit-parameter bindings may occur anywhere a normal group
+of Haskell bindings can occur, except at top level. That is, they can
+occur in a ``let`` (including in a list comprehension, or do-notation,
+or pattern guards), or a ``where`` clause. Note the following points:
+
+-  An implicit-parameter binding group must be a collection of simple
+   bindings to implicit-style variables (no function-style bindings, and
+   no type signatures); these bindings are neither polymorphic or
+   recursive.
+
+-  You may not mix implicit-parameter bindings with ordinary bindings in
+   a single ``let`` expression; use two nested ``let``\ s instead. (In
+   the case of ``where`` you are stuck, since you can't nest ``where``
+   clauses.)
+
+-  You may put multiple implicit-parameter bindings in a single binding
+   group; but they are *not* treated as a mutually recursive group (as
+   ordinary ``let`` bindings are). Instead they are treated as a
+   non-recursive group, simultaneously binding all the implicit
+   parameter. The bindings are not nested, and may be re-ordered without
+   changing the meaning of the program. For example, consider: ::
+
+         f t = let { ?x = t; ?y = ?x+(1::Int) } in ?x + ?y
+
+   The use of ``?x`` in the binding for ``?y`` does not "see" the
+   binding for ``?x``, so the type of ``f`` is ::
+
+         f :: (?x::Int) => Int -> Int
+
+Implicit parameters and polymorphic recursion
+---------------------------------------------
+
+Consider these two definitions: ::
+
+      len1 :: [a] -> Int
+      len1 xs = let ?acc = 0 in len_acc1 xs
+
+      len_acc1 [] = ?acc
+      len_acc1 (x:xs) = let ?acc = ?acc + (1::Int) in len_acc1 xs
+
+      ------------
+
+      len2 :: [a] -> Int
+      len2 xs = let ?acc = 0 in len_acc2 xs
+
+      len_acc2 :: (?acc :: Int) => [a] -> Int
+      len_acc2 [] = ?acc
+      len_acc2 (x:xs) = let ?acc = ?acc + (1::Int) in len_acc2 xs
+
+The only difference between the two groups is that in the second group
+``len_acc`` is given a type signature. In the former case, ``len_acc1``
+is monomorphic in its own right-hand side, so the implicit parameter
+``?acc`` is not passed to the recursive call. In the latter case,
+because ``len_acc2`` has a type signature, the recursive call is made to
+the *polymorphic* version, which takes ``?acc`` as an implicit
+parameter. So we get the following results in GHCi:
+
+.. code-block:: none
+
+      Prog> len1 "hello"
+      0
+      Prog> len2 "hello"
+      5
+
+Adding a type signature dramatically changes the result! This is a
+rather counter-intuitive phenomenon, worth watching out for.
+
+Implicit parameters and monomorphism
+------------------------------------
+
+GHC applies the dreaded Monomorphism Restriction (section 4.5.5 of the
+Haskell Report) to implicit parameters. For example, consider: ::
+
+     f :: Int -> Int
+     f v = let ?x = 0     in
+           let y = ?x + v in
+           let ?x = 5     in
+           y
+
+Since the binding for ``y`` falls under the Monomorphism Restriction it
+is not generalised, so the type of ``y`` is simply ``Int``, not
+``(?x::Int) => Int``. Hence, ``(f 9)`` returns result ``9``. If you add
+a type signature for ``y``, then ``y`` will get type
+``(?x::Int) => Int``, so the occurrence of ``y`` in the body of the
+``let`` will see the inner binding of ``?x``, so ``(f 9)`` will return
+``14``.
+
+Arbitrary-rank polymorphism
+===========================
 
 .. ghc-flag:: -XRankNTypes
 
@@ -8181,7 +8985,7 @@ authors to change their old flags specifications.)
 .. _univ:
 
 Examples
-~~~~~~~~
+--------
 
 These are examples of ``data`` and ``newtype`` declarations whose data
 constructors have polymorphic argument types: ::
@@ -8275,7 +9079,7 @@ In the function ``h`` we use the record selectors ``return`` and
 .. _higher-rank-type-inference:
 
 Type inference
-~~~~~~~~~~~~~~
+--------------
 
 In general, type inference for arbitrary-rank types is undecidable. GHC
 uses an algorithm proposed by Odersky and Laufer ("Putting type
@@ -8318,7 +9122,7 @@ argument of constructor ``T1`` and that tells GHC all it needs to know.
 .. _implicit-quant:
 
 Implicit quantification
-~~~~~~~~~~~~~~~~~~~~~~~
+-----------------------
 
 GHC performs implicit quantification as follows. At the top level
 (only) of user-written types, if and only if there is no explicit
@@ -8362,7 +9166,7 @@ rank-2 types.
 .. _impredicative-polymorphism:
 
 Impredicative polymorphism
---------------------------
+==========================
 
 .. ghc-flag:: -XImpredicativeTypes
 
@@ -8411,370 +9215,6 @@ workaround like this: ::
     foo :: (forall s. ST s a) -> a
     foo = unWrap (id (Wrap runST))
           -- Here id is called at monomorphic type (Wrap a)
-
-.. _scoped-type-variables:
-
-Lexically scoped type variables
--------------------------------
-
-.. ghc-flag:: -XScopedTypeVariables
-
-    :implies: :ghc-flag:`-XRelaxedPolyRec`
-    :implies: :ghc-flag:`-XExplicitForAll`
-
-    Enable lexical scoping of type variables explicitly introduced with
-    ``forall``.
-
-GHC supports *lexically scoped type variables*, without which some type
-signatures are simply impossible to write. For example: ::
-
-    f :: forall a. [a] -> [a]
-    f xs = ys ++ ys
-         where
-           ys :: [a]
-           ys = reverse xs
-
-The type signature for ``f`` brings the type variable ``a`` into scope,
-because of the explicit ``forall`` (:ref:`decl-type-sigs`). The type
-variables bound by a ``forall`` scope over the entire definition of the
-accompanying value declaration. In this example, the type variable ``a``
-scopes over the whole definition of ``f``, including over the type
-signature for ``ys``. In Haskell 98 it is not possible to declare a type
-for ``ys``; a major benefit of scoped type variables is that it becomes
-possible to do so.
-
-Lexically-scoped type variables are enabled by
-:ghc-flag:`-XScopedTypeVariables`. This flag implies :ghc-flag:`-XRelaxedPolyRec`.
-
-Overview
-~~~~~~~~
-
-The design follows the following principles
-
--  A scoped type variable stands for a type *variable*, and not for a
-   *type*. (This is a change from GHC's earlier design.)
-
--  Furthermore, distinct lexical type variables stand for distinct type
-   variables. This means that every programmer-written type signature
-   (including one that contains free scoped type variables) denotes a
-   *rigid* type; that is, the type is fully known to the type checker,
-   and no inference is involved.
-
--  Lexical type variables may be alpha-renamed freely, without changing
-   the program.
-
-A *lexically scoped type variable* can be bound by:
-
--  A declaration type signature (:ref:`decl-type-sigs`)
-
--  An expression type signature (:ref:`exp-type-sigs`)
-
--  A pattern type signature (:ref:`pattern-type-sigs`)
-
--  Class and instance declarations (:ref:`cls-inst-scoped-tyvars`)
-
-In Haskell, a programmer-written type signature is implicitly quantified
-over its free type variables (`Section
-4.1.2 <http://www.haskell.org/onlinereport/decls.html#sect4.1.2>`__ of
-the Haskell Report). Lexically scoped type variables affect this
-implicit quantification rules as follows: any type variable that is in
-scope is *not* universally quantified. For example, if type variable
-``a`` is in scope, then ::
-
-      (e :: a -> a)     means     (e :: a -> a)
-      (e :: b -> b)     means     (e :: forall b. b->b)
-      (e :: a -> b)     means     (e :: forall b. a->b)
-
-.. _decl-type-sigs:
-
-Declaration type signatures
-~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-A declaration type signature that has *explicit* quantification (using
-``forall``) brings into scope the explicitly-quantified type variables,
-in the definition of the named function. For example: ::
-
-      f :: forall a. [a] -> [a]
-      f (x:xs) = xs ++ [ x :: a ]
-
-The "``forall a``" brings "``a``" into scope in the definition of
-"``f``".
-
-This only happens if:
-
--  The quantification in ``f``\'s type signature is explicit. For
-   example: ::
-
-         g :: [a] -> [a]
-         g (x:xs) = xs ++ [ x :: a ]
-
-   This program will be rejected, because "``a``" does not scope over
-   the definition of "``g``", so "``x::a``" means "``x::forall a. a``"
-   by Haskell's usual implicit quantification rules.
-
--  The signature gives a type for a function binding or a bare variable
-   binding, not a pattern binding. For example: ::
-
-         f1 :: forall a. [a] -> [a]
-         f1 (x:xs) = xs ++ [ x :: a ]   -- OK
-
-         f2 :: forall a. [a] -> [a]
-         f2 = \(x:xs) -> xs ++ [ x :: a ]   -- OK
-
-         f3 :: forall a. [a] -> [a]
-         Just f3 = Just (\(x:xs) -> xs ++ [ x :: a ])   -- Not OK!
-
-   The binding for ``f3`` is a pattern binding, and so its type
-   signature does not bring ``a`` into scope. However ``f1`` is a
-   function binding, and ``f2`` binds a bare variable; in both cases the
-   type signature brings ``a`` into scope.
-
-.. _exp-type-sigs:
-
-Expression type signatures
-~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-An expression type signature that has *explicit* quantification (using
-``forall``) brings into scope the explicitly-quantified type variables,
-in the annotated expression. For example: ::
-
-    f = runST ( (op >>= \(x :: STRef s Int) -> g x) :: forall s. ST s Bool )
-
-Here, the type signature ``forall s. ST s Bool`` brings the type
-variable ``s`` into scope, in the annotated expression
-``(op >>= \(x :: STRef s Int) -> g x)``.
-
-.. _pattern-type-sigs:
-
-Pattern type signatures
-~~~~~~~~~~~~~~~~~~~~~~~
-
-A type signature may occur in any pattern; this is a *pattern type
-signature*. For example: ::
-
-    -- f and g assume that 'a' is already in scope
-    f = \(x::Int, y::a) -> x
-
-    g (x::a) = x
-
-    h ((x,y) :: (Int,Bool)) = (y,x)
-
-In the case where all the type variables in the pattern type signature
-are already in scope (i.e. bound by the enclosing context), matters are
-simple: the signature simply constrains the type of the pattern in the
-obvious way.
-
-Unlike expression and declaration type signatures, pattern type
-signatures are not implicitly generalised. The pattern in a *pattern
-binding* may only mention type variables that are already in scope. For
-example: ::
-
-    f :: forall a. [a] -> (Int, [a])
-    f xs = (n, zs)
-      where
-        (ys::[a], n) = (reverse xs, length xs) -- OK
-        zs::[a] = xs ++ ys                     -- OK
-
-        Just (v::b) = ...  -- Not OK; b is not in scope
-
-Here, the pattern signatures for ``ys`` and ``zs`` are fine, but the one
-for ``v`` is not because ``b`` is not in scope.
-
-However, in all patterns *other* than pattern bindings, a pattern type
-signature may mention a type variable that is not in scope; in this
-case, *the signature brings that type variable into scope*. This is
-particularly important for existential data constructors. For example: ::
-
-    data T = forall a. MkT [a]
-
-    k :: T -> T
-    k (MkT [t::a]) =
-        MkT t3
-      where
-        t3::[a] = [t,t,t]
-
-Here, the pattern type signature ``(t::a)`` mentions a lexical type
-variable that is not already in scope. Indeed, it *cannot* already be in
-scope, because it is bound by the pattern match. GHC's rule is that in
-this situation (and only then), a pattern type signature can mention a
-type variable that is not already in scope; the effect is to bring it
-into scope, standing for the existentially-bound type variable.
-
-When a pattern type signature binds a type variable in this way, GHC
-insists that the type variable is bound to a *rigid*, or fully-known,
-type variable. This means that any user-written type signature always
-stands for a completely known type.
-
-If all this seems a little odd, we think so too. But we must have *some*
-way to bring such type variables into scope, else we could not name
-existentially-bound type variables in subsequent type signatures.
-
-This is (now) the *only* situation in which a pattern type signature is
-allowed to mention a lexical variable that is not already in scope. For
-example, both ``f`` and ``g`` would be illegal if ``a`` was not already
-in scope.
-
-.. _cls-inst-scoped-tyvars:
-
-Class and instance declarations
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-The type variables in the head of a ``class`` or ``instance``
-declaration scope over the methods defined in the ``where`` part. You do
-not even need an explicit ``forall``. For example: ::
-
-      class C a where
-        op :: [a] -> a
-
-        op xs = let ys::[a]
-                    ys = reverse xs
-                in
-                head ys
-
-      instance C b => C [b] where
-        op xs = reverse (head (xs :: [[b]]))
-
-Bindings and generalisation
----------------------------
-
-.. _monomorphism:
-
-Switching off the dreaded Monomorphism Restriction
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-.. ghc-flag:: -XNoMonomorphismRestriction
-
-    :default: on
-
-    Prevents the compiler from applying the monomorphism restriction to
-    bindings lacking explicit type signatures.
-
-Haskell's monomorphism restriction (see `Section
-4.5.5 <http://www.haskell.org/onlinereport/decls.html#sect4.5.5>`__ of
-the Haskell Report) can be completely switched off by
-:ghc-flag:`-XNoMonomorphismRestriction`. Since GHC 7.8.1, the monomorphism
-restriction is switched off by default in GHCi's interactive options
-(see :ref:`ghci-interactive-options`).
-
-.. _typing-binds:
-
-Generalised typing of mutually recursive bindings
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-.. ghc-flag:: -XRelaxedPolyRec
-
-    Allow the typechecker to ignore references to bindings with
-    explicit type signatures.
-
-The Haskell Report specifies that a group of bindings (at top level, or
-in a ``let`` or ``where``) should be sorted into strongly-connected
-components, and then type-checked in dependency order
-(`Haskell Report, Section
-4.5.1 <http://www.haskell.org/onlinereport/decls.html#sect4.5.1>`__). As
-each group is type-checked, any binders of the group that have an
-explicit type signature are put in the type environment with the
-specified polymorphic type, and all others are monomorphic until the
-group is generalised (`Haskell Report, Section
-4.5.2 <http://www.haskell.org/onlinereport/decls.html#sect4.5.2>`__).
-
-Following a suggestion of Mark Jones, in his paper `Typing Haskell in
-Haskell <http://citeseer.ist.psu.edu/424440.html>`__, GHC implements a
-more general scheme. If :ghc-flag:`-XRelaxedPolyRec` is specified: *the
-dependency analysis ignores references to variables that have an
-explicit type signature*. As a result of this refined dependency
-analysis, the dependency groups are smaller, and more bindings will
-typecheck. For example, consider: ::
-
-      f :: Eq a => a -> Bool
-      f x = (x == x) || g True || g "Yes"
-
-      g y = (y <= y) || f True
-
-This is rejected by Haskell 98, but under Jones's scheme the definition
-for ``g`` is typechecked first, separately from that for ``f``, because
-the reference to ``f`` in ``g``\'s right hand side is ignored by the
-dependency analysis. Then ``g``\'s type is generalised, to get ::
-
-      g :: Ord a => a -> Bool
-
-Now, the definition for ``f`` is typechecked, with this type for ``g``
-in the type environment.
-
-The same refined dependency analysis also allows the type signatures of
-mutually-recursive functions to have different contexts, something that
-is illegal in Haskell 98 (Section 4.5.2, last sentence). With
-:ghc-flag:`-XRelaxedPolyRec` GHC only insists that the type signatures of a
-*refined* group have identical type signatures; in practice this means
-that only variables bound by the same pattern binding must have the same
-context. For example, this is fine: ::
-
-      f :: Eq a => a -> Bool
-      f x = (x == x) || g True
-
-      g :: Ord a => a -> Bool
-      g y = (y <= y) || f True
-
-.. _mono-local-binds:
-
-Let-generalisation
-~~~~~~~~~~~~~~~~~~
-
-.. ghc-flag:: -XMonoLocalBinds
-
-    Infer less polymorphic types for local bindings by default.
-
-An ML-style language usually generalises the type of any ``let``\-bound or
-``where``\-bound variable, so that it is as polymorphic as possible. With the
-flag :ghc-flag:`-XMonoLocalBinds` GHC implements a slightly more conservative
-policy, using the following rules:
-
--  A variable is *closed* if and only if
-
-   -  the variable is let-bound
-
-   -  one of the following holds:
-
-      -  the variable has an explicit type signature that has no free
-         type variables, or
-
-      -  its binding group is fully generalised (see next bullet)
-
--  A binding group is *fully generalised* if and only if
-
-   -  each of its free variables is either imported or closed, and
-
-   -  the binding is not affected by the monomorphism restriction
-      (`Haskell Report, Section
-      4.5.5 <http://www.haskell.org/onlinereport/decls.html#sect4.5.5>`__)
-
-For example, consider ::
-
-    f x = x + 1
-    g x = let h y = f y * 2
-              k z = z+x
-          in  h x + k x
-
-Here ``f`` is generalised because it has no free variables; and its
-binding group is unaffected by the monomorphism restriction; and hence
-``f`` is closed. The same reasoning applies to ``g``, except that it has
-one closed free variable, namely ``f``. Similarly ``h`` is closed, *even
-though it is not bound at top level*, because its only free variable
-``f`` is closed. But ``k`` is not closed, because it mentions ``x``
-which is not closed (because it is not let-bound).
-
-Notice that a top-level binding that is affected by the monomorphism
-restriction is not closed, and hence may in turn prevent generalisation
-of bindings that mention it.
-
-The rationale for this more conservative strategy is given in `the
-papers <http://research.microsoft.com/~simonpj/papers/constraints/index.htm>`__
-"Let should not be generalised" and "Modular type inference with local
-assumptions", and a related `blog post <http://ghc.haskell.org/trac/ghc/blog/LetGeneralisationInGhc7>`__.
-
-The flag :ghc-flag:`-XMonoLocalBinds` is implied by :ghc-flag:`-XTypeFamilies`
-and :ghc-flag:`-XGADTs`. You can switch it off again with
-:ghc-flag:`-XNoMonoLocalBinds <-XMonoLocalBinds>` but type inference becomes
-less predicatable if you do so. (Read the papers!)
 
 .. _typed-holes:
 
@@ -8853,7 +9293,7 @@ Here are some more details:
    More information is given for explicit holes (i.e. ones that start
    with an underscore), than for out-of-scope variables, because the
    latter are often unintended typos, so the extra information is
-   distracting. If you the detailed information, use a leading
+   distracting. If you want the detailed information, use a leading
    underscore to make explicit your intent to use a hole.
 
 -  Unbound identifiers with the same name are never unified, even within
@@ -9599,8 +10039,9 @@ The :ghc-flag:`-XTemplateHaskellQuotes` extension is considered safe under
    *declaration groups*. A *declaration group* is the group of
    declarations created by a top-level declaration splice, plus those
    following it, down to but not including the next top-level
-   declaration splice. The first declaration group in a module includes
-   all top-level definitions down to but not including the first
+   declaration splice. N.B. only top-level splices delimit declaration
+   groups, not expression splices. The first declaration group in a module
+   includes all top-level definitions down to but not including the first
    top-level declaration splice.
 
    Each declaration group is mutually recursive only within the group.
@@ -9625,38 +10066,73 @@ The :ghc-flag:`-XTemplateHaskellQuotes` extension is considered safe under
        import ...
 
        f x = x
+
        $(th1 4)
+
        h y = k y y $(blah1)
+
        [qq|blah|]
-       k x y = x + y
+
+       k x y z = x + y + z
+
        $(th2 10)
+
        w z = $(blah2)
 
-   In this example
+   In this example, a ``reify`` inside...
 
-   1. The body of ``h`` would be unable to refer to the function ``w``.
+   1. The splice ``$(th1 ...)`` would see the definition of ``f`` - the
+      splice is top-level and thus all definitions in the previous
+      declaration group are visible (that is, all definitions in the module
+      up-to, but not including, the splice itself).
 
-      A ``reify`` inside the splice ``$(th1 ..)`` would see the
-      definition of ``f``.
+   2. The splice ``$(blah1)`` cannot refer to the function ``w`` - ``w`` is
+      part of a later declaration group, and thus invisible, similarly,
+      ``$(blah1)`` cannot see the definition of ``h`` (since it is part of
+      the same declaration group as ``$(blah1)``. However, the splice
+      ``$(blah1)`` can see the definition of ``f`` (since it is in the
+      immediately preceding declaration group).
 
-   2. A ``reify`` inside the splice ``$(blah1)`` would see the
-      definition of ``f``, but would not see the definition of ``h``.
+   3. The splice ``$(th2 ...)`` would see the definition of ``f``, all the
+      bindings created by ``$(th1 ...)``, the definition of ``h`` and all
+      bindings created by ``[qq|blah|]`` (they are all in previous
+      declaration groups).
 
-   3. A ``reify`` inside the splice ``$(th2..)`` would see the
-      definition of ``f``, all the bindings created by ``$(th1..)``, and
-      the definition of ``h``.
+   4. The body of ``h`` *can* refer to the function ``k`` appearing on the
+      other side of the declaration quasiquoter, as quasiquoters do not
+      cause a declaration group to be broken up.
 
-   4. A ``reify`` inside the splice ``$(blah2)`` would see the same
-      definitions as the splice ``$(th2...)``.
+   5. The ``qq`` quasiquoter would be able to see the definition of ``f``
+      from the preceding declaration group, but not the definitions of
+      ``h`` or ``k``, or any definitions from subsequent declaration
+      groups.
 
-   5. The body of ``h`` *is* able to refer to the function ``k``
-      appearing on the other side of the declaration quasiquoter, as
-      quasiquoters never cause a declaration group to be broken up.
+   6. The splice ``$(blah2)`` would see the same definitions as the splice
+      ``$(th2 ...)`` (but *not* any bindings it creates).
 
-      A ``reify`` inside the ``qq`` quasiquoter would be able to see the
-      definition of ``f`` from the preceding declaration group, but not
-      the definitions of ``h`` or ``k``, or any definitions from
-      subsequent declaration groups.
+   Note that since an expression splice is unable to refer to declarations
+   in the same declaration group, we can introduce a top-level (empty)
+   splice to break up the declaration group ::
+
+       module M where
+
+       data D = C1 | C2
+
+       f1 = $(th1 ...)
+
+       $(return [])
+
+       f2 = $(th2 ...)
+
+   Here
+
+   1. The splice ``$(th1 ...)`` *cannot* refer to ``D`` - it is in the same
+      declaration group.
+   2. The declaration group containing ``D`` is terminated by the empty
+      top-level declaration splice ``$(return [])`` (recall, ``Q`` is a
+      Monad, so we may simply ``return`` the empty list of declarations).
+   3. Since the declaration group containing ``D`` is in the previous
+      declaration group, the splice ``$(th2 ...)`` *can* refer to ``D``.
 
 -  Expression quotations accept most Haskell language constructs.
    However, there are some GHC-specific extensions which expression
@@ -9937,6 +10413,24 @@ Here are the salient features
 -  Unlike normal declaration splices of the form ``$(...)``, declaration
    quasi-quotes do not cause a declaration group break. See
    :ref:`th-syntax` for more information.
+
+.. _quasi-quotes-list-comprehension-ambiguity:
+
+.. warning::
+
+    .. index::
+        single: quasi-quotes; ambiguity with list comprehensions
+        single: list comprehensions; ambiguity with quasi-quotes
+
+    :ghc-flag:`-XQuasiQuotes` introduces an unfortunate ambiguity with list
+    comprehension syntax. Consider the following, ::
+
+        let x = [v| v <- [0..10]]
+
+    Without :ghc-flag:`-XQuasiQuotes` this is parsed as a list comprehension.
+    With :ghc-flag:`-XQuasiQuotes` this is parsed as a quasi-quote; however,
+    this parse will fail due to the lack of a closing ``|]``. See
+    :ghc-ticket:`11679`.
 
 The example below shows quasi-quotation in action. The quoter ``expr``
 is bound to a value of type ``QuasiQuoter`` defined in module ``Expr``.
@@ -10436,11 +10930,41 @@ preprocessor must observe some additional restrictions:
 
 .. _bang-patterns:
 
-Bang patterns
-=============
+.. _strict-haskell:
+
+Bang patterns and Strict Haskell
+================================
+
+.. index::
+   single: strict haskell
 
 .. index::
    single: Bang patterns
+
+In high-performance Haskell code (e.g. numeric code) eliminating
+thunks from an inner loop can be a huge win.
+GHC supports three extensions to allow the programmer to specify
+use of strict (call-by-value) evalution rather than lazy (call-by-need)
+evaluation.
+
+- Bang patterns (:ghc-flag:`-XBangPatterns`) makes pattern matching and
+  let bindings stricter.
+
+- Strict data types (:ghc-flag:`-XStrictData`) makes constructor fields
+  strict by default, on a per-module basis.
+
+- Strict pattern (:ghc-flag:`-XStrict`) makes all patterns and let bindings
+  strict by default, on a per-module basis.
+
+The latter two extensions are simply a way to avoid littering high-performance
+code with bang patterns, making it harder to read.
+
+Bang patterns and strict matching do not affect the type system in any way.
+
+.. _bang-patterns-informal:
+
+Bang patterns
+-------------
 
 .. ghc-flag:: -XBangPatterns
 
@@ -10451,23 +10975,6 @@ written ``!pat``. Bang patterns are under consideration for Haskell
 Prime. The `Haskell prime feature
 description <http://ghc.haskell.org/trac/haskell-prime/wiki/BangPatterns>`__
 contains more discussion and examples than the material below.
-
-The key change is the addition of a new rule to the `semantics of
-pattern matching in the Haskell 98
-report <http://haskell.org/onlinereport/exps.html#sect3.17.2>`__. Add
-new bullet 10, saying: Matching the pattern ``!``\ ⟨pat⟩ against a value
-⟨v⟩ behaves as follows:
-
--  if ⟨v⟩ is bottom, the match diverges
-
--  otherwise, ⟨pat⟩ is matched against ⟨v⟩
-
-Bang patterns are enabled by the flag :ghc-flag:`-XBangPatterns`.
-
-.. _bang-patterns-informal:
-
-Informal description of bang patterns
--------------------------------------
 
 The main idea is to add a single new production to the syntax of
 patterns: ::
@@ -10485,70 +10992,255 @@ bang it would be lazy. Bang patterns can be nested of course: ::
 
     f2 (!x, y) = [x,y]
 
-Here, ``f2`` is strict in ``x`` but not in ``y``. A bang only really has
-an effect if it precedes a variable or wild-card pattern: ::
+Here, ``f2`` is strict in ``x`` but not in ``y``. 
+
+Note the following points:
+
+- A bang only really has
+  an effect if it precedes a variable or wild-card pattern: ::
 
     f3 !(x,y) = [x,y]
     f4 (x,y)  = [x,y]
 
-Here, ``f3`` and ``f4`` are identical; putting a bang before a pattern
-that forces evaluation anyway does nothing.
+  Here, ``f3`` and ``f4`` are identical; putting a bang before a pattern
+  that forces evaluation anyway does nothing.
 
-There is one (apparent) exception to this general rule that a bang only
-makes a difference when it precedes a variable or wild-card: a bang at
-the top level of a ``let`` or ``where`` binding makes the binding
-strict, regardless of the pattern. (We say "apparent" exception because
-the Right Way to think of it is that the bang at the top of a binding is
-not part of the *pattern*; rather it is part of the syntax of the
-*binding*, creating a "bang-pattern binding".) See :ref:`Strict recursive and
-polymorphic let bindings <recursive-and-polymorphic-let-bindings>` for
-how bang-pattern bindings are compiled.
+- A bang pattern is allowed in a let or where clause, and makes the binding
+  strict.  For example: ::
 
-However, *nested* bangs in a pattern binding behave uniformly with all
-other forms of pattern matching. For example ::
+    let !x = e in body
+    let !(p,q) = e in body
+
+  In both cases ``e`` is evaluated before starting to evaluate ``body``.
+
+  However, *nested* bangs in a let/where pattern binding behave uniformly with all
+  other forms of pattern matching. For example ::
 
     let (!x,[y]) = e in b
 
-is equivalent to this: ::
+  is equivalent to this: ::
 
     let { t = case e of (x,[y]) -> x `seq` (x,y)
           x = fst t
           y = snd t }
     in b
 
-The binding is lazy, but when either ``x`` or ``y`` is evaluated by
-``b`` the entire pattern is matched, including forcing the evaluation of
-``x``.
+  The binding is lazy, but when either ``x`` or ``y`` is evaluated by
+  ``b`` the entire pattern is matched, including forcing the evaluation of
+  ``x``.
 
-Bang patterns work in ``case`` expressions too, of course: ::
+  See :ref:`Semantics of let bindings with bang patterns <recursive-and-polymorphic-let-bindings>` for
+  the detailed semantics.
+
+- A pattern with a bang at the outermost level is not allowed at the top
+  level of a module.
+
+- Bang patterns work in ``case`` expressions too, of course: ::
 
     g5 x = let y = f x in body
     g6 x = case f x of { y -> body }
     g7 x = case f x of { !y -> body }
 
-The functions ``g5`` and ``g6`` mean exactly the same thing. But ``g7``
-evaluates ``(f x)``, binds ``y`` to the result, and then evaluates
-``body``.
+  The functions ``g5`` and ``g6`` mean exactly the same thing. But ``g7``
+  evaluates ``(f x)``, binds ``y`` to the result, and then evaluates
+  ``body``.
 
-.. _bang-patterns-sem:
-
-Syntax and semantics
---------------------
-
-We add a single new production to the syntax of patterns: ::
-
-      pat ::= !pat
-
-There is one problem with syntactic ambiguity. Consider: ::
+- There is one problem with syntactic ambiguity. Consider: ::
 
     f !x = 3
 
-Is this a definition of the infix function "``(!)``", or of the "``f``"
-with a bang pattern? GHC resolves this ambiguity in favour of the
-latter. If you want to define ``(!)`` with bang-patterns enabled, you
-have to do so using prefix notation: ::
+  Is this a definition of the infix function "``(!)``", or of the "``f``"
+  with a bang pattern? GHC resolves this ambiguity in favour of the
+  latter. If you want to define ``(!)`` with bang-patterns enabled, you
+  have to do so using prefix notation: ::
 
     (!) f x = 3
+
+
+.. _strict-data:
+
+Strict-by-default data types
+----------------------------
+
+.. ghc-flag:: -XStrictData
+
+    :since: 8.0.1
+
+    Make fields of data types defined in the current module strict by default.
+
+Informally the ``StrictData`` language extension switches data type
+declarations to be strict by default allowing fields to be lazy by
+adding a ``~`` in front of the field.
+
+When the user writes ::
+
+          data T = C a
+          data T' = C' ~a
+
+we interpret it as if they had written ::
+
+          data T = C !a
+          data T' = C' a
+
+The extension only affects definitions in this module.
+
+
+.. _strict:
+
+Strict-by-default pattern bindings
+----------------------------------
+
+.. ghc-flag:: -XStrict
+
+    :implies: :ghc-flag:`-XStrictData`
+    :since: 8.0.1
+
+    Make bindings in the current module strict by default.
+
+Informally the ``Strict`` language extension switches functions, data
+types, and bindings to be strict by default, allowing optional laziness
+by adding ``~`` in front of a variable. This essentially reverses the
+present situation where laziness is default and strictness can be
+optionally had by adding ``!`` in front of a variable.
+
+``Strict`` implies :ref:`StrictData <strict-data>`.
+
+-  **Function definitions**
+
+   When the user writes ::
+
+       f x = ...
+
+   we interpret it as if they had written ::
+
+       f !x = ...
+
+   Adding ``~`` in front of ``x`` gives the regular lazy behavior.
+
+-  **Let/where bindings**
+
+   When the user writes ::
+
+     let x = ...
+     let pat = ...
+
+   we interpret it as if they had written ::
+
+     let !x = ...
+     let !pat = ...
+
+   Adding ``~`` in front of ``x`` gives the regular lazy
+   behavior.
+   The general rule is that we add an implicit bang on the outermost pattern,
+   unless disabled with ``~``.
+
+-  **Pattern matching in case expressions, lambdas, do-notation, etc**
+
+   The outermost pattern of all pattern matches gets an implicit bang,
+   unless disabled with ``~``.
+   This applies to case expressions, patterns in lambda, do-notation,
+   list comprehension, and so on.
+   For example ::
+
+       case x of (a,b) -> rhs
+
+   is interpreted as ::
+
+       case x of !(a,b) -> rhs
+
+   Since the semantics of pattern matching in case expressions is
+   strict, this usually has no effect whatsoever. But it does make a
+   difference in the degenerate case of variables and newtypes. So ::
+
+       case x of y -> rhs
+
+   is lazy in Haskell, but with ``Strict`` is interpreted as ::
+
+       case x of !y -> rhs
+
+   which evalutes ``x``. Similarly, if ``newtype Age = MkAge Int``, then ::
+
+       case x of MkAge i -> rhs
+
+   is lazy in Haskell; but with ``Strict`` the added bang makes it
+   strict.
+
+   Similarly ::
+
+      \ x -> body
+      do { x <- rhs; blah }
+      [ e | x <- rhs; blah }
+
+   all get implicit bangs on the ``x`` pattern.
+
+-  **Nested patterns**
+
+   Notice that we do *not* put bangs on nested patterns. For
+   example ::
+
+     let (p,q) = if flob then (undefined, undefined) else (True, False)
+     in ...
+
+   will behave like ::
+
+     let !(p,q) = if flob then (undefined, undefined) else (True,False)
+     in ...
+
+   which will strictly evaluate the right hand side, and bind ``p``
+   and ``q`` to the components of the pair. But the pair itself is
+   lazy (unless we also compile the ``Prelude`` with ``Strict``; see
+   :ref:`strict-modularity` below). So ``p`` and ``q`` may end up bound to
+   undefined. See also :ref:`recursive-and-polymorphic-let-bindings` below.
+
+-  **Top level bindings**
+
+   are unaffected by ``Strict``. For example: ::
+
+       x = factorial 20
+       (y,z) = if x > 10 then True else False
+
+   Here ``x`` and the pattern binding ``(y,z)`` remain lazy. Reason:
+   there is no good moment to force them, until first use.
+
+-  **Newtypes**
+
+   There is no effect on newtypes, which simply rename existing types.
+   For example: ::
+
+       newtype T = C a
+       f (C x)  = rhs1
+       g !(C x) = rhs2
+
+   In ordinary Haskell, ``f`` is lazy in its argument and hence in
+   ``x``; and ``g`` is strict in its argument and hence also strict in
+   ``x``. With ``Strict``, both become strict because ``f``'s argument
+   gets an implict bang.
+
+
+.. _strict-modularity:
+
+Modularity
+----------
+
+``Strict`` and ``StrictData`` only affects definitions in the module
+they are used in. Functions and data types imported from other modules
+are unaffected. For example, we won't evaluate the argument to
+``Just`` before applying the constructor.  Similarly we won't evaluate
+the first argument to ``Data.Map.findWithDefault`` before applying the
+function.
+
+This is crucial to preserve correctness. Entities defined in other
+modules might rely on laziness for correctness (whether functional or
+performance).
+
+Tuples, lists, ``Maybe``, and all the other types from ``Prelude``
+continue to have their existing, lazy, semantics.
+
+.. _bang-patterns-sem:
+.. _recursive-and-polymorphic-let-bindings:
+
+Dynamic semantics of bang patterns
+----------------------------------
 
 The semantics of Haskell pattern matching is described in `Section
 3.17.2 <http://www.haskell.org/onlinereport/exps.html#sect3.17.2>`__ of
@@ -10570,25 +11262,148 @@ add a new case (t): ::
 
 That leaves let expressions, whose translation is given in `Section
 3.12 <http://www.haskell.org/onlinereport/exps.html#sect3.12>`__ of the
-Haskell Report. In the translation box, first apply the following
-transformation: for each pattern ``pi`` that is of form ``!qi = ei``,
-transform it to ``(xi,!qi) = ((),ei)``, and replace ``e0`` by
-``(xi `seq` e0)``. Then, when none of the left-hand-side patterns have a
-bang at the top, apply the rules in the existing box.
+Haskell Report.
+Replace the "Translation" there with the following one.  Given
+``let { bind1 ... bindn } in body``:
 
-The effect of the let rule is to force complete matching of the pattern
-``qi`` before evaluation of the body is begun. The bang is retained in
-the translated form in case ``qi`` is a variable, thus: ::
+.. admonition:: FORCE
 
-      let !y = f x in b
+    Replace any binding ``!p = e`` with ``v = case e of p -> (x1, ..., xn); (x1, ..., xn) = v`` and replace
+    ``body`` with ``v seq body``, where ``v`` is fresh. This translation works fine if
+    ``p`` is already a variable ``x``, but can obviously be optimised by not
+    introducing a fresh variable ``v``.
 
-The let-binding can be recursive. However, it is much more common for
-the let-binding to be non-recursive, in which case the following law
-holds: ``(let !p = rhs in body)`` is equivalent to
-``(case rhs of !p -> body)``
+.. admonition:: SPLIT
 
-A pattern with a bang at the outermost level is not allowed at the top
-level of a module.
+    Replace any binding ``p = e``, where ``p`` is not a variable, with
+    ``v = e; x1 = case v of p -> x1; ...; xn = case v of p -> xn``, where
+    ``v`` is fresh and ``x1``.. ``xn`` are the bound variables of ``p``.
+    Again if ``e`` is a variable, you can optimised his by not introducing a
+    fresh variable.
+
+The result will be a (possibly) recursive set of bindings, binding
+only simple variables on the left hand side. (One could go one step
+further, as in the Haskell Report and make the recursive bindings
+non-recursive using ``fix``, but we do not do so in Core, and it only
+obfuscates matters, so we do not do so here.)
+
+The translation is carefully crafted to make bang patterns meaningful
+for reursive and polymorphic bindings as well as straightforward
+non-recurisve bindings.
+
+Here are some examples of how this translation works. The first
+expression of each sequence is Haskell source; the subsequent ones are
+Core.
+
+Here is a simple non-recursive case: ::
+
+    let x :: Int     -- Non-recursive
+        !x = factorial y
+    in body
+
+    ===> (FORCE)
+        let x = factorial y in x `seq` body
+
+    ===> (inline seq)
+        let x = factorial y in case x of x -> body
+
+    ===> (inline x)
+        case factorial y of x -> body
+
+Same again, only with a pattern binding: ::
+
+    let !(Just x, Left y) = e in body
+
+    ===> (FORCE)
+        let v = case e of (Just x, Left y) -> (x,y)
+            (x,y) = v
+        in v `seq` body
+
+    ===> (SPLIT)
+        let v = case e of (Just x, Left y) -> (x,y)
+            x = case v of (x,y) -> x
+            y = case v of (x,y) -> y
+        in v `seq` body
+
+    ===> (inline seq, float x,y bindings inwards)
+        let v = case e of (Just x, Left y) -> (x,y)
+        in case v of v -> let x = case v of (x,y) -> x
+                              y = case v of (x,y) -> y
+                          in body
+
+    ===> (fluff up v's pattern; this is a standard Core optimisation)
+        let v = case e of (Just x, Left y) -> (x,y)
+        in case v of v@(p,q) -> let x = case v of (x,y) -> x
+                                    y = case v of (x,y) -> y
+                                in body
+
+    ===> (case of known constructor)
+        let v = case e of (Just x, Left y) -> (x,y)
+        in case v of v@(p,q) -> let x = p
+                                    y = q
+                                in body
+
+    ===> (inline x,y, v)
+        case (case e of (Just x, Left y) -> (x,y) of
+            (p,q) -> body[p/x, q/y]
+
+    ===> (case of case)
+        case e of (Just x, Left y) -> body[p/x, q/y]
+
+The final form is just what we want: a simple case expression.
+
+Here is a recursive case ::
+
+    letrec xs :: [Int]  -- Recursive
+            !xs = factorial y : xs
+    in body
+
+    ===> (FORCE)
+        letrec xs = factorial y : xs in xs `seq` body
+
+    ===> (inline seq)
+        letrec xs = factorial y : xs in case xs of xs -> body
+
+    ===> (eliminate case of value)
+        letrec xs = factorial y : xs in body
+
+and a polymorphic one: ::
+
+    let f :: forall a. [a] -> [a]    -- Polymorphic
+        !f = fst (reverse, True)
+    in body
+
+    ===> (FORCE)
+        let f = /\a. fst (reverse a, True) in f `seq` body
+    ===> (inline seq, inline f)
+        case (/\a. fst (reverse a, True)) of f -> body
+
+Notice that the ``seq`` is added only in the translation to Core
+If we did it in Haskell source, thus ::
+
+   let f = ... in f `seq` body
+
+then ``f``\ 's polymorphic type would get intantiated, so the Core
+translation would be ::
+
+   let f = ... in f Any `seq` body
+
+
+When overloading is involved, the results might be slightly counter
+intuitive: ::
+
+    let f :: forall a. Eq a => a -> [a] -> Bool    -- Overloaded
+        !f = fst (member, True)
+    in body
+
+    ===> (FORCE)
+        let f = /\a \(d::Eq a). fst (member, True) in f `seq` body
+
+    ===> (inline seq, case of value)
+        let f = /\a \(d::Eq a). fst (member, True) in body
+
+Note that the bang has no effect at all in this case
+
 
 .. _assertions:
 
@@ -10678,11 +11493,11 @@ Using static pointers
 
 Each reference is given a key which can be used to locate it at runtime
 with
-:base-ref:`unsafeLookupStaticPtr <GHC.StaticPtr.html#v%3AunsafeLookupStaticPtr>`
+:base-ref:`unsafeLookupStaticPtr <GHC-StaticPtr.html#v%3AunsafeLookupStaticPtr>`
 which uses a global and immutable table called the Static Pointer Table.
 The compiler includes entries in this table for all static forms found
 in the linked modules. The value can be obtained from the reference via
-:base-ref:`deRefStaticPtr <GHC.StaticPtr.html#v%3AdeRefStaticPtr>`.
+:base-ref:`deRefStaticPtr <GHC-StaticPtr.html#v%3AdeRefStaticPtr>`.
 
 The body ``e`` of a ``static e`` expression must be a closed expression.
 That is, there can be no free variables occurring in ``e``, i.e. lambda-
@@ -10715,7 +11530,23 @@ Informally, if we have a closed expression ::
 
 the static form is of type ::
 
-    static e :: (Typeable a_1, ... , Typeable a_n) => StaticPtr t
+    static e :: (IsStatic p, Typeable a_1, ... , Typeable a_n) => p t
+
+
+A static form determines a value of type ``StaticPtr t``, but just
+like ``OverloadedLists`` and ``OverloadedStrings``, this literal
+expression is overloaded to allow lifting a ``StaticPtr`` into another
+type implicitly, via the ``IsStatic`` class: ::
+
+    class IsStatic p where
+        fromStaticPtr :: StaticPtr a -> p a
+
+The only predefined instance is the obvious one that does nothing: ::
+
+    instance IsStatic StaticPtr where
+        fromStaticPtr sptr = sptr
+
+See :base-ref:`IsStatic <GHC-StaticPtr.html#t%3AIsStatic>`.
 
 Furthermore, type ``t`` is constrained to have a ``Typeable`` instance.
 The following are therefore illegal: ::
@@ -12457,351 +13288,6 @@ like a value-level type signature). Here are some examples: ::
 
       type role X nominal
       type X a = ...           -- ERROR: role annotations not allowed for type synonyms
-
-.. _strict-haskell:
-
-Strict Haskell
-==============
-
-.. index::
-   single: strict haskell
-
-High-performance Haskell code (e.g. numeric code) can sometimes be
-littered with bang patterns, making it harder to read. The reason is
-that lazy evaluation isn't the right default in this particular code
-but the programmer has no way to say that except by repeatedly adding
-bang patterns. Below :ghc-flag:`-XStrictData` and :ghc-flag:`-XStrict` are detailed
-that allows the programmer to switch the default behavior on a
-per-module basis.
-
-.. _strict-data:
-
-Strict-by-default data types
-----------------------------
-
-.. ghc-flag:: -XStrictData
-
-    :since: 8.0.1
-
-    Make fields of data types defined in the current module strict by default.
-
-Informally the ``StrictData`` language extension switches data type
-declarations to be strict by default allowing fields to be lazy by
-adding a ``~`` in front of the field.
-
-When the user writes ::
-
-          data T = C a
-          data T' = C' ~a
-
-we interpret it as if they had written ::
-
-          data T = C !a
-          data T' = C' a
-
-The extension only affects definitions in this module.
-
-
-.. _strict:
-
-Strict-by-default pattern bindings
-----------------------------------
-
-.. ghc-flag:: -XStrict
-
-    :implies: :ghc-flag:`-XStrictData`
-    :since: 8.0.1
-
-    Make bindings in the current module strict by default.
-
-Informally the ``Strict`` language extension switches functions, data
-types, and bindings to be strict by default, allowing optional laziness
-by adding ``~`` in front of a variable. This essentially reverses the
-present situation where laziness is default and strictness can be
-optionally had by adding ``!`` in front of a variable.
-
-``Strict`` implies :ref:`StrictData <strict-data>`.
-
--  **Function definitions**
-
-   When the user writes ::
-
-       f x = ...
-
-   we interpret it as if they had written ::
-
-       f !x = ...
-
-   Adding ``~`` in front of ``x`` gives the regular lazy behavior.
-
--  **Let/where bindings**
-
-   When the user writes ::
-
-     let x = ...
-     let pat = ...
-
-   we interpret it as if they had written ::
-
-     let !x = ...
-     let !pat = ...
-
-   Adding ``~`` in front of ``x`` gives the regular lazy
-   behavior.
-   The general rule is that we add an implicit bang on the outermost pattern,
-   unless disabled with ``~``.
-
--  **Pattern matching in case expressions, lambdas, do-notation, etc**
-
-   The outermost pattern of all pattern matches gets an implicit bang,
-   unless disabled with ``~``.
-   This applies to case expressions, patterns in lambda, do-notation,
-   list comprehension, and so on.
-   For example ::
-
-       case x of (a,b) -> rhs
-
-   is interpreted as ::
-
-       case x of !(a,b) -> rhs
-
-   Since the semantics of pattern matching in case expressions is
-   strict, this usually has no effect whatsoever. But it does make a
-   difference in the degenerate case of variables and newtypes. So ::
-
-       case x of y -> rhs
-
-   is lazy in Haskell, but with ``Strict`` is interpreted as ::
-
-       case x of !y -> rhs
-
-   which evalutes ``x``. Similarly, if ``newtype Age = MkAge Int``, then ::
-
-       case x of MkAge i -> rhs
-
-   is lazy in Haskell; but with ``Strict`` the added bang makes it
-   strict.
-
-   Similarly ::
-
-      \ x -> body
-      do { x <- rhs; blah }
-      [ e | x <- rhs; blah }
-
-   all get implicit bangs on the ``x`` pattern.
-
--  **Nested patterns**
-
-   Notice that we do *not* put bangs on nested patterns. For
-   example ::
-
-     let (p,q) = if flob then (undefined, undefined) else (True, False)
-     in ...
-
-   will behave like ::
-
-     let !(p,q) = if flob then (undefined, undefined) else (True,False)
-     in ...
-
-   which will strictly evaluate the right hand side, and bind ``p``
-   and ``q`` to the components of the pair. But the pair itself is
-   lazy (unless we also compile the ``Prelude`` with ``Strict``; see
-   :ref:`strict-modularity` below). So ``p`` and ``q`` may end up bound to
-   undefined. See also :ref:`recursive-and-polymorphic-let-bindings` below.
-
--  **Top level bindings**
-
-   are unaffected by ``Strict``. For example: ::
-
-       x = factorial 20
-       (y,z) = if x > 10 then True else False
-
-   Here ``x`` and the pattern binding ``(y,z)`` remain lazy. Reason:
-   there is no good moment to force them, until first use.
-
--  **Newtypes**
-
-   There is no effect on newtypes, which simply rename existing types.
-   For example: ::
-
-       newtype T = C a
-       f (C x)  = rhs1
-       g !(C x) = rhs2
-
-   In ordinary Haskell, ``f`` is lazy in its argument and hence in
-   ``x``; and ``g`` is strict in its argument and hence also strict in
-   ``x``. With ``Strict``, both become strict because ``f``'s argument
-   gets an implict bang.
-
-
-.. _strict-modularity:
-
-Modularity
-----------
-
-``Strict`` and ``StrictData`` only affects definitions in the module
-they are used in. Functions and data types imported from other modules
-are unaffected. For example, we won't evaluate the argument to
-``Just`` before applying the constructor.  Similarly we won't evaluate
-the first argument to ``Data.Map.findWithDefault`` before applying the
-function.
-
-This is crucial to preserve correctness. Entities defined in other
-modules might rely on laziness for correctness (whether functional or
-performance).
-
-Tuples, lists, ``Maybe``, and all the other types from ``Prelude``
-continue to have their existing, lazy, semantics.
-
-.. _recursive-and-polymorphic-let-bindings:
-
-Recursive and polymorphic let bindings
---------------------------------------
-
-**Static semantics**
-
-Exactly as in Haskell, unaffected by ``Strict``. This is more permissive
-than past rules for bang patterns in let bindings, because it supports
-bang-patterns for polymorphic and recursive bindings.
-
-**Dynamic semantics**
-
-Consider the rules in the box of `Section 3.12 of the Haskell
-report <http://www.haskell.org/onlinereport/exps.html#sect3.12>`__.
-Replace these rules with the following ones, where ``v`` stands for a
-variable:
-
-.. admonition:: FORCE
-
-    Replace any binding ``!p = e`` with ``v = e; p = v`` and replace
-    ``e0`` with ``v seq e0``, where ``v`` is fresh. This translation works fine if
-    ``p`` is already a variable ``x``, but can obviously be optimised by not
-    introducing a fresh variable ``v``.
-
-.. admonition:: SPLIT
-
-    Replace any binding ``p = e``, where ``p`` is not a variable, with
-    ``v = e; x1 = case v of p -> x1; ...; xn = case v of p -> xn``, where
-    ``v`` is fresh and ``x1``.. ``xn`` are the bound variables of ``p``.
-    Again if ``e`` is a variable, you can optimised his by not introducing a
-    fresh variable.
-
-The result will be a (possibly) recursive set of bindings, binding
-only simple variables on the left hand side. (One could go one step
-further, as in the Haskell Report and make the recursive bindings
-non-recursive using ``fix``, but we do not do so in Core, and it only
-obfuscates matters, so we do not do so here.)
-
-Here are some examples of how this translation works. The first
-expression of each sequence is Haskell source; the subsequent ones are
-Core.
-
-Here is a simple non-recursive case: ::
-
-    let x :: Int     -- Non-recursive
-        !x = factorial y
-    in body
-
-    ===> (FORCE)
-        let x = factorial y in x `seq` body
-
-    ===> (inline seq)
-        let x = factorial y in case x of x -> body
-
-    ===> (inline x)
-        case factorial y of x -> body
-
-Same again, only with a pattern binding: ::
-
-    let !(x,y) = if blob then (factorial p, factorial q) else (0,0)
-    in body
-
-    ===> (FORCE)
-        let v = if blob then (factorial p, factorial q) else (0,0)
-            (x,y) = v
-        in v `seq` body
-
-    ===> (SPLIT)
-        let v = if blob then (factorial p, factorial q) else (0,0)
-            x = case v of (x,y) -> x
-            y = case v of (x,y) -> y
-        in v `seq` body
-
-    ===> (inline seq, float x,y bindings inwards)
-        let v = if blob then (factorial p, factorial q) else (0,0)
-        in case v of v -> let x = case v of (x,y) -> x
-                                y = case v of (x,y) -> y
-                            in body
-
-    ===> (fluff up v's pattern; this is a standard Core optimisation)
-        let v = if blob then (factorial p, factorial q) else (0,0)
-        in case v of v@(p,q) -> let x = case v of (x,y) -> x
-                                    y = case v of (x,y) -> y
-                                in body
-
-    ===> (case of known constructor)
-        let v = if blob then (factorial p, factorial q) else (0,0)
-        in case v of v@(p,q) -> let x = p
-                                    y = q
-                                in body
-
-    ===> (inline x,y)
-        let v = if blob then (factorial p, factorial q) else (0,0)
-        in case v of (p,q) -> body[p/x, q/y]
-
-The final form is just what we want: a simple case expression.
-
-Here is a recursive case ::
-
-    letrec xs :: [Int]  -- Recursive
-            !xs = factorial y : xs
-    in body
-
-    ===> (FORCE)
-        letrec xs = factorial y : xs in xs `seq` body
-
-    ===> (inline seq)
-        letrec xs = factorial y : xs in case xs of xs -> body
-
-    ===> (eliminate case of value)
-        letrec xs = factorial y : xs in body
-
-and a polymorphic one: ::
-
-    let f :: forall a. [a] -> [a]    -- Polymorphic
-        !f = fst (reverse, True)
-    in body
-
-    ===> (FORCE)
-        let f = /\a. fst (reverse a, True) in f `seq` body
-    ===> (inline seq, inline f)
-        case (/\a. fst (reverse a, True)) of f -> body
-
-Notice that the ``seq`` is added only in the translation to Core
-If we did it in Haskell source, thus ::
-
-   let f = ... in f `seq` body
-
-then ``f``\ 's polymorphic type would get intantiated, so the Core
-translation would be ::
-
-   let f = ... in f Any `seq` body
-
-
-When overloading is involved, the results might be slightly counter
-intuitive: ::
-
-    let f :: forall a. Eq a => a -> [a] -> Bool    -- Overloaded
-        !f = fst (member, True)
-    in body
-
-    ===> (FORCE)
-        let f = /\a \(d::Eq a). fst (member, True) in f `seq` body
-
-    ===> (inline seq, case of value)
-        let f = /\a \(d::Eq a). fst (member, True) in body
-
-Note that the bang has no effect at all in this case
 
 .. _hascallstack:
 

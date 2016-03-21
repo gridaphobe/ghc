@@ -364,7 +364,7 @@ test('T5030',
            #                        of family-applications leads to less sharing, I think
            # 2015-07-11:  201882912 reason unknown
 
-           (wordsize(64), 653710960, 10)]),
+           (wordsize(64), 342331936, 10)]),
              # Previously 530000000 (+/- 10%)
              # 17/1/13:   602993184  (x86_64/Linux)
              #            (new demand analyser)
@@ -382,6 +382,7 @@ test('T5030',
              #                          of family-applications leads to less sharing, I think
              # 2015-03-17 403932600  tweak to solver algorithm
 	     # 2015-12-11 653710960  TypeInType (see #11196)
+	     # 2016-03-14 342331936  unify type families eagerly
 
        only_ways(['normal'])
       ],
@@ -522,7 +523,7 @@ test('T5321FD',
 
 test('T5642',
      [ only_ways(['normal']),
-       skip, # See Trac #11163
+       normal,
        compiler_stats_num_field('bytes allocated',
            [(wordsize(32), 641085256, 10),
                      # sample from x86/Linux
@@ -530,7 +531,7 @@ test('T5642',
             # 2014-09-03:  753045568
             # 2014-12-10:  641085256 Improvements in constraints solver
 
-            (wordsize(64), 1071915072, 10)])
+            (wordsize(64), 950004816, 10)])
             # prev:        1300000000
             # 2014-07-17:  1358833928 (general round of updates)
             # 2014-08-07:  1402242360 (caused by 1fc60ea)
@@ -543,6 +544,7 @@ test('T5642',
             # 2014-12-10:  1282916024 Improvements in constraints solver
             # 2015-10-28:  1412808976 Emit Typeable at definition site
             # 2015-11-22:  1071915072 Use TypeLits in the metadata encoding
+            # 2016-02-08:  950004816  Pattern match checker re-rework
       ],
       compile,['-O'])
 
@@ -586,7 +588,7 @@ test('T6048',
             # 2014-09-03: 56315812 (x86 Windows, w/w for INLINEAVBLE)
             # 2014-12-01: 49987836 (x86 Windows)
 
-           (wordsize(64),  95946688, 12)])
+           (wordsize(64),  108225624, 12)])
              # 18/09/2012  97247032 amd64/Linux
              # 16/01/2014 108578664 amd64/Linux (unknown, likely foldl-via-foldr)
              # 18/01/2014  95960720 amd64/Linux Call Arity improvements
@@ -596,6 +598,7 @@ test('T6048',
              # 29/08/2014 108354472 amd64/Linux w/w for INLINABLE things
              # 14/09/2014  88186056 amd64/Linux BPP part1 change (more NoImplicitPreludes in base)
              # 08/01/2014  95946688 amd64/Linux Mostly 4c834fd. Occasional spikes to 103822120!
+             # 11/03/2016 108225624 amd64/Linux unknown reason sadly; likely gradual creep.
       ],
       compile,[''])
 
@@ -673,11 +676,12 @@ test('T9872a',
 test('T9872b',
      [ only_ways(['normal']),
        compiler_stats_num_field('bytes allocated',
-          [(wordsize(64), 5199926080, 5),
+          [(wordsize(64), 4918990352, 5),
           # 2014-12-10    6483306280    Initally created
           # 2014-12-16    6892251912    Flattener parameterized over roles
           # 2014-12-18    3480212048    Reduce type families even more eagerly
 	  # 2015-12-11    5199926080    TypeInType (see #11196)
+	  # 2016-02-08    4918990352    Improved a bit by tyConRolesRepresentational
            (wordsize(32), 1700000000, 5)
           ]),
       ],
@@ -686,11 +690,12 @@ test('T9872b',
 test('T9872c',
      [ only_ways(['normal']),
        compiler_stats_num_field('bytes allocated',
-          [(wordsize(64), 4723613784, 5),
+          [(wordsize(64), 4454071184, 5),
           # 2014-12-10    5495850096    Initally created
           # 2014-12-16    5842024784    Flattener parameterized over roles
           # 2014-12-18    2963554096    Reduce type families even more eagerly
 	  # 2015-12-11    4723613784    TypeInType (see #11196)
+	  # 2016-02-08    4454071184    Improved a bit by tyConRolesRepresentational
            (wordsize(32), 1500000000, 5)
           ]),
       ],
@@ -699,11 +704,12 @@ test('T9872c',
 test('T9872d',
      [ only_ways(['normal']),
        compiler_stats_num_field('bytes allocated',
-          [(wordsize(64), 566134504, 5),
+          [(wordsize(64), 534693648, 5),
           # 2014-12-18    796071864   Initally created
           # 2014-12-18    739189056   Reduce type families even more eagerly
           # 2015-01-07    687562440   TrieMap leaf compression
           # 2015-03-17    726679784   tweak to solver; probably flattens more
+	  # 2016-02-08    534693648   Improved a bit by tyConRolesRepresentational
            (wordsize(32), 59651432, 5)
           # some date     328810212
           # 2015-07-11    350369584
@@ -716,12 +722,13 @@ test('T9872d',
 test('T9961',
      [ only_ways(['normal']),
        compiler_stats_num_field('bytes allocated',
-          [(wordsize(64), 745044392, 5),
+          [(wordsize(64), 519436672, 5),
           # 2015-01-12    807117816   Initally created
           # 2015-spring   772510192   Got better
           # 2015-05-22    663978160   Fix for #10370 improves it more
           # 2015-10-28    708680480   x86_64/Linux   Emit Typeable at definition site
           # 2015-12-17    745044392   x86_64/Darwin  Creep upwards
+          # 2016-03-20    519436672   x64_64/Linux   Don't use build desugaring for large lists (D2007)
            (wordsize(32), 375647160, 5)
           ]),
       ],
@@ -743,8 +750,9 @@ test('T9233',
 test('T10370',
      [ only_ways(['optasm']),
        compiler_stats_num_field('max_bytes_used', # Note [residency]
-          [(wordsize(64), 19548720, 15),
+          [(wordsize(64), 22823976, 15),
           # 2015-10-22    19548720
+	  # 2016-02-24    22823976   Changing Levity to RuntimeRep; not sure why this regresses though, even after some analysis
            (wordsize(32), 11371496, 15),
           # 2015-10-22    11371496
           ]),

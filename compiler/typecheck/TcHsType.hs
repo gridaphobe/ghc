@@ -54,6 +54,7 @@ import TcUnify
 import TcIface
 import TcSimplify ( solveEqualities )
 import TcType
+import Inst   ( tcInstBinders, tcInstBindersX )
 import Type
 import Kind
 import RdrName( lookupLocalRdrOcc )
@@ -185,8 +186,8 @@ tcHsSigType ctxt sig_ty
     do { kind <- case expectedKindInCtxt ctxt of
                     AnythingKind -> newMetaKindVar
                     TheKind k    -> return k
-                    OpenKind     -> do { lev <- newFlexiTyVarTy levityTy
-                                       ; return $ tYPE lev }
+                    OpenKind     -> do { rr <- newFlexiTyVarTy runtimeRepTy
+                                       ; return $ tYPE rr }
               -- The kind is checked by checkValidType, and isn't necessarily
               -- of kind * in a Template Haskell quote eg [t| Maybe |]
 
@@ -232,28 +233,13 @@ tcHsClsInstType :: UserTypeCtxt    -- InstDeclCtxt or SpecInstCtxt
                 -> LHsSigType Name
                 -> TcM ([TyVar], ThetaType, Class, [Type])
 -- Like tcHsSigType, but for a class instance declaration
--- The significant difference is that we expect a /constraint/
--- not a /type/ for the bit after the '=>'.
-tcHsClsInstType user_ctxt hs_inst_ty@(HsIB { hsib_vars = sig_vars
-                                           , hsib_body = hs_qual_ty })
-    -- An explicit forall in an instance declaration isn't
-    -- allowed, so there won't be any HsForAllTy here
-  = setSrcSpan (getLoc hs_qual_ty) $
-    do { (tkvs, phi_ty) <- solveEqualities $
-                           tcImplicitTKBndrsType sig_vars $
-                    do { theta    <- tcHsContext cxt
-                       ; head_ty' <- tc_lhs_type typeLevelMode
-                                                 head_ty constraintKind
-                       ; return (mkPhiTy theta head_ty') }
-       ; let inst_ty = mkSpecForAllTys tkvs phi_ty
+tcHsClsInstType user_ctxt hs_inst_ty
+  = setSrcSpan (getLoc (hsSigType hs_inst_ty)) $
+    do { inst_ty <- tc_hs_sig_type hs_inst_ty constraintKind
        ; inst_ty <- kindGeneralizeType inst_ty
-       ; inst_ty <- zonkTcType inst_ty
        ; checkValidInstance user_ctxt hs_inst_ty inst_ty }
-  where
-    (cxt, head_ty) = splitLHsQualTy hs_qual_ty
 
 -- Used for 'VECTORISE [SCALAR] instance' declarations
---
 tcHsVectInst :: LHsSigType Name -> TcM (Class, [Type])
 tcHsVectInst ty
   | Just (L _ cls_name, tys) <- hsTyGetAppHead_maybe (hsSigType ty)
@@ -369,9 +355,12 @@ concern things that the renamer can't handle.
 
 -}
 
-data TcTyMode
+-- | Info about the context in which we're checking a type. Currently,
+-- differentiates only between types and kinds, but this will likely
+-- grow, at least to include the distinction between patterns and
+-- not-patterns.
+newtype TcTyMode
   = TcTyMode { mode_level :: TypeOrKind  -- True <=> type, False <=> kind
-                                         -- used only for -XNoTypeInType errors
              }
 
 typeLevelMode :: TcTyMode
@@ -383,6 +372,9 @@ kindLevelMode = TcTyMode { mode_level = KindLevel }
 -- switch to kind level
 kindLevel :: TcTyMode -> TcTyMode
 kindLevel mode = mode { mode_level = KindLevel }
+
+instance Outputable TcTyMode where
+  ppr = ppr . mode_level
 
 {-
 Note [Bidirectional type checking]
@@ -473,12 +465,17 @@ tc_lhs_type mode (L span ty) exp_kind
 
 ------------------------------------------
 tc_fun_type :: TcTyMode -> LHsType Name -> LHsType Name -> TcKind -> TcM TcType
-tc_fun_type mode ty1 ty2 exp_kind
-  = do { arg_lev <- newFlexiTyVarTy levityTy
-       ; res_lev <- newFlexiTyVarTy levityTy
-       ; ty1' <- tc_lhs_type mode ty1 (tYPE arg_lev)
-       ; ty2' <- tc_lhs_type mode ty2 (tYPE res_lev)
-       ; checkExpectedKind (mkNakedFunTy ty1' ty2') liftedTypeKind exp_kind }
+tc_fun_type mode ty1 ty2 exp_kind = case mode_level mode of
+  TypeLevel ->
+    do { arg_rr <- newFlexiTyVarTy runtimeRepTy
+       ; res_rr <- newFlexiTyVarTy runtimeRepTy
+       ; ty1' <- tc_lhs_type mode ty1 (tYPE arg_rr)
+       ; ty2' <- tc_lhs_type mode ty2 (tYPE res_rr)
+       ; checkExpectedKind (mkFunTy ty1' ty2') liftedTypeKind exp_kind }
+  KindLevel ->  -- no representation polymorphism in kinds. yet.
+    do { ty1' <- tc_lhs_type mode ty1 liftedTypeKind
+       ; ty2' <- tc_lhs_type mode ty2 liftedTypeKind
+       ; checkExpectedKind (mkFunTy ty1' ty2') liftedTypeKind exp_kind }
 
 ------------------------------------------
 -- See also Note [Bidirectional type checking]
@@ -508,34 +505,32 @@ tc_hs_type mode (HsOpTy ty1 (L _ op) ty2) exp_kind
   = tc_fun_type mode ty1 ty2 exp_kind
 
 --------- Foralls
-tc_hs_type mode hs_ty@(HsForAllTy { hst_bndrs = hs_tvs, hst_body = ty }) exp_kind
-    -- Do not kind-generalise here.  See Note [Kind generalisation]
-  | isConstraintKind exp_kind
-  = failWithTc (hang (text "Illegal constraint:") 2 (ppr hs_ty))
-
-  | otherwise
+tc_hs_type mode (HsForAllTy { hst_bndrs = hs_tvs, hst_body = ty }) exp_kind
   = fmap fst $
     tcExplicitTKBndrs hs_tvs $ \ tvs' ->
     -- Do not kind-generalise here!  See Note [Kind generalisation]
-    -- Why exp_kind?  See Note [Body kind of forall]
+    -- Why exp_kind?  See Note [Body kind of HsForAllTy]
     do { ty' <- tc_lhs_type mode ty exp_kind
        ; let bound_vars = allBoundVariables ty'
-       ; return (mkNakedSpecSigmaTy tvs' [] ty', bound_vars) }
+             bndrs      = map (mkNamedBinder Specified) tvs'
+       ; return (mkForAllTys bndrs ty', bound_vars) }
 
 tc_hs_type mode (HsQualTy { hst_ctxt = ctxt, hst_body = ty }) exp_kind
-  = do { ctxt' <- tc_hs_context mode ctxt
-       ; ty' <- if null (unLoc ctxt) then  -- Plain forall, no context
-                   tc_lhs_type mode ty exp_kind
-                     -- Why exp_kind?  See Note [Body kind of forall]
-                else
-                   -- If there is a context, then this forall is really a
-                   -- _function_, so the kind of the result really is *
-                   -- The body kind (result of the function) can be * or #, hence ekOpen
-                   do { ek <- ekOpen
-                      ; ty <- tc_lhs_type mode ty ek
-                      ; checkExpectedKind ty liftedTypeKind exp_kind }
+  | null (unLoc ctxt)
+  = tc_lhs_type mode ty exp_kind
 
-       ; return (mkNakedPhiTy ctxt' ty') }
+  | otherwise
+  = do { ctxt' <- tc_hs_context mode ctxt
+
+         -- See Note [Body kind of a HsQualTy]
+       ; ty' <- if isConstraintKind exp_kind
+                then tc_lhs_type mode ty constraintKind
+                else do { ek <- ekOpen -- The body kind (result of the
+                                       -- function) can be * or #, hence ekOpen
+                        ; ty <- tc_lhs_type mode ty ek
+                        ; checkExpectedKind ty liftedTypeKind exp_kind }
+
+       ; return (mkPhiTy ctxt' ty') }
 
 --------- Lists, arrays, and tuples
 tc_hs_type mode (HsListTy elt_ty) exp_kind
@@ -674,8 +669,8 @@ tc_tuple :: TcTyMode -> TupleSort -> [LHsType Name] -> TcKind -> TcM TcType
 tc_tuple mode tup_sort tys exp_kind
   = do { arg_kinds <- case tup_sort of
            BoxedTuple      -> return (nOfThem arity liftedTypeKind)
-           UnboxedTuple    -> do { levs <- newFlexiTyVarTys arity levityTy
-                                 ; return $ map tYPE levs }
+           UnboxedTuple    -> do { rrs <- newFlexiTyVarTys arity runtimeRepTy
+                                 ; return $ map tYPE rrs }
            ConstraintTuple -> return (nOfThem arity constraintKind)
        ; tau_tys <- zipWithM (tc_lhs_type mode) tys arg_kinds
        ; finish_tuple tup_sort tau_tys arg_kinds exp_kind }
@@ -690,8 +685,8 @@ finish_tuple :: TupleSort
 finish_tuple tup_sort tau_tys tau_kinds exp_kind
   = do { traceTc "finish_tuple" (ppr res_kind $$ ppr tau_kinds $$ ppr exp_kind)
        ; let arg_tys  = case tup_sort of
-                   -- See also Note [Unboxed tuple levity vars] in TyCon
-                 UnboxedTuple    -> map (getLevityFromKind "finish_tuple") tau_kinds
+                   -- See also Note [Unboxed tuple RuntimeRep vars] in TyCon
+                 UnboxedTuple    -> map (getRuntimeRepFromKind "finish_tuple") tau_kinds
                                     ++ tau_tys
                  BoxedTuple      -> tau_tys
                  ConstraintTuple -> tau_tys
@@ -708,7 +703,7 @@ finish_tuple tup_sort tau_tys tau_kinds exp_kind
   where
     arity = length tau_tys
     res_kind = case tup_sort of
-                 UnboxedTuple    -> unliftedTypeKind
+                 UnboxedTuple    -> tYPE unboxedTupleRepDataConTy
                  BoxedTuple      -> liftedTypeKind
                  ConstraintTuple -> constraintKind
 
@@ -729,19 +724,21 @@ bigConstraintTuple arity
 -- the visible ones.
 tcInferArgs :: Outputable fun
             => fun                      -- ^ the function
-            -> TcKind                   -- ^ function kind (zonked)
+            -> [TyBinder]               -- ^ function kind's binders
             -> Maybe (VarEnv Kind)      -- ^ possibly, kind info (see above)
             -> [LHsType Name]           -- ^ args
-            -> TcM (TcKind, [TcType], [LHsType Name], Int)
-               -- ^ (result kind, typechecked args, untypechecked args, n)
-tcInferArgs fun fun_kind mb_kind_info args
-  = do { (res_kind, args', leftovers, n)
-           <- tc_infer_args typeLevelMode fun fun_kind mb_kind_info args 1
+            -> TcM (TCvSubst, [TyBinder], [TcType], [LHsType Name], Int)
+               -- ^ (instantiating subst, un-insted leftover binders,
+               --   typechecked args, untypechecked args, n)
+tcInferArgs fun binders mb_kind_info args
+  = do { (subst, leftover_binders, args', leftovers, n)
+           <- tc_infer_args typeLevelMode fun binders mb_kind_info args 1
         -- now, we need to instantiate any remaining invisible arguments
-       ; let (invis_bndrs, really_res_kind) = splitPiTysInvisible res_kind
-       ; (subst, invis_args)
-           <- tcInstBindersX emptyTCvSubst mb_kind_info invis_bndrs
-       ; return ( substTy subst really_res_kind
+       ; let (invis_bndrs, other_binders) = span isInvisibleBinder leftover_binders
+       ; (subst', invis_args)
+           <- tcInstBindersX subst mb_kind_info invis_bndrs
+       ; return ( subst'
+                , other_binders
                 , args' `chkAppend` invis_args
                 , leftovers, n ) }
 
@@ -750,48 +747,38 @@ tcInferArgs fun fun_kind mb_kind_info args
 tc_infer_args :: Outputable fun
               => TcTyMode
               -> fun                      -- ^ the function
-              -> TcKind                   -- ^ function kind (zonked)
+              -> [TyBinder]               -- ^ function kind's binders (zonked)
               -> Maybe (VarEnv Kind)      -- ^ possibly, kind info (see above)
               -> [LHsType Name]           -- ^ args
               -> Int                      -- ^ number to start arg counter at
-              -> TcM (TcKind, [TcType], [LHsType Name], Int)
-tc_infer_args mode orig_ty ki mb_kind_info orig_args n0
-  = do { traceTc "tcInferApps" (ppr ki $$ ppr orig_args)
-       ; go emptyTCvSubst ki orig_args n0 [] }
+              -> TcM (TCvSubst, [TyBinder], [TcType], [LHsType Name], Int)
+tc_infer_args mode orig_ty binders mb_kind_info orig_args n0
+  = do { traceTc "tcInferApps" (ppr binders $$ ppr orig_args)
+       ; go emptyTCvSubst binders orig_args n0 [] }
   where
-    go subst fun_kind []   n acc
-      = return ( substTyUnchecked subst fun_kind, reverse acc, [], n )
+    go subst binders []   n acc
+      = return ( subst, binders, reverse acc, [], n )
     -- when we call this when checking type family patterns, we really
     -- do want to instantiate all invisible arguments. During other
     -- typechecking, we don't.
 
-    go subst fun_kind all_args n acc
-      | Just fun_kind' <- coreView fun_kind
-      = go subst fun_kind' all_args n acc
+    go subst binders all_args n acc
+      | (inv_binders, other_binders) <- span isInvisibleBinder binders
+      , not (null inv_binders)
+      = do { (subst', args') <- tcInstBindersX subst mb_kind_info inv_binders
+           ; go subst' other_binders all_args n (reverse args' ++ acc) }
 
-      | Just tv <- getTyVar_maybe fun_kind
-      , Just fun_kind' <- lookupTyVar subst tv
-      = go subst fun_kind' all_args n acc
-
-      | (inv_bndrs, res_k) <- splitPiTysInvisible fun_kind
-      , not (null inv_bndrs)
-      = do { (subst', args') <- tcInstBindersX subst mb_kind_info inv_bndrs
-           ; go subst' res_k all_args n (reverse args' ++ acc) }
-
-      | Just (bndr, res_k) <- splitPiTy_maybe fun_kind
-      , arg:args <- all_args  -- this actually has to succeed
-      = ASSERT( isVisibleBinder bndr )
-        do { let mode' | isNamedBinder bndr = kindLevel mode
-                       | otherwise          = mode
-           ; arg' <- addErrCtxt (funAppCtxt orig_ty arg n) $
-                     tc_lhs_type mode' arg (substTyUnchecked subst $ binderType bndr)
-           ; let subst' = case binderVar_maybe bndr of
-                   Just tv -> extendTCvSubst subst tv arg'
+    go subst (binder:binders) (arg:args) n acc
+      = ASSERT( isVisibleBinder binder )
+        do { arg' <- addErrCtxt (funAppCtxt orig_ty arg n) $
+                     tc_lhs_type mode arg (substTyUnchecked subst $ binderType binder)
+           ; let subst' = case binderVar_maybe binder of
+                   Just tv -> extendTvSubst subst tv arg'
                    Nothing -> subst
-           ; go subst' res_k args (n+1) (arg' : acc) }
+           ; go subst' binders args (n+1) (arg' : acc) }
 
-      | otherwise
-      = return (substTy subst fun_kind, reverse acc, all_args, n)
+    go subst [] all_args n acc
+      = return (subst, [], reverse acc, all_args, n)
 
 -- | Applies a type to a list of arguments. Always consumes all the
 -- arguments.
@@ -806,13 +793,13 @@ tcInferApps mode orig_ty ty ki args = go ty ki args 1
   where
     go fun fun_kind []   _ = return (fun, fun_kind)
     go fun fun_kind args n
-      | Just fun_kind' <- coreView fun_kind
-      = go fun fun_kind' args n
-
-      | isPiTy fun_kind
-      = do { (res_kind, args', leftover_args, n')
-                <- tc_infer_args mode orig_ty fun_kind Nothing args n
-           ; go (mkNakedAppTys fun args') res_kind leftover_args n' }
+      | let (binders, res_kind) = splitPiTys fun_kind
+      , not (null binders)
+      = do { (subst, leftover_binders, args', leftover_args, n')
+                <- tc_infer_args mode orig_ty binders Nothing args n
+           ; let fun_kind' = substTyUnchecked subst $
+                             mkForAllTys leftover_binders res_kind
+           ; go (mkNakedAppTys fun args') fun_kind' leftover_args n' }
 
     go fun fun_kind all_args@(arg:args) n
       = do { (co, arg_k, res_k) <- matchExpectedFunKind (length all_args)
@@ -821,110 +808,6 @@ tcInferApps mode orig_ty ty ki args = go ty ki args 1
                      tc_lhs_type mode arg arg_k
            ; go (mkNakedAppTy (fun `mkNakedCastTy` co) arg')
                 res_k args (n+1) }
-
----------------------------
--- | This is used to instantiate binders when type-checking *types* only.
--- Precondition: all binders are invisible. See also Note [Bidirectional type checking]
-tcInstBinders :: [TyBinder] -> TcM (TCvSubst, [TcType])
-tcInstBinders = tcInstBindersX emptyTCvSubst Nothing
-
--- | This is used to instantiate binders when type-checking *types* only.
--- Precondition: all binders are invisible.
--- The @VarEnv Kind@ gives some known instantiations.
--- See also Note [Bidirectional type checking]
-tcInstBindersX :: TCvSubst -> Maybe (VarEnv Kind)
-               -> [TyBinder] -> TcM (TCvSubst, [TcType])
-tcInstBindersX subst mb_kind_info bndrs
-  = do { (subst, args) <- mapAccumLM (tcInstBinderX mb_kind_info) subst bndrs
-       ; traceTc "instantiating implicit dependent vars:"
-           (vcat $ zipWith (\bndr arg -> ppr bndr <+> text ":=" <+> ppr arg)
-                           bndrs args)
-       ; return (subst, args) }
-
--- | Used only in *types*
-tcInstBinderX :: Maybe (VarEnv Kind)
-              -> TCvSubst -> TyBinder -> TcM (TCvSubst, TcType)
-tcInstBinderX mb_kind_info subst binder
-  | Just tv <- binderVar_maybe binder
-  = case lookup_tv tv of
-      Just ki -> return (extendTCvSubstAndInScope subst tv ki, ki)
-      Nothing -> do { (subst', tv') <- newMetaTyVarX subst tv
-                    ; return (subst', mkTyVarTy tv') }
-
-     -- This is the *only* constraint currently handled in types.
-  | Just (mk, role, k1, k2) <- get_pred_tys_maybe substed_ty
-  = do { let origin = TypeEqOrigin { uo_actual   = k1
-                                   , uo_expected = mkCheckExpType k2
-                                   , uo_thing    = Nothing }
-       ; co <- case role of
-                 Nominal          -> unifyKind noThing k1 k2
-                 Representational -> emitWantedEq origin KindLevel role k1 k2
-                 Phantom          -> pprPanic "tcInstBinderX Phantom" (ppr binder)
-       ; arg' <- mk co k1 k2
-       ; return (subst, arg') }
-
-  | otherwise
-  = do { let (env, tidy_ty) = tidyOpenType emptyTidyEnv substed_ty
-       ; addErrTcM (env, text "Illegal constraint in a type:" <+> ppr tidy_ty)
-
-         -- just invent a new variable so that we can continue
-       ; u <- newUnique
-       ; let name = mkSysTvName u (fsLit "dict")
-       ; return (subst, mkTyVarTy $ mkTyVar name substed_ty) }
-
-  where
-    substed_ty = substTy subst (binderType binder)
-
-    lookup_tv tv = do { env <- mb_kind_info   -- `Maybe` monad
-                      ; lookupVarEnv env tv }
-
-      -- handle boxed equality constraints, because it's so easy
-    get_pred_tys_maybe ty
-      | Just (r, k1, k2) <- getEqPredTys_maybe ty
-      = Just (\co _ _ -> return $ mkCoercionTy co, r, k1, k2)
-      | Just (tc, [_, _, k1, k2]) <- splitTyConApp_maybe ty
-      = if | tc `hasKey` heqTyConKey
-             -> Just (mkHEqBoxTy, Nominal, k1, k2)
-           | otherwise
-             -> Nothing
-      | Just (tc, [_, k1, k2]) <- splitTyConApp_maybe ty
-      = if | tc `hasKey` eqTyConKey
-             -> Just (mkEqBoxTy, Nominal, k1, k2)
-           | tc `hasKey` coercibleTyConKey
-             -> Just (mkCoercibleBoxTy, Representational, k1, k2)
-           | otherwise
-             -> Nothing
-      | otherwise
-      = Nothing
-
--------------------------------
--- | This takes @a ~# b@ and returns @a ~~ b@.
-mkHEqBoxTy :: TcCoercion -> Type -> Type -> TcM Type
--- monadic just for convenience with mkEqBoxTy
-mkHEqBoxTy co ty1 ty2
-  = return $
-    mkTyConApp (promoteDataCon heqDataCon) [k1, k2, ty1, ty2, mkCoercionTy co]
-  where k1 = typeKind ty1
-        k2 = typeKind ty2
-
--- | This takes @a ~# b@ and returns @a ~ b@.
-mkEqBoxTy :: TcCoercion -> Type -> Type -> TcM Type
-mkEqBoxTy co ty1 ty2
-  = do { eq_tc <- tcLookupTyCon eqTyConName
-       ; let [datacon] = tyConDataCons eq_tc
-       ; hetero <- mkHEqBoxTy co ty1 ty2
-       ; return $ mkTyConApp (promoteDataCon datacon) [k, ty1, ty2, hetero] }
-  where k = typeKind ty1
-
--- | This takes @a ~R# b@ and returns @Coercible a b@.
-mkCoercibleBoxTy :: TcCoercion -> Type -> Type -> TcM Type
--- monadic just for convenience with mkEqBoxTy
-mkCoercibleBoxTy co ty1 ty2
-  = do { return $
-         mkTyConApp (promoteDataCon coercibleDataCon)
-                    [k, ty1, ty2, mkCoercionTy co] }
-  where k = typeKind ty1
-
 
 --------------------------
 checkExpectedKind :: TcType               -- the type whose kind we're checking
@@ -1001,34 +884,22 @@ tcTyVar mode name         -- Could be a tyvar, a tycon, or a datacon
        ; case thing of
            ATyVar _ tv -> return (mkTyVarTy tv, tyVarKind tv)
 
-           ATcTyCon tc_tc -> do { data_kinds <- xoptM LangExt.DataKinds
-                                ; unless (isTypeLevel (mode_level mode) ||
-                                          data_kinds) $
-                                  promotionErr name NoDataKinds
+           ATcTyCon tc_tc -> do { check_tc tc_tc
                                 ; tc <- get_loopy_tc name tc_tc
-                                ; return (mkNakedTyConApp tc [], tyConKind tc_tc) }
+                                ; handle_tyfams tc tc_tc }
                              -- mkNakedTyConApp: see Note [Type-checking inside the knot]
                  -- NB: we really should check if we're at the kind level
                  -- and if the tycon is promotable if -XNoTypeInType is set.
                  -- But this is a terribly large amount of work! Not worth it.
 
            AGlobal (ATyCon tc)
-             -> do { type_in_type <- xoptM LangExt.TypeInType
-                   ; data_kinds   <- xoptM LangExt.DataKinds
-                   ; unless (isTypeLevel (mode_level mode) ||
-                             data_kinds ||
-                             isKindTyCon tc) $
-                       promotionErr name NoDataKinds
-                   ; unless (isTypeLevel (mode_level mode) ||
-                             type_in_type ||
-                             isLegacyPromotableTyCon tc) $
-                       promotionErr name NoTypeInTypeTC
-                   ; return (mkTyConApp tc [], tyConKind tc) }
+             -> do { check_tc tc
+                   ; handle_tyfams tc tc }
 
            AGlobal (AConLike (RealDataCon dc))
              -> do { data_kinds <- xoptM LangExt.DataKinds
                    ; unless (data_kinds || specialPromotedDc dc) $
-                       promotionErr name NoDataKinds
+                       promotionErr name NoDataKindsDC
                    ; type_in_type <- xoptM LangExt.TypeInType
                    ; unless ( type_in_type ||
                               ( isTypeLevel (mode_level mode) &&
@@ -1043,6 +914,40 @@ tcTyVar mode name         -- Could be a tyvar, a tycon, or a datacon
 
            _  -> wrongThingErr "type" thing name }
   where
+    check_tc :: TyCon -> TcM ()
+    check_tc tc = do { type_in_type <- xoptM LangExt.TypeInType
+                     ; data_kinds   <- xoptM LangExt.DataKinds
+                     ; unless (isTypeLevel (mode_level mode) ||
+                               data_kinds ||
+                               isKindTyCon tc) $
+                       promotionErr name NoDataKindsTC
+                     ; unless (isTypeLevel (mode_level mode) ||
+                               type_in_type ||
+                               isLegacyPromotableTyCon tc) $
+                       promotionErr name NoTypeInTypeTC }
+
+    -- if we are type-checking a type family tycon, we must instantiate
+    -- any invisible arguments right away. Otherwise, we get #11246
+    handle_tyfams :: TyCon   -- the tycon to instantiate (might be loopy)
+                  -> TyCon   -- a non-loopy version of the tycon
+                  -> TcM (TcType, TcKind)
+    handle_tyfams tc tc_tc
+      | mightBeUnsaturatedTyCon tc_tc
+      = do { traceTc "tcTyVar2a" (ppr tc_tc $$ ppr tc_kind)
+           ; return (ty, tc_kind) }
+
+      | otherwise
+      = do { (tc_ty, kind) <- instantiateTyN 0 ty tc_kind
+           -- tc and tc_ty must not be traced here, because that would
+           -- force the evaluation of a potentially knot-tied variable (tc),
+           -- and the typechecker would hang, as per #11708
+           ; traceTc "tcTyVar2b" (vcat [ ppr tc_tc <+> dcolon <+> ppr tc_kind
+                                       , ppr kind ])
+           ; return (tc_ty, kind) }
+      where
+        ty      = mkNakedTyConApp tc []
+        tc_kind = tyConKind tc_tc
+
     get_loopy_tc :: Name -> TyCon -> TcM TyCon
     -- Return the knot-tied global TyCon if there is one
     -- Otherwise the local TcTyCon; we must be doing kind checking
@@ -1101,8 +1006,8 @@ look at the TyCon or Class involved.
 This is horribly delicate.  I hate it.  A good example of how
 delicate it is can be seen in Trac #7903.
 
-Note [Body kind of a forall]
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+Note [Body kind of a HsForAllTy]
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 The body of a forall is usually a type, but in principle
 there's no reason to prohibit *unlifted* types.
 In fact, GHC can itself construct a function with an
@@ -1111,37 +1016,6 @@ typecheck/should_compile/tc170).
 
 Moreover in instance heads we get forall-types with
 kind Constraint.
-
-Moreover if we have a signature
-   f :: Int#
-then we represent it as (HsForAll Implicit [] [] Int#).  And this must
-be legal!  We can't drop the empty forall until *after* typechecking
-the body because of kind polymorphism:
-   Typeable :: forall k. k -> Constraint
-   data Apply f t = Apply (f t)
-   -- Apply :: forall k. (k -> *) -> k -> *
-   instance Typeable Apply where ...
-Then the dfun has type
-   df :: forall k. Typeable ((k->*) -> k -> *) (Apply k)
-
-   f :: Typeable Apply
-
-   f :: forall (t:k->*) (a:k).  t a -> t a
-
-   class C a b where
-      op :: a b -> Typeable Apply
-
-   data T a = MkT (Typeable Apply)
-            | T2 a
-      T :: * -> *
-      MkT :: forall k. (Typeable ((k->*) -> k -> *) (Apply k)) -> T a
-
-   f :: (forall (k:*). forall (t:: k->*) (a:k). t a -> t a) -> Int
-   f :: (forall a. a -> Typeable Apply) -> Int
-
-So we *must* keep the HsForAll on the instance type
-   HsForAll Implicit [] [] (Typeable Apply)
-so that we do kind generalisation on it.
 
 It's tempting to check that the body kind is either * or #. But this is
 wrong. For example:
@@ -1153,6 +1027,33 @@ We're doing newtype-deriving for C. But notice how `a` isn't in scope in
 the predicate `C a`. So we quantify, yielding `forall a. C a` even though
 `C a` has kind `* -> Constraint`. The `forall a. C a` is a bit cheeky, but
 convenient. Bottom line: don't check for * or # here.
+
+Note [Body kind of a HsQualTy]
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+If ctxt is non-empty, the HsQualTy really is a /function/, so the
+kind of the result really is '*', and in that case the kind of the
+body-type can be lifted or unlifted.
+
+However, consider
+    instance Eq a => Eq [a] where ...
+or
+    f :: (Eq a => Eq [a]) => blah
+Here both body-kind of the HsQualTy is Constraint rather than *.
+Rather crudely we tell the difference by looking at exp_kind. It's
+very convenient to typecheck instance types like any other HsSigType.
+
+Admittedly the '(Eq a => Eq [a]) => blah' case is erroneous, but it's
+better to reject in checkValidType.  If we say that the body kind
+should be '*' we risk getting TWO error messages, one saying that Eq
+[a] doens't have kind '*', and one saying that we need a Constraint to
+the left of the outer (=>).
+
+How do we figure out the right body kind?  Well, it's a bit of a
+kludge: I just look at the expected kind.  If it's Constraint, we
+must be in this instance situation context. It's a kludge because it
+wouldn't work if any unification was involved to compute that result
+kind -- but it isn't.  (The true way might be to use the 'mode'
+parameter, but that seemed like a sledgehammer to crack a nut.)
 
 Note [Inferring tuple kinds]
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -1258,6 +1159,24 @@ we might be about to kindGeneralize.
 
 A little messy, but it works.
 
+Note [Dependent LHsQTyVars]
+~~~~~~~~~~~~~~~~~~~~~~~~~~~
+We track (in the renamer) which explicitly bound variables in a
+LHsQTyVars are manifestly dependent; only precisely these variables
+may be used within the LHsQTyVars. We must do this so that kcHsTyVarBndrs
+can produce the right TcTyBinders, and tell Anon vs. Named. Earlier,
+I thought it would work simply to do a free-variable check during
+kcHsTyVarBndrs, but this is bogus, because there may be unsolved
+equalities about. And we don't want to eagerly solve the equalities,
+because we may get further information after kcHsTyVarBndrs is called.
+(Recall that kcHsTyVarBndrs is usually called from getInitialKind.
+The only other case is in kcConDecl.) This is what implements the rule
+that all variables intended to be dependent must be manifestly so.
+
+Sidenote: It's quite possible that later, we'll consider (t -> s)
+as a degenerate case of some (pi (x :: t) -> s) and then this will
+all get more permissive.
+
 -}
 
 tcWildCardBinders :: [Name]
@@ -1285,65 +1204,84 @@ tcWildCardBinders wcs thing_inside
 --
 -- This function does not do telescope checking.
 kcHsTyVarBndrs :: Bool    -- ^ True <=> the decl being checked has a CUSK
+               -> Bool    -- ^ True <=> the decl is an open type/data family
+               -> Bool    -- ^ True <=> all the hsq_implicit are *kind* vars
+                          -- (will give these kind * if -XNoTypeInType)
                -> LHsQTyVars Name
-               -> ([TyVar] -> [TyVar] -> TcM (Kind, r))
-                                  -- ^ the result kind, possibly with other info
-                                  -- ^ args are implicit vars, explicit vars
-               -> TcM (Kind, r)   -- ^ The full kind of the thing being declared,
-                                  -- with the other info
-kcHsTyVarBndrs cusk (HsQTvs { hsq_implicit = kv_ns
-                            , hsq_explicit = hs_tvs }) thing_inside
-  = do { meta_kvs <- mapM (const newMetaKindVar) kv_ns
-       ; kvs <- if cusk
-                then return $ zipWith new_skolem_tv kv_ns meta_kvs
-                     -- the names must line up in splitTelescopeTvs
-                else zipWithM newSigTyVar kv_ns meta_kvs
-       ; tcExtendTyVarEnv2 (kv_ns `zip` kvs) $
-    do { (full_kind, _, stuff) <- bind_telescope hs_tvs (thing_inside kvs)
-       ; let qkvs = filter (not . isMetaTyVar) $
-                    tyCoVarsOfTypeWellScoped full_kind
-                      -- these have to be the vars made with new_skolem_tv
-                      -- above. Thus, they are known to the user and should
-                      -- be Specified, not Invisible, when kind-generalizing
+               -> TcM (Kind, r)  -- ^ the result kind, possibly with other info
+               -> TcM ([TcTyBinder], TcKind, r)
+                     -- ^ The bound variables in the kind, the result kind,
+                     -- with the other info.
+                     -- Always returns Named binders; sort out Named vs. Anon
+                     -- yourself.
+kcHsTyVarBndrs cusk open_fam all_kind_vars
+  (HsQTvs { hsq_implicit = kv_ns, hsq_explicit = hs_tvs
+          , hsq_dependent = dep_names }) thing_inside
+  | cusk
+  = do { kv_kinds <- mk_kv_kinds
+       ; let scoped_kvs = zipWith new_skolem_tv kv_ns kv_kinds
+       ; tcExtendTyVarEnv2 (kv_ns `zip` scoped_kvs) $
+    do { (tvs, binders, res_kind, stuff) <- solveEqualities $
+                                            bind_telescope hs_tvs thing_inside
 
-                -- the free non-meta variables in the returned kind will
-                -- contain both *mentioned* kind vars and *unmentioned* kind
-                -- vars (See case (1) under Note [Typechecking telescopes])
-             gen_kind  = if cusk
-                         then mkSpecForAllTys qkvs $ full_kind
-                         else full_kind
-       ; return (gen_kind, stuff) } }
+           -- Now, because we're in a CUSK, quantify over the mentioned
+           -- kind vars, in dependency order.
+       ; binders  <- mapM zonkTcTyBinder binders
+       ; res_kind <- zonkTcType res_kind
+       ; let qkvs = tyCoVarsOfTypeWellScoped (mkForAllTys binders res_kind)
+                   -- the visibility of tvs doesn't matter here; we just
+                   -- want the free variables not to include the tvs
+
+          -- if there are any meta-tvs left, the user has lied about having
+          -- a CUSK. Error.
+       ; let (meta_tvs, good_tvs) = partition isMetaTyVar qkvs
+       ; when (not (null meta_tvs)) $
+         report_non_cusk_tvs (qkvs ++ tvs)
+
+       ; return ( map (mkNamedBinder Specified) good_tvs ++ binders
+                , res_kind, stuff ) }}
+
+  | otherwise
+  = do { kv_kinds <- mk_kv_kinds
+       ; scoped_kvs <- zipWithM newSigTyVar kv_ns kv_kinds
+                     -- the names must line up in splitTelescopeTvs
+       ; (_, binders, res_kind, stuff)
+           <- tcExtendTyVarEnv2 (kv_ns `zip` scoped_kvs) $
+              bind_telescope hs_tvs thing_inside
+       ; return (binders, res_kind, stuff) }
   where
+      -- if -XNoTypeInType and we know all the implicits are kind vars,
+      -- just give the kind *. This prevents test
+      -- dependent/should_fail/KindLevelsB from compiling, as it should
+    mk_kv_kinds :: TcM [Kind]
+    mk_kv_kinds = do { typeintype <- xoptM LangExt.TypeInType
+                     ; if not typeintype && all_kind_vars
+                       then return (map (const liftedTypeKind) kv_ns)
+                       else mapM (const newMetaKindVar) kv_ns }
+
       -- there may be dependency between the explicit "ty" vars. So, we have
-      -- to handle them one at a time. We also need to build up a full kind
-      -- here, because this is the place we know whether to use a FunTy or a
-      -- ForAllTy. We prefer using an anonymous binder over a trivial named
-      -- binder. If a user wants a trivial named one, use an explicit kind
-      -- signature.
+      -- to handle them one at a time.
     bind_telescope :: [LHsTyVarBndr Name]
-                   -> ([TyVar] -> TcM (Kind, r))
-                   -> TcM (Kind, VarSet, r)
+                   -> TcM (Kind, r)
+                   -> TcM ([TcTyVar], [TyBinder], TcKind, r)
     bind_telescope [] thing
-      = do { (res_kind, stuff) <- thing []
-           ; return (res_kind, tyCoVarsOfType res_kind, stuff) }
+      = do { (res_kind, stuff) <- thing
+           ; return ([], [], res_kind, stuff) }
     bind_telescope (L _ hs_tv : hs_tvs) thing
       = do { tv_pair@(tv, _) <- kc_hs_tv hs_tv
-           ; (res_kind, fvs, stuff) <- bind_unless_scoped tv_pair $
-                                       bind_telescope hs_tvs $ \tvs ->
-                                       thing (tv:tvs)
-              -- we must be *lazy* in res_kind and fvs (assuming that the
-              -- caller of kcHsTyVarBndrs is, too), as sometimes these hold
-              -- panics. See kcConDecl.
-           ; k <- zonkTcType (tyVarKind tv)
-           ; let k_fvs = tyCoVarsOfType k
-                 (bndr, fvs')
-                   | tv `elemVarSet` fvs
-                   = ( mkNamedBinder tv Visible
-                     , fvs `delVarSet` tv `unionVarSet` k_fvs )
-                   | otherwise
-                   = (mkAnonBinder k, fvs `unionVarSet` k_fvs)
-
-           ; return ( mkForAllTy bndr res_kind, fvs', stuff ) }
+               -- NB: Bring all tvs into scope, even non-dependent ones,
+               -- as they're needed in type synonyms, data constructors, etc.
+           ; (tvs, binders, res_kind, stuff) <- bind_unless_scoped tv_pair $
+                                                bind_telescope hs_tvs $
+                                                thing
+                  -- See Note [Dependent LHsQTyVars]
+           ; let new_binder | hsTyVarName hs_tv `elemNameSet` dep_names
+                            = mkNamedBinder Visible tv
+                            | otherwise
+                            = mkAnonBinder (tyVarKind tv)
+           ; return ( tv : tvs
+                    , new_binder : binders
+                    , res_kind, stuff ) }
 
     -- | Bind the tyvar in the env't unless the bool is True
     bind_unless_scoped :: (TcTyVar, Bool) -> TcM a -> TcM a
@@ -1352,21 +1290,41 @@ kcHsTyVarBndrs cusk (HsQTvs { hsq_implicit = kv_ns
       = tcExtendTyVarEnv [tv] thing_inside
 
     kc_hs_tv :: HsTyVarBndr Name -> TcM (TcTyVar, Bool)
-    kc_hs_tv hs_tvb
-      = do { (tv, scoped) <- tcHsTyVarBndr_Scoped hs_tvb
+    kc_hs_tv (UserTyVar (L _ name))
+      = do { tv_pair@(tv, scoped) <- tcHsTyVarName name
 
-              -- in the CUSK case, we want to default any un-kinded tyvars
-              -- See Note [Complete user-supplied kind signatures] in HsDecls
-           ; case hs_tvb of
-               UserTyVar {}
-                 | cusk
-                 , not scoped  -- don't default class tyvars
-                 -> discardResult $
-                    unifyKind (Just (mkTyVarTy tv)) liftedTypeKind
-                                                    (tyVarKind tv)
-               _ -> return ()
+              -- Open type/data families default their variables to kind *.
+           ; when (open_fam && not scoped) $ -- (don't default class tyvars)
+             discardResult $ unifyKind (Just (mkTyVarTy tv)) liftedTypeKind
+                                                             (tyVarKind tv)
 
-           ; return (tv, scoped) }
+           ; return tv_pair }
+
+    kc_hs_tv (KindedTyVar (L _ name) lhs_kind)
+      = do { tv_pair@(tv, _) <- tcHsTyVarName name
+           ; kind <- tcLHsKind lhs_kind
+               -- for a scoped variable: make sure annotation is consistent
+               -- for an unscoped variable: unify the meta-tyvar kind
+               -- either way: we can ignore the resulting coercion
+           ; discardResult $ unifyKind (Just (mkTyVarTy tv)) kind (tyVarKind tv)
+           ; return tv_pair }
+
+    report_non_cusk_tvs all_tvs
+      = do { all_tvs <- mapM zonkTyCoVarKind all_tvs
+           ; let (_, tidy_tvs)         = tidyOpenTyCoVars emptyTidyEnv all_tvs
+                 (meta_tvs, other_tvs) = partition isMetaTyVar tidy_tvs
+
+           ; addErr $
+             vcat [ text "You have written a *complete user-suppled kind signature*,"
+                  , hang (text "but the following variable" <> plural meta_tvs <+>
+                          isOrAre meta_tvs <+> text "undetermined:")
+                       2 (vcat (map pp_tv meta_tvs))
+                  , text "Perhaps add a kind signature."
+                  , hang (text "Inferred kinds of user-written variables:")
+                       2 (vcat (map pp_tv other_tvs)) ] }
+      where
+        pp_tv tv = ppr tv <+> dcolon <+> ppr (tyVarKind tv)
+
 
 tcImplicitTKBndrs :: [Name]
                   -> TcM (a, TyVarSet)   -- vars are bound somewhere in the scope
@@ -1456,22 +1414,6 @@ tcHsTyVarBndr (KindedTyVar (L _ name) kind)
   = do { kind <- tcLHsKind kind
        ; return (mkTcTyVar name kind (SkolemTv False)) }
 
--- | Type-check a user-written TyVarBndr, which binds a variable
--- that might already be in scope (e.g., in an associated type declaration)
--- The second return value says whether the variable is in scope (True)
--- or not (False).
-tcHsTyVarBndr_Scoped :: HsTyVarBndr Name -> TcM (TcTyVar, Bool)
-tcHsTyVarBndr_Scoped (UserTyVar (L _ name))
-  = tcHsTyVarName name
-tcHsTyVarBndr_Scoped (KindedTyVar (L _ name) lhs_kind)
-  = do { tv_pair@(tv, _) <- tcHsTyVarName name
-       ; kind <- tcLHsKind lhs_kind
-               -- for a scoped variable: make sure annotation is consistent
-               -- for an unscoped variable: unify the meta-tyvar kind
-               -- either way: we can ignore the resulting coercion
-       ; discardResult $ unifyKind (Just (mkTyVarTy tv)) kind (tyVarKind tv)
-       ; return tv_pair }
-
 -- | Produce a tyvar of the given name (with a meta-tyvar kind). If
 -- the name is already in scope, return the scoped variable. The
 -- second return value says whether the variable is in scope (True)
@@ -1490,6 +1432,7 @@ new_skolem_tv n k = mkTcTyVar n k vanillaSkolemTv
 
 ------------------
 kindGeneralizeType :: Type -> TcM Type
+-- Result is zonked
 kindGeneralizeType ty
   = do { kvs <- kindGeneralize ty
        ; zonkTcType (mkInvForAllTys kvs ty) }
@@ -1641,7 +1584,7 @@ processing necessary in the second pass.)
 Note [Tiresome kind matching]
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 Because of the use of SigTvs in kind inference (see #11203, for example)
-sometimes kind variables come into tcTClTyVars (the second, desugaring
+sometimes kind variables come into tcTyClTyVars (the second, desugaring
 pass in TcTyClDecls) with the wrong names. The best way to fix this up
 is just to unify the kinds, again. So we return HsKind/Kind pairs from
 splitTelescopeTvs that can get unified in tcTyClTyVars, but only if there
@@ -1655,30 +1598,28 @@ are kind vars the didn't link up in splitTelescopeTvs.
 -- Extend the env with bindings for the tyvars, taken from
 -- the kind of the tycon/class.  Give it to the thing inside, and
 -- check the result kind matches
-kcLookupKind :: Name -> TcM Kind
+kcLookupKind :: Name -> TcM ([TyBinder], Kind)
 kcLookupKind nm
   = do { tc_ty_thing <- tcLookup nm
        ; case tc_ty_thing of
-           ATcTyCon tc         -> return (tyConKind tc)
-           AGlobal (ATyCon tc) -> return (tyConKind tc)
+           ATcTyCon tc         -> return (tyConBinders tc, tyConResKind tc)
+           AGlobal (ATyCon tc) -> return (tyConBinders tc, tyConResKind tc)
            _                   -> pprPanic "kcLookupKind" (ppr tc_ty_thing) }
 
 -- See Note [Typechecking telescopes]
-splitTelescopeTvs :: Kind         -- of the head of the telescope
+splitTelescopeTvs :: [TyBinder]   -- telescope binders
                   -> LHsQTyVars Name
                   -> ( [TyVar]    -- scoped type variables
                      , NameSet    -- ungeneralized implicit variables (case 2a)
                      , [TyVar]    -- implicit type variables (cases 1 & 2)
                      , [TyVar]    -- explicit type variables (cases 3 & 4)
-                     , [(LHsKind Name, Kind)] -- see Note [Tiresome kind matching]
-                     , Kind )     -- result kind
-splitTelescopeTvs kind tvbs@(HsQTvs { hsq_implicit = hs_kvs
-                                    , hsq_explicit = hs_tvs })
-  = let (bndrs, inner_ki) = splitPiTys kind
-        (scoped_tvs, non_cusk_imp_names, imp_tvs, exp_tvs, kind_matches, mk_kind)
+                     , [(LHsKind Name, Kind)] ) -- see Note [Tiresome kind matching]
+splitTelescopeTvs bndrs tvbs@(HsQTvs { hsq_implicit = hs_kvs
+                                     , hsq_explicit = hs_tvs })
+  = let (scoped_tvs, non_cusk_imp_names, imp_tvs, exp_tvs, kind_matches)
           = mk_tvs [] [] bndrs (mkNameSet hs_kvs) hs_tvs
     in
-    (scoped_tvs, non_cusk_imp_names, imp_tvs, exp_tvs, kind_matches, mk_kind inner_ki)
+    (scoped_tvs, non_cusk_imp_names, imp_tvs, exp_tvs, kind_matches)
   where
     mk_tvs :: [TyVar]    -- scoped tv accum (reversed)
            -> [TyVar]    -- implicit tv accum (reversed)
@@ -1689,8 +1630,7 @@ splitTelescopeTvs kind tvbs@(HsQTvs { hsq_implicit = hs_kvs
               , NameSet           -- Case 2a names
               , [TyVar]           -- implicit tyvars
               , [TyVar]           -- explicit tyvars
-              , [(LHsKind Name, Kind)]  -- tiresome kind matches
-              , Type -> Type )    -- a function to create the result k
+              , [(LHsKind Name, Kind)] ) -- tiresome kind matches
     mk_tvs scoped_tv_acc imp_tv_acc (bndr : bndrs) all_hs_kvs all_hs_tvs
       | Just tv <- binderVar_maybe bndr
       , isInvisibleBinder bndr
@@ -1708,9 +1648,9 @@ splitTelescopeTvs kind tvbs@(HsQTvs { hsq_implicit = hs_kvs
      -- a non-CUSK. The kinds *aren't* generalized, so we won't see them
      -- here.
     mk_tvs scoped_tv_acc imp_tv_acc all_bndrs all_hs_kvs all_hs_tvs
-      = let (scoped, exp_tvs, kind_matches, mk_kind)
+      = let (scoped, exp_tvs, kind_matches)
               = mk_tvs2 scoped_tv_acc [] [] all_bndrs all_hs_tvs in
-        (scoped, all_hs_kvs, reverse imp_tv_acc, exp_tvs, kind_matches, mk_kind)
+        (scoped, all_hs_kvs, reverse imp_tv_acc, exp_tvs, kind_matches)
            -- no more Case (1) or (2)
 
     -- This can't handle Case (1) or Case (2) from [Typechecking telescopes]
@@ -1721,8 +1661,7 @@ splitTelescopeTvs kind tvbs@(HsQTvs { hsq_implicit = hs_kvs
             -> [LHsTyVarBndr Name]
             -> ( [TyVar]
                , [TyVar]   -- explicit tvs only
-               , [(LHsKind Name, Kind)]  -- tiresome kind matches
-               , Type -> Type )
+               , [(LHsKind Name, Kind)] )  -- tiresome kind matches
     mk_tvs2 scoped_tv_acc exp_tv_acc kind_match_acc (bndr : bndrs) (hs_tv : hs_tvs)
       | Just tv <- binderVar_maybe bndr
       = ASSERT2( isVisibleBinder bndr, err_doc )
@@ -1738,7 +1677,6 @@ splitTelescopeTvs kind tvbs@(HsQTvs { hsq_implicit = hs_kvs
       where
         err_doc = vcat [ ppr (bndr : bndrs)
                        , ppr (hs_tv : hs_tvs)
-                       , ppr kind
                        , ppr tvbs ]
 
         kind_match_acc' = case hs_tv of
@@ -1746,11 +1684,10 @@ splitTelescopeTvs kind tvbs@(HsQTvs { hsq_implicit = hs_kvs
           L _ (KindedTyVar _ hs_kind) -> (hs_kind, kind) : kind_match_acc
             where kind = binderType bndr
 
-    mk_tvs2 scoped_tv_acc exp_tv_acc kind_match_acc all_bndrs [] -- All done!
+    mk_tvs2 scoped_tv_acc exp_tv_acc kind_match_acc [] [] -- All done!
       = ( reverse scoped_tv_acc
         , reverse exp_tv_acc
-        , kind_match_acc   -- no need to reverse; it's not ordered
-        , mkForAllTys all_bndrs )
+        , kind_match_acc )   -- no need to reverse; it's not ordered
 
     mk_tvs2 _ _ _ all_bndrs all_hs_tvs
       = pprPanic "splitTelescopeTvs 2" (vcat [ ppr all_bndrs
@@ -1767,18 +1704,18 @@ kcTyClTyVars :: Name   -- ^ of the tycon
              -> LHsQTyVars Name
              -> TcM a -> TcM a
 kcTyClTyVars tycon hs_tvs thing_inside
-  = do { kind <- kcLookupKind tycon
-       ; let (scoped_tvs, non_cusk_kv_name_set, all_kvs, all_tvs, _, res_k)
-               = splitTelescopeTvs kind hs_tvs
+  = do { (binders, res_kind) <- kcLookupKind tycon
+       ; let (scoped_tvs, non_cusk_kv_name_set, all_kvs, all_tvs, _)
+               = splitTelescopeTvs binders hs_tvs
        ; traceTc "kcTyClTyVars splitTelescopeTvs:"
            (vcat [ text "Tycon:" <+> ppr tycon
-                 , text "Kind:" <+> ppr kind
+                 , text "Binders:" <+> ppr binders
+                 , text "res_kind:" <+> ppr res_kind
                  , text "hs_tvs:" <+> ppr hs_tvs
                  , text "scoped tvs:" <+> pprWithCommas pprTvBndr scoped_tvs
                  , text "implicit tvs:" <+> pprWithCommas pprTvBndr all_kvs
                  , text "explicit tvs:" <+> pprWithCommas pprTvBndr all_tvs
-                 , text "non-CUSK kvs:" <+> ppr non_cusk_kv_name_set
-                 , text "res_k:" <+> ppr res_k] )
+                 , text "non-CUSK kvs:" <+> ppr non_cusk_kv_name_set ] )
 
             -- need to look up the non-cusk kvs in order to get their
             -- kinds right, in case the kinds were informed by
@@ -1804,7 +1741,7 @@ kcTyClTyVars tycon hs_tvs thing_inside
          thing_inside }
 
 tcTyClTyVars :: Name -> LHsQTyVars Name      -- LHS of the type or class decl
-             -> ([TyVar] -> [TyVar] -> Kind -> Kind -> TcM a) -> TcM a
+             -> ([TyVar] -> [TyVar] -> [TyBinder] -> Kind -> TcM a) -> TcM a
 -- ^ Used for the type variables of a type or class decl
 -- on the second full pass (type-checking/desugaring) in TcTyClDecls.
 -- This is *not* used in the initial-kind run, nor in the "kind-checking" pass.
@@ -1812,7 +1749,7 @@ tcTyClTyVars :: Name -> LHsQTyVars Name      -- LHS of the type or class decl
 -- (tcTyClTyVars T [a,b] thing_inside)
 --   where T : forall k1 k2 (a:k1 -> *) (b:k1). k2 -> *
 --   calls thing_inside with arguments
---      [k1,k2] [a,b] (forall (k1:*) (k2:*) (a:k1 -> *) (b:k1). k2 -> *) (k2 -> *)
+--      [k1,k2] [a,b] [k1:*, k2:*, a:k1 -> *, b:k1] (k2 -> *)
 --   having also extended the type environment with bindings
 --   for k1,k2,a,b
 --
@@ -1821,27 +1758,28 @@ tcTyClTyVars :: Name -> LHsQTyVars Name      -- LHS of the type or class decl
 -- The LHsTyVarBndrs is always user-written, and the full, generalised
 -- kind of the tycon is available in the local env.
 tcTyClTyVars tycon hs_tvs thing_inside
-  = do { kind <- kcLookupKind tycon
+  = do { (binders, res_kind) <- kcLookupKind tycon
        ; let ( scoped_tvs, float_kv_name_set, all_kvs
-               , all_tvs, kind_matches, res_k )
-                 = splitTelescopeTvs kind hs_tvs
+               , all_tvs, kind_matches )
+                 = splitTelescopeTvs binders hs_tvs
        ; traceTc "tcTyClTyVars splitTelescopeTvs:"
            (vcat [ text "Tycon:" <+> ppr tycon
-                 , text "Kind:" <+> ppr kind
-                 , text "hs_tvs:" <+> ppr hs_tvs
+                 , text "Binders:" <+> ppr binders
+                 , text "res_kind:" <+> ppr res_kind
+                 , text "hs_tvs.hsq_implicit:" <+> ppr (hsq_implicit hs_tvs)
+                 , text "hs_tvs.hsq_explicit:" <+> ppr (hsq_explicit hs_tvs)
                  , text "scoped tvs:" <+> pprWithCommas pprTvBndr scoped_tvs
                  , text "implicit tvs:" <+> pprWithCommas pprTvBndr all_kvs
                  , text "explicit tvs:" <+> pprWithCommas pprTvBndr all_tvs
                  , text "floating kvs:" <+> ppr float_kv_name_set
-                 , text "Tiresome kind matches:" <+> ppr kind_matches
-                 , text "res_k:" <+> ppr res_k] )
+                 , text "Tiresome kind matches:" <+> ppr kind_matches ] )
 
        ; float_kvs <- deal_with_float_kvs float_kv_name_set kind_matches
                                           scoped_tvs all_tvs
 
        ; tcExtendTyVarEnv (float_kvs ++ scoped_tvs) $
            -- the float_kvs are already in the all_kvs
-         thing_inside all_kvs all_tvs kind res_k }
+         thing_inside all_kvs all_tvs binders res_kind }
   where
          -- See Note [Free-floating kind vars]
     deal_with_float_kvs float_kv_name_set kind_matches scoped_tvs all_tvs
@@ -1884,13 +1822,15 @@ tcTyClTyVars tycon hs_tvs thing_inside
                   2 (pprTvBndrs all_tvs) ]
 
 -----------------------------------
-tcDataKindSig :: Kind -> TcM [TyVar]
+tcDataKindSig :: Kind -> TcM ([TyVar], [TyBinder], Kind)
 -- GADT decls can have a (perhaps partial) kind signature
 --      e.g.  data T :: * -> * -> * where ...
 -- This function makes up suitable (kinded) type variables for
 -- the argument kinds, and checks that the result kind is indeed *.
 -- We use it also to make up argument type variables for for data instances.
 -- Never emits constraints.
+-- Returns the new TyVars, the extracted TyBinders, and the new, reduced
+-- result kind (which should always be Type or a synonym thereof)
 tcDataKindSig kind
   = do  { checkTc (isLiftedTypeKind res_kind) (badKindSig kind)
         ; span <- getSrcSpanM
@@ -1902,11 +1842,18 @@ tcDataKindSig kind
                             , isNothing (lookupLocalRdrOcc rdr_env occ) ]
                  -- Note [Avoid name clashes for associated data types]
 
-        ; return [ mk_tv span uniq occ kind
-                 | ((kind, occ), uniq) <- arg_kinds `zip` occs `zip` uniqs ] }
+            -- NB: Use the tv from a binder if there is one. Otherwise,
+            -- we end up inventing a new Unique for it, and any other tv
+            -- that mentions the first ends up with the wrong kind.
+        ; return ( [ tv
+                   | ((bndr, occ), uniq) <- bndrs `zip` occs `zip` uniqs
+                   , let tv | Just bndr_tv <- binderVar_maybe bndr
+                            = bndr_tv
+                            | otherwise
+                            = mk_tv span uniq occ (binderType bndr) ]
+                 , bndrs, res_kind ) }
   where
     (bndrs, res_kind) = splitPiTys kind
-    arg_kinds         = map binderType bndrs
     mk_tv loc uniq occ kind
       = mkTyVar (mkInternalName uniq occ loc) kind
 
@@ -2126,8 +2073,8 @@ in-scope variables that it should not unify with, but it's fiddly.
 
 -- | Produce an 'TcKind' suitable for a checking a type that can be * or #.
 ekOpen :: TcM TcKind
-ekOpen = do { lev <- newFlexiTyVarTy levityTy
-            ; return (tYPE lev) }
+ekOpen = do { rr <- newFlexiTyVarTy runtimeRepTy
+            ; return (tYPE rr) }
 
 unifyKinds :: [(TcType, TcKind)] -> TcM ([TcType], TcKind)
 unifyKinds act_kinds
@@ -2162,7 +2109,8 @@ promotionErr name err
   where
     reason = case err of
                FamDataConPE   -> text "it comes from a data family instance"
-               NoDataKinds    -> text "Perhaps you intended to use DataKinds"
+               NoDataKindsTC  -> text "Perhaps you intended to use DataKinds"
+               NoDataKindsDC  -> text "Perhaps you intended to use DataKinds"
                NoTypeInTypeTC -> text "Perhaps you intended to use TypeInType"
                NoTypeInTypeDC -> text "Perhaps you intended to use TypeInType"
                PatSynPE       -> text "Pattern synonyms cannot be promoted"

@@ -12,7 +12,7 @@ module Simplify ( simplTopBinds, simplExpr, simplRules ) where
 
 import DynFlags
 import SimplMonad
-import Type hiding      ( substTy, substTyVar, extendTCvSubst )
+import Type hiding      ( substTy, substTyVar, extendTvSubst, extendCvSubst )
 import SimplEnv
 import SimplUtils
 import FamInstEnv       ( FamInstEnv )
@@ -21,7 +21,7 @@ import Id
 import MkId             ( seqId, voidPrimId )
 import MkCore           ( mkImpossibleExpr, castBottomExpr )
 import IdInfo
-import Name             ( Name, mkSystemVarName, isExternalName )
+import Name             ( Name, mkSystemVarName, isExternalName, getOccFS )
 import Coercion hiding  ( substCo, substCoVar )
 import OptCoercion      ( optCoercion )
 import FamInstEnv       ( topNormaliseType_maybe )
@@ -385,7 +385,7 @@ simplNonRecX env bndr new_rhs
                   --   the binding c = (a,b)
 
   | Coercion co <- new_rhs
-  = return (extendTCvSubst env bndr (mkCoercionTy co))
+  = return (extendCvSubst env bndr co)
 
   | otherwise
   = do  { (env', bndr') <- simplBinder env bndr
@@ -458,14 +458,14 @@ prepareRhs :: TopLevelFlag -> SimplEnv -> OutId -> OutExpr -> SimplM (SimplEnv, 
 prepareRhs top_lvl env id (Cast rhs co)    -- Note [Float coercions]
   | Pair ty1 _ty2 <- coercionKind co       -- Do *not* do this if rhs has an unlifted type
   , not (isUnliftedType ty1)            -- see Note [Float coercions (unlifted)]
-  = do  { (env', rhs') <- makeTrivialWithInfo top_lvl env sanitised_info rhs
+  = do  { (env', rhs') <- makeTrivialWithInfo top_lvl env (getOccFS id) sanitised_info rhs
         ; return (env', Cast rhs' co) }
   where
     sanitised_info = vanillaIdInfo `setStrictnessInfo` strictnessInfo info
                                    `setDemandInfo` demandInfo info
     info = idInfo id
 
-prepareRhs top_lvl env0 _ rhs0
+prepareRhs top_lvl env0 id rhs0
   = do  { (_is_exp, env1, rhs1) <- go 0 env0 rhs0
         ; return (env1, rhs1) }
   where
@@ -478,7 +478,7 @@ prepareRhs top_lvl env0 _ rhs0
     go n_val_args env (App fun arg)
         = do { (is_exp, env', fun') <- go (n_val_args+1) env fun
              ; case is_exp of
-                True -> do { (env'', arg') <- makeTrivial top_lvl env' arg
+                True -> do { (env'', arg') <- makeTrivial top_lvl env' (getOccFS id) arg
                            ; return (True, env'', App fun' arg') }
                 False -> return (False, env, App fun arg) }
     go n_val_args env (Var fun)
@@ -559,27 +559,33 @@ These strange casts can happen as a result of case-of-case
 -}
 
 makeTrivialArg :: SimplEnv -> ArgSpec -> SimplM (SimplEnv, ArgSpec)
-makeTrivialArg env (ValArg e) = do { (env', e') <- makeTrivial NotTopLevel env e
-                                   ; return (env', ValArg e') }
+makeTrivialArg env (ValArg e) = do
+    { (env', e') <- makeTrivial NotTopLevel env (fsLit "arg") e
+    ; return (env', ValArg e') }
 makeTrivialArg env arg        = return (env, arg)  -- CastBy, TyArg
 
-makeTrivial :: TopLevelFlag -> SimplEnv -> OutExpr -> SimplM (SimplEnv, OutExpr)
+makeTrivial :: TopLevelFlag -> SimplEnv
+            -> FastString  -- ^ a "friendly name" to build the new binder from
+            -> OutExpr -> SimplM (SimplEnv, OutExpr)
 -- Binds the expression to a variable, if it's not trivial, returning the variable
-makeTrivial top_lvl env expr = makeTrivialWithInfo top_lvl env vanillaIdInfo expr
+makeTrivial top_lvl env context expr =
+    makeTrivialWithInfo top_lvl env context vanillaIdInfo expr
 
-makeTrivialWithInfo :: TopLevelFlag -> SimplEnv -> IdInfo
-                    -> OutExpr -> SimplM (SimplEnv, OutExpr)
+makeTrivialWithInfo :: TopLevelFlag -> SimplEnv
+                    -> FastString
+                    -- ^ a "friendly name" to build the new binder from
+                    -> IdInfo -> OutExpr -> SimplM (SimplEnv, OutExpr)
 -- Propagate strictness and demand info to the new binder
 -- Note [Preserve strictness when floating coercions]
 -- Returned SimplEnv has same substitution as incoming one
-makeTrivialWithInfo top_lvl env info expr
+makeTrivialWithInfo top_lvl env context info expr
   | exprIsTrivial expr                          -- Already trivial
   || not (bindingOk top_lvl expr expr_ty)       -- Cannot trivialise
                                                 --   See Note [Cannot trivialise]
   = return (env, expr)
   | otherwise           -- See Note [Take care] below
   = do  { uniq <- getUniqueM
-        ; let name = mkSystemVarName uniq (fsLit "a")
+        ; let name = mkSystemVarName uniq context
               var = mkLocalIdOrCoVarWithInfo name expr_ty info
         ; env'  <- completeNonRecX top_lvl env False var var expr
         ; expr' <- simplVar env' var
@@ -665,7 +671,7 @@ completeBind :: SimplEnv
 completeBind env top_lvl old_bndr new_bndr new_rhs
  | isCoVar old_bndr
  = case new_rhs of
-     Coercion co -> return (extendTCvSubst env old_bndr (mkCoercionTy co))
+     Coercion co -> return (extendCvSubst env old_bndr co)
      _           -> return (addNonRec env new_bndr new_rhs)
 
  | otherwise
@@ -1237,7 +1243,7 @@ simplLam env [] body cont = simplExprF env body cont
 
 simplLam env (bndr:bndrs) body (ApplyToTy { sc_arg_ty = arg_ty, sc_cont = cont })
   = do { tick (BetaReduction bndr)
-       ; simplLam (extendTCvSubst env bndr arg_ty) bndrs body cont }
+       ; simplLam (extendTvSubst env bndr arg_ty) bndrs body cont }
 
 simplLam env (bndr:bndrs) body (ApplyToVal { sc_arg = arg, sc_env = arg_se
                                            , sc_cont = cont })
@@ -1245,7 +1251,7 @@ simplLam env (bndr:bndrs) body (ApplyToVal { sc_arg = arg, sc_env = arg_se
         ; simplNonRecE env' (zap_unfolding bndr) (arg, arg_se) (bndrs, body) cont }
   where
     env' | Coercion co <- arg
-         = extendTCvSubst env bndr (mkCoercionTy co)
+         = extendCvSubst env bndr co
          | otherwise
          = env
 
@@ -1321,7 +1327,7 @@ simplNonRecE :: SimplEnv
 simplNonRecE env bndr (Type ty_arg, rhs_se) (bndrs, body) cont
   = ASSERT( isTyVar bndr )
     do  { ty_arg' <- simplType (rhs_se `setInScope` env) ty_arg
-        ; simplLam (extendTCvSubst env bndr ty_arg') bndrs body cont }
+        ; simplLam (extendTvSubst env bndr ty_arg') bndrs body cont }
 
 simplNonRecE env bndr (rhs, rhs_se) (bndrs, body) cont
   = do dflags <- getDynFlags
@@ -1499,7 +1505,7 @@ Then we want to rewrite (g (h x)) to (k x) and only then try f's rules. If
 we match f's rules against the un-simplified RHS, it won't match.  This
 makes a particularly big difference when superclass selectors are involved:
         op ($p1 ($p2 (df d)))
-We want all this to unravel in one sweeep.
+We want all this to unravel in one sweep.
 
 Note [Avoid redundant simplification]
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -2260,11 +2266,11 @@ knownCon env scrut dc dc_ty_args dc_args bndr bs rhs cont
 
     bind_args env' (b:bs') (Type ty : args)
       = ASSERT( isTyVar b )
-        bind_args (extendTCvSubst env' b ty) bs' args
+        bind_args (extendTvSubst env' b ty) bs' args
 
     bind_args env' (b:bs') (Coercion co : args)
       = ASSERT( isCoVar b )
-        bind_args (extendTCvSubst env' b (mkCoercionTy co)) bs' args
+        bind_args (extendCvSubst env' b co) bs' args
 
     bind_args env' (b:bs') (arg : args)
       = ASSERT( isId b )
@@ -2402,7 +2408,7 @@ mkDupableCont env (ApplyToVal { sc_arg = arg, sc_dup = dup, sc_env = se, sc_cont
         --              in [...hole...] a
     do  { (env', dup_cont, nodup_cont) <- mkDupableCont env cont
         ; (_, se', arg') <- simplArg env' dup se arg
-        ; (env'', arg'') <- makeTrivial NotTopLevel env' arg'
+        ; (env'', arg'') <- makeTrivial NotTopLevel env' (fsLit "karg") arg'
         ; let app_cont = ApplyToVal { sc_arg = arg'', sc_env = se'
                                     , sc_dup = OkToDup, sc_cont = dup_cont }
         ; return (env'', app_cont, nodup_cont) }

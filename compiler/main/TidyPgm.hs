@@ -390,7 +390,7 @@ tidyProgram hsc_env  (ModGuts { mg_module    = mod
           -- Print one-line size info
         ; let cs = coreBindsStats tidy_binds
         ; when (dopt Opt_D_dump_core_stats dflags)
-               (log_action dflags dflags SevDump noSrcSpan defaultDumpStyle
+               (log_action dflags dflags NoReason SevDump noSrcSpan defaultDumpStyle
                           (text "Tidy size (terms,types,coercions)"
                            <+> ppr (moduleName mod) <> colon
                            <+> int (cs_tm cs)
@@ -887,9 +887,13 @@ reference to f_spec except from the RULE.
 
 Now that RULE *might* be useful to an importing module, but that is
 purely speculative, and meanwhile the code is taking up space and
-codegen time.  So is seeems better to drop the binding for f_spec if
-the auto-generated rule is the *only* reason that it is being kept
-alive.
+codegen time.  I found that binary sizes jumped by 6-10% when I
+started to specialise INLINE functions (again, Note [Inline
+specialisations] in Specialise).
+
+So it seems better to drop the binding for f_spec, and the rule
+itself, if the auto-generated rule is the *only* reason that it is
+being kept alive.
 
 (The RULE still might have been useful in the past; that is, it was
 the right thing to have generated it in the first place.  See Note
@@ -902,12 +906,10 @@ So findExternalRules does this:
   * Remove all auto rules that mention bindings that have been removed
       (this is done by filtering by keep_rule)
 
-So if a binding is kept alive for some *other* reason (e.g. f_spec is
+NB: if a binding is kept alive for some *other* reason (e.g. f_spec is
 called in the final code), we keep the rule too.
 
-I found that binary sizes jumped by 6-10% when I started to specialise
-INLINE functions (again, Note [Inline specialisations] in Specialise).
-Adding trimAutoRules removed all this bloat.
+This stuff is the only reason for the ru_auto field in a Rule.
 -}
 
 findExternalRules :: Bool       -- Omit pragmas
@@ -1275,7 +1277,7 @@ tidyTopIdInfo dflags rhs_tidy_env name orig_rhs tidy_rhs idinfo show_unfold caf_
 {-
 ************************************************************************
 *                                                                      *
-\subsection{Figuring out CafInfo for an expression}
+           Figuring out CafInfo for an expression
 *                                                                      *
 ************************************************************************
 
@@ -1332,7 +1334,7 @@ cafRefsE p (Lit lit)           = cafRefsL p lit
 cafRefsE p (App f a)           = cafRefsE p f || cafRefsE p a
 cafRefsE p (Lam _ e)           = cafRefsE p e
 cafRefsE p (Let b e)           = cafRefsEs p (rhssOfBind b) || cafRefsE p e
-cafRefsE p (Case e _bndr _ alts) = cafRefsE p e || cafRefsEs p (rhssOfAlts alts)
+cafRefsE p (Case e _ _ alts)   = cafRefsE p e || cafRefsEs p (rhssOfAlts alts)
 cafRefsE p (Tick _n e)         = cafRefsE p e
 cafRefsE p (Cast e _co)        = cafRefsE p e
 cafRefsE _ (Type _)            = False
@@ -1355,10 +1357,13 @@ cafRefsV (subst, _) id
   | Just id' <- lookupVarEnv subst id = mayHaveCafRefs (idCafInfo id')
   | otherwise                         = False
 
+
 {-
-------------------------------------------------------------------------------
---               Old, dead, type-trimming code
--------------------------------------------------------------------------------
+************************************************************************
+*                                                                      *
+                  Old, dead, type-trimming code
+*                                                                      *
+************************************************************************
 
 We used to try to "trim off" the constructors of data types that are
 not exported, to reduce the size of interface files, at least without

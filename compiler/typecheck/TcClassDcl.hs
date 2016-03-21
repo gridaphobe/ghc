@@ -26,7 +26,7 @@ import TcBinds
 import TcUnify
 import TcHsType
 import TcMType
-import Type     ( getClassPredTys_maybe, varSetElemsWellScoped )
+import Type     ( getClassPredTys_maybe, varSetElemsWellScoped, piResultTys )
 import TcType
 import TcRnMonad
 import BuildTyCl( TcMethInfo )
@@ -210,7 +210,8 @@ tcDefMeth clas tyvars this_dict binds_in hs_sig_fn prag_fn
 
        ; spec_prags <- discardConstraints $
                        tcSpecPrags global_dm_id prags
-       ; warnTc (not (null spec_prags))
+       ; warnTc NoReason
+                (not (null spec_prags))
                 (text "Ignoring SPECIALISE pragmas on default method"
                  <+> quotes (ppr sel_name))
 
@@ -253,7 +254,6 @@ tcDefMeth clas tyvars this_dict binds_in hs_sig_fn prag_fn
                            -- completeSigPolyId
                            , abe_mono      = completeIdSigPolyId local_dm_sig
                            , abe_wrap      = idHsWrapper
-                           , abe_inst_wrap = idHsWrapper
                            , abe_prags     = IsDefaultMethod }
               full_bind = AbsBinds { abs_tvs      = tyvars
                                    , abs_ev_vars  = [this_dict]
@@ -281,7 +281,7 @@ tcClassMinimalDef _clas sigs op_info
         -- class ops without default methods are required, since we
         -- have no way to fill them in otherwise
         whenIsJust (isUnsatisfied (mindef `impliesAtom`) defMindef) $
-                   (\bf -> addWarnTc (warningMinimalDefIncomplete bf))
+                   (\bf -> addWarnTc NoReason (warningMinimalDefIncomplete bf))
         return mindef
   where
     -- By default require all methods without a default
@@ -300,10 +300,7 @@ instantiateMethod :: Class -> Id -> [TcType] -> TcType
 instantiateMethod clas sel_id inst_tys
   = ASSERT( ok_first_pred ) local_meth_ty
   where
-    (sel_tyvars,sel_rho) = tcSplitForAllTys (idType sel_id)
-    rho_ty = ASSERT( length sel_tyvars == length inst_tys )
-             substTyWith sel_tyvars inst_tys sel_rho
-
+    rho_ty = piResultTys (idType sel_id) inst_tys
     (first_pred, local_meth_ty) = tcSplitPredFunTy_maybe rho_ty
                 `orElse` pprPanic "tcInstanceMethod" (ppr sel_id)
 
@@ -471,8 +468,7 @@ tcATDefault emit_warn loc inst_subst defined_ats (ATI fam_tc defs)
 
        ; traceTc "mk_deflt_at_instance" (vcat [ ppr fam_tc, ppr rhs_ty
                                               , pprCoAxiom axiom ])
-       ; fam_inst <- ASSERT( tyCoVarsOfType rhs' `subVarSet` tv_set' )
-                     newFamInst SynFamilyInst axiom
+       ; fam_inst <- newFamInst SynFamilyInst axiom
        ; return [fam_inst] }
 
    -- No defaults ==> generate a warning
@@ -484,7 +480,7 @@ tcATDefault emit_warn loc inst_subst defined_ats (ATI fam_tc defs)
       | Just ty <- lookupVarEnv (getTvSubstEnv subst) tc_tv
       = (subst, ty)
       | otherwise
-      = (extendTCvSubst subst tc_tv ty', ty')
+      = (extendTvSubst subst tc_tv ty', ty')
       where
         ty' = mkTyVarTy (updateTyVarKind (substTyUnchecked subst) tc_tv)
 
@@ -492,7 +488,7 @@ warnMissingAT :: Name -> TcM ()
 warnMissingAT name
   = do { warn <- woptM Opt_WarnMissingMethods
        ; traceTc "warn" (ppr name <+> ppr warn)
-       ; warnTc warn  -- Warn only if -Wmissing-methods
+       ; warnTc (Reason Opt_WarnMissingMethods) warn  -- Warn only if -Wmissing-methods
                 (text "No explicit" <+> text "associated type"
                     <+> text "or default declaration for     "
                     <+> quotes (ppr name)) }

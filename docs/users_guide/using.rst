@@ -609,20 +609,32 @@ See also the ``--help``, ``--version``, ``--numeric-version``, and
         representation after each compilation phase is also printed
         (excluding preprocessed and C/assembly files).
 
-.. ghc-flag:: --fprint-potential-instances
+.. ghc-flag:: -fprint-potential-instances
 
     When GHC can't find an instance for a class, it displays a short
     list of some in the instances it knows about. With this flag it
     prints *all* the instances it knows about.
 
-.. ghc-flag:: -fprint-explicit-foralls
-              -fprint-explicit-kinds
-              -fprint-unicode-syntax
-              -fprint-explicit-coercions
-              -fprint-equality-relations
 
-    These flags control the way in which GHC displays types, in
-    error messages and in GHCi. Using :ghc-flag:`-fprint-explicit-foralls` makes
+The following flags control the way in which GHC displays types in error
+messages and in GHCi:
+
+.. ghc-flag:: -fprint-unicode-syntax
+
+    When enabled GHC prints type signatures using the unicode symbols from the
+    :ghc-flag:`-XUnicodeSyntax` extension. For instance,
+
+    .. code-block:: none
+
+        ghci> :set -fprint-unicode-syntax
+        ghci> :t (>>)
+        (>>) :: ∀ (m :: * → *) a b. Monad m ⇒ m a → m b → m b
+
+.. _pretty-printing-types:
+    
+.. ghc-flag:: -fprint-explicit-foralls
+
+    Using :ghc-flag:`-fprint-explicit-foralls` makes
     GHC print explicit ``forall`` quantification at the top level of a
     type; normally this is suppressed. For example, in GHCi:
 
@@ -656,6 +668,8 @@ See also the ``--help``, ``--version``, ``--numeric-version``, and
              (a Data.Type.Equality.:~: b) -> b Data.Type.Equality.:~: a
                    -- Defined in Data.Type.Equality
 
+.. ghc-flag:: -fprint-explicit-kinds
+
     Using :ghc-flag:`-fprint-explicit-kinds` makes GHC print kind arguments in
     types, which are normally suppressed. This can be important when you
     are using kind polymorphism. For example:
@@ -670,20 +684,14 @@ See also the ``--help``, ``--version``, ``--numeric-version``, and
         ghci> :t MkT
         MkT :: forall (k :: BOX) (a :: k). T k a
 
-    When :ghc-flag:`-fprint-unicode-syntax` is enabled, GHC prints type
-    signatures using the unicode symbols from the ``-XUnicodeSyntax``
-    extension.
-
-    .. code-block:: none
-
-        ghci> :set -fprint-unicode-syntax
-        ghci> :t (>>)
-        (>>) :: ∀ (m :: * → *) a b. Monad m ⇒ m a → m b → m b
+.. ghc-flag:: -fprint-explicit-coercions
 
     Using :ghc-flag:`-fprint-explicit-coercions` makes GHC print coercions in
     types. When trying to prove the equality between types of different
     kinds, GHC uses type-level coercions. Users will rarely need to
     see these, as they are meant to be internal.
+
+.. ghc-flag:: -fprint-equality-relations
 
     Using :ghc-flag:`-fprint-equality-relations` tells GHC to distinguish between
     its equality relations when printing. For example, ``~`` is homogeneous
@@ -693,7 +701,7 @@ See also the ``--help``, ``--version``, ``--numeric-version``, and
     the internal equality relation used in GHC's solver. Generally,
     users should not need to worry about the subtleties here; ``~`` is
     probably what you want. Without :ghc-flag:`-fprint-equality-relations`, GHC
-    prints all of these as ``~``.
+    prints all of these as ``~``. See also :ref:`equality-constraints`.
 
 .. ghc-flag:: -fprint-expanded-synonyms
 

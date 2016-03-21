@@ -1046,7 +1046,6 @@ dirty_TVAR(Capability *cap, StgTVar *p)
 // Setting a TSO's link field with a write barrier.
 // It is *not* necessary to call this function when
 //    * setting the link field to END_TSO_QUEUE
-//    * putting a TSO on the blackhole_queue
 //    * setting the link field of the currently running TSO, as it
 //      will already be dirty.
 void
@@ -1202,32 +1201,6 @@ W_ gcThreadLiveBlocks (nat i, nat g)
     blocks += gc_threads[i]->gens[g].n_scavd_blocks;
 
     return blocks;
-}
-
-// Return an accurate count of the live data in the heap, excluding
-// generation 0.
-W_ calcLiveWords (void)
-{
-    nat g;
-    W_ live;
-
-    live = 0;
-    for (g = 0; g < RtsFlags.GcFlags.generations; g++) {
-        live += genLiveWords(&generations[g]);
-    }
-    return live;
-}
-
-W_ calcLiveBlocks (void)
-{
-    nat g;
-    W_ live;
-
-    live = 0;
-    for (g = 0; g < RtsFlags.GcFlags.generations; g++) {
-        live += genLiveBlocks(&generations[g]);
-    }
-    return live;
 }
 
 /* Determine which generation will be collected next, and approximate

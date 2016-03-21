@@ -71,7 +71,7 @@ import TcType
 import MkIface
 import TcSimplify
 import TcTyClsDecls
-import TcTypeable( mkModIdBindings, mkPrimTypeableBinds )
+import TcTypeable ( mkTypeableBinds )
 import LoadIface
 import TidyPgm    ( mkBootModDetailsTc )
 import RnNames
@@ -310,7 +310,8 @@ tcRnModuleTcRnM hsc_env hsc_src
                                          implicit_prelude import_decls } ;
 
         whenWOptM Opt_WarnImplicitPrelude $
-             when (notNull prel_imports) $ addWarn (implicitPreludeWarn) ;
+             when (notNull prel_imports) $
+                  addWarn (Reason Opt_WarnImplicitPrelude) (implicitPreludeWarn) ;
 
         tcg_env <- {-# SCC "tcRnImports" #-}
                    tcRnImports hsc_env (prel_imports ++ import_decls) ;
@@ -471,20 +472,18 @@ tcRnSrcDecls :: Bool  -- False => no 'module M(..) where' header at all
         -- Returns the variables free in the decls
         -- Reason: solely to report unused imports and bindings
 tcRnSrcDecls explicit_mod_hdr decls
- = do { -- Create a binding for $trModule
-        -- Do this before processing any data type declarations,
-        -- which need tcg_tr_module to be initialised
-      ; tcg_env <- mkModIdBindings
-      ; tcg_env <- setGblEnv tcg_env mkPrimTypeableBinds
-
-        -- Do all the declarations
-      ; ((tcg_env, tcl_env), lie) <- setGblEnv tcg_env  $
-                                     captureConstraints $
+ = do { -- Do all the declarations
+      ; ((tcg_env, tcl_env), lie) <- captureConstraints $
               do { (tcg_env, tcl_env) <- tc_rn_src_decls decls ;
                  ; tcg_env <- setEnvs (tcg_env, tcl_env) $
                               checkMain explicit_mod_hdr
                  ; return (tcg_env, tcl_env) }
       ; setEnvs (tcg_env, tcl_env) $ do {
+
+        -- Emit Typeable bindings
+      ; tcg_env <- setGblEnv tcg_env mkTypeableBinds
+
+      ; setGblEnv tcg_env $ do {
 
 #ifdef GHCI
       ; finishTH
@@ -544,7 +543,7 @@ tcRnSrcDecls explicit_mod_hdr decls
 
       ; setGlobalTypeEnv tcg_env' final_type_env
 
-   } }
+   } } }
 
 tc_rn_src_decls :: [LHsDecl RdrName]
                 -> TcM (TcGblEnv, TcLclEnv)
@@ -1288,7 +1287,7 @@ tcPreludeClashWarn warnFlag name = do
     ; traceTc "tcPreludeClashWarn/prelude_functions"
                 (hang (ppr name) 4 (sep [ppr clashingElts]))
 
-    ; let warn_msg x = addWarnAt (nameSrcSpan (gre_name x)) (hsep
+    ; let warn_msg x = addWarnAt (Reason warnFlag) (nameSrcSpan (gre_name x)) (hsep
               [ text "Local definition of"
               , (quotes . ppr . nameOccName . gre_name) x
               , text "clashes with a future Prelude name." ]
@@ -1399,7 +1398,7 @@ tcMissingParentClassWarn warnFlag isName shouldName
            -- <should>" e.g. "Foo is an instance of Monad but not Applicative"
            ; let instLoc = srcLocSpan . nameSrcLoc $ getName isInst
                  warnMsg (Just name:_) =
-                      addWarnAt instLoc $
+                      addWarnAt (Reason warnFlag) instLoc $
                            hsep [ (quotes . ppr . nameOccName) name
                                 , text "is an instance of"
                                 , (ppr . nameOccName . className) isClass
@@ -1918,7 +1917,7 @@ tcGhciStmts stmts
                        (noLoc $ ExplicitList unitTy Nothing (map mk_item ids)) ;
             mk_item id = let ty_args = [idType id, unitTy] in
                          nlHsApp (nlHsTyApp unsafeCoerceId
-                                   (map (getLevity "tcGhciStmts") ty_args ++ ty_args))
+                                   (map (getRuntimeRep "tcGhciStmts") ty_args ++ ty_args))
                                  (nlHsVar id) ;
             stmts = tc_stmts ++ [noLoc (mkLastStmt ret_expr)]
         } ;

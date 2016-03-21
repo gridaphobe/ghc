@@ -367,7 +367,12 @@ load how_much = do
           liftIO $ intermediateCleanTempFiles dflags mods_to_keep hsc_env1
 
           -- there should be no Nothings where linkables should be, now
-          ASSERT(all (isJust.hm_linkable) (eltsUFM (hsc_HPT hsc_env))) do
+          let just_linkables =
+                    isNoLink (ghcLink dflags)
+                 || all (isJust.hm_linkable)
+                        (filter ((== HsSrcFile).mi_hsc_src.hm_iface)
+                                (eltsUFM hpt4))
+          ASSERT( just_linkables ) do
 
           -- Link everything together
           linkresult <- liftIO $ link (ghcLink dflags) dflags False hpt4
@@ -404,15 +409,18 @@ discardProg hsc_env
 -- external packages.
 discardIC :: HscEnv -> HscEnv
 discardIC hsc_env
-  = hsc_env { hsc_IC = new_ic { ic_int_print = keep_external_name ic_int_print
-                              , ic_monad = keep_external_name ic_monad } }
+  = hsc_env { hsc_IC = empty_ic { ic_int_print = new_ic_int_print
+                                , ic_monad = new_ic_monad } }
   where
+  -- Force the new values for ic_int_print and ic_monad to avoid leaking old_ic
+  !new_ic_int_print = keep_external_name ic_int_print
+  !new_ic_monad = keep_external_name ic_monad
   dflags = ic_dflags old_ic
   old_ic = hsc_IC hsc_env
-  new_ic = emptyInteractiveContext dflags
+  empty_ic = emptyInteractiveContext dflags
   keep_external_name ic_name
     | nameIsFromExternalPackage this_pkg old_name = old_name
-    | otherwise = ic_name new_ic
+    | otherwise = ic_name empty_ic
     where
     this_pkg = thisPackage dflags
     old_name = ic_name old_ic
@@ -439,7 +447,8 @@ intermediateCleanTempFiles dflags summaries hsc_env
 guessOutputFile :: GhcMonad m => m ()
 guessOutputFile = modifySession $ \env ->
     let dflags = hsc_dflags env
-        mod_graph = hsc_mod_graph env
+        -- Force mod_graph to avoid leaking env
+        !mod_graph = hsc_mod_graph env
         mainModuleSrcPath :: Maybe String
         mainModuleSrcPath = do
             let isMain = (== mainModIs dflags) . ms_mod
@@ -678,7 +687,7 @@ checkStability hpt sccs all_home_mods = foldl checkSCC ([],[]) sccs
 -- | Each module is given a unique 'LogQueue' to redirect compilation messages
 -- to. A 'Nothing' value contains the result of compilation, and denotes the
 -- end of the message queue.
-data LogQueue = LogQueue !(IORef [Maybe (Severity, SrcSpan, PprStyle, MsgDoc)])
+data LogQueue = LogQueue !(IORef [Maybe (WarnReason, Severity, SrcSpan, PprStyle, MsgDoc)])
                          !(MVar ())
 
 -- | The graph of modules to compile and their corresponding result 'MVar' and
@@ -879,7 +888,7 @@ parUpsweep n_jobs old_hpt stable_mods cleanup sccs = do
             return (success_flag,ok_results)
 
   where
-    writeLogQueue :: LogQueue -> Maybe (Severity,SrcSpan,PprStyle,MsgDoc) -> IO ()
+    writeLogQueue :: LogQueue -> Maybe (WarnReason,Severity,SrcSpan,PprStyle,MsgDoc) -> IO ()
     writeLogQueue (LogQueue ref sem) msg = do
         atomicModifyIORef' ref $ \msgs -> (msg:msgs,())
         _ <- tryPutMVar sem ()
@@ -888,8 +897,8 @@ parUpsweep n_jobs old_hpt stable_mods cleanup sccs = do
     -- The log_action callback that is used to synchronize messages from a
     -- worker thread.
     parLogAction :: LogQueue -> LogAction
-    parLogAction log_queue _dflags !severity !srcSpan !style !msg = do
-        writeLogQueue log_queue (Just (severity,srcSpan,style,msg))
+    parLogAction log_queue _dflags !reason !severity !srcSpan !style !msg = do
+        writeLogQueue log_queue (Just (reason,severity,srcSpan,style,msg))
 
     -- Print each message from the log_queue using the log_action from the
     -- session's DynFlags.
@@ -902,8 +911,8 @@ parUpsweep n_jobs old_hpt stable_mods cleanup sccs = do
 
             print_loop [] = read_msgs
             print_loop (x:xs) = case x of
-                Just (severity,srcSpan,style,msg) -> do
-                    log_action dflags dflags severity srcSpan style msg
+                Just (reason,severity,srcSpan,style,msg) -> do
+                    log_action dflags dflags reason severity srcSpan style msg
                     print_loop xs
                 -- Exit the loop once we encounter the end marker.
                 Nothing -> return ()

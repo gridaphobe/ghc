@@ -21,7 +21,8 @@ test('print018', normal, ghci_script, ['print018.script'])
 test('print019', normal, ghci_script, ['print019.script'])
 test('print020', normal, ghci_script, ['print020.script'])
 test('print021', normal, ghci_script, ['print021.script'])
-test('print022', normal, ghci_script, ['print022.script'])
+test('print022', when(arch('powerpc64'), expect_broken(11262)),
+      ghci_script, ['print022.script'])
 test('print023', normal, ghci_script, ['print023.script'])
 test('print024', normal, ghci_script, ['print024.script'])
 test('print025', normal, ghci_script, ['print025.script'])
@@ -37,7 +38,7 @@ test('print034', normal, ghci_script, ['print034.script'])
 test('print035',
      [extra_clean(['../Unboxed.hi', '../Unboxed.o'])],
      ghci_script, ['print035.script'])
-test('print036', when(compiler_ge('ghc','7.8'), expect_broken(9046)), ghci_script, ['print036.script'])
+test('print036', expect_broken(9046), ghci_script, ['print036.script'])
 
 test('break001', normal, ghci_script, ['break001.script'])
 test('break002', normal, ghci_script, ['break002.script'])

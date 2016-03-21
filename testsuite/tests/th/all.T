@@ -38,7 +38,8 @@ test('TH_NestedSplices',
      multimod_compile,
      ['TH_NestedSplices.hs', '-v0 ' + config.ghc_th_way_flags])
 
-# Testing profiling with TH is a bit tricky; we've already disabled
+# Testing profiling with TH is a bit tricky (when not using
+# -fexternal-interpreter); we've already disabled
 # the prof way above, and also we want to add options specifically for
 # profiling (-osuf p.o) because this is necessary when mixing
 # profiling w/ TH.  Furthermore we must have built the program the
@@ -316,14 +317,9 @@ test('T8577',
      multimod_compile_fail,
      ['T8577', '-v0 ' + config.ghc_th_way_flags])
 test('T8625', normal, ghci_script, ['T8625.script'])
-test('TH_StaticPointers',
-     [ when(compiler_lt('ghc', '7.9'), skip)
-     , when(doing_ghci(), extra_hc_opts('-fobject-code'))
-     ],
+test('TH_StaticPointers', [when(doing_ghci(), extra_hc_opts('-fobject-code'))],
      compile_and_run, [''])
-test('TH_StaticPointers02',
-     [ when(compiler_lt('ghc', '7.9'), skip) ],
-     compile_fail, [''])
+test('TH_StaticPointers02', [], compile_fail, [''])
 test('T8759', normal, compile_fail, ['-v0'])
 test('T7021',
      extra_clean(['T7021a.hi', 'T7021a.o']), multimod_compile,
@@ -399,3 +395,5 @@ test('T11345', normal, compile_and_run, ['-v0 -dsuppress-uniques'])
 test('TH_finalizer', normal, compile, ['-v0'])
 test('T10603', normal, compile, ['-ddump-splices -dsuppress-uniques'])
 test('T11452', normal, compile_fail, ['-v0'])
+test('T9022', normal, compile_and_run, ['-v0'])
+test('T11145', normal, compile_fail, ['-v0'])

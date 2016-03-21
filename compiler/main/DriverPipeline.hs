@@ -1574,16 +1574,32 @@ mkExtraObj dflags extn xs
  = do cFile <- newTempName dflags extn
       oFile <- newTempName dflags "o"
       writeFile cFile xs
-      let rtsDetails = getPackageDetails dflags rtsUnitId
-          pic_c_flags = picCCOpts dflags
+      ccInfo <- liftIO $ getCompilerInfo dflags
       SysTools.runCc dflags
-                     ([Option        "-c",
-                       FileOption "" cFile,
-                       Option        "-o",
-                       FileOption "" oFile]
-                      ++ map (FileOption "-I") (includeDirs rtsDetails)
-                      ++ map Option pic_c_flags)
+                ([Option        "-c",
+                  FileOption "" cFile,
+                  Option        "-o",
+                  FileOption "" oFile]
+                 ++ if extn /= "s"
+                        then cOpts
+                        else asmOpts ccInfo)
       return oFile
+    where
+      -- Pass a different set of options to the C compiler depending one whether
+      -- we're compiling C or assembler. When compiling C, we pass the usual
+      -- set of include directories and PIC flags.
+      cOpts = map Option (picCCOpts dflags)
+                    ++ map (FileOption "-I")
+                            (includeDirs $ getPackageDetails dflags rtsUnitId)
+
+      -- When compiling assembler code, we drop the usual C options, and if the
+      -- compiler is Clang, we add an extra argument to tell Clang to ignore
+      -- unused command line options. See trac #11684.
+      asmOpts ccInfo =
+            if any (ccInfo ==) [Clang, AppleClang, AppleClang51]
+                then [Option "-Qunused-arguments"]
+                else []
+
 
 -- When linking a binary, we need to create a C main() function that
 -- starts everything off.  This used to be compiled statically as part
@@ -1594,7 +1610,7 @@ mkExtraObj dflags extn xs
 mkExtraObjToLinkIntoBinary :: DynFlags -> IO FilePath
 mkExtraObjToLinkIntoBinary dflags = do
    when (gopt Opt_NoHsMain dflags && haveRtsOptsFlags dflags) $ do
-      log_action dflags dflags SevInfo noSrcSpan defaultUserStyle
+      log_action dflags dflags NoReason SevInfo noSrcSpan defaultUserStyle
           (text "Warning: -rtsopts and -with-rtsopts have no effect with -no-hs-main." $$
            text "    Call hs_init_ghc() from your main() function to set these options.")
 
@@ -1969,7 +1985,7 @@ linkDynLibCheck :: DynFlags -> [String] -> [UnitId] -> IO ()
 linkDynLibCheck dflags o_files dep_packages
  = do
     when (haveRtsOptsFlags dflags) $ do
-      log_action dflags dflags SevInfo noSrcSpan defaultUserStyle
+      log_action dflags dflags NoReason SevInfo noSrcSpan defaultUserStyle
           (text "Warning: -rtsopts and -with-rtsopts have no effect with -shared." $$
            text "    Call hs_init_ghc() from your main() function to set these options.")
 

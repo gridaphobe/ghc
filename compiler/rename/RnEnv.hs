@@ -13,7 +13,7 @@ module RnEnv (
         lookupLocalOccRn_maybe, lookupInfoOccRn,
         lookupLocalOccThLvl_maybe,
         lookupTypeOccRn, lookupKindOccRn,
-        lookupGlobalOccRn, lookupGlobalOccRn_maybe,
+        lookupGlobalOccRn, lookupGlobalOccRnExport, lookupGlobalOccRn_maybe,
         lookupOccRn_overloaded, lookupGlobalOccRn_overloaded,
         reportUnboundName, unknownNameSuggestions,
         addNameClashErrRn,
@@ -743,7 +743,8 @@ lookup_demoted rdr_name dflags
            Just demoted_name
              | data_kinds ->
              do { whenWOptM Opt_WarnUntickedPromotedConstructors $
-                  addWarn (untickedPromConstrWarn demoted_name)
+                  addWarn (Reason Opt_WarnUntickedPromotedConstructors)
+                          (untickedPromConstrWarn demoted_name)
                 ; return demoted_name }
              | otherwise  -> unboundNameX WL_Any rdr_name suggest_dk }
 
@@ -852,6 +853,27 @@ lookupGlobalOccRn rdr_name
            Just n  -> return n
            Nothing -> do { traceRn (text "lookupGlobalOccRn" <+> ppr rdr_name)
                          ; unboundName WL_Global rdr_name } }
+
+-- like lookupGlobalOccRn but suggests adding 'type' keyword
+-- to export type constructors mistaken for data constructors
+lookupGlobalOccRnExport :: RdrName -> RnM Name
+lookupGlobalOccRnExport rdr_name
+  = do { mb_name <- lookupGlobalOccRn_maybe rdr_name
+       ; case mb_name of
+           Just n  -> return n
+           Nothing -> do { env <- getGlobalRdrEnv
+                         ; let tycon = setOccNameSpace tcClsName (rdrNameOcc rdr_name)
+                               msg = case lookupOccEnv env tycon of
+                                   Just (gre : _) -> make_msg gre
+                                   _              -> Outputable.empty
+                               make_msg gre = hang
+                                   (hsep [text "Note: use",
+                                       quotes (text "type"),
+                                       text "keyword to export type constructor",
+                                       quotes (ppr (gre_name gre))])
+                                   2 (vcat [pprNameProvenance gre,
+                                       text "(requires TypeOperators extension)"])
+                         ; unboundNameX WL_Global rdr_name msg } }
 
 lookupInfoOccRn :: RdrName -> RnM [Name]
 -- lookupInfoOccRn is intended for use in GHCi's ":info" command
@@ -1047,7 +1069,8 @@ warnIfDeprecated gre@(GRE { gre_name = name, gre_imp = iss })
                    -- See Note [Handling of deprecations]
          do { iface <- loadInterfaceForName doc name
             ; case lookupImpDeprec iface gre of
-                Just txt -> addWarn (mk_msg imp_spec txt)
+                Just txt -> addWarn (Reason Opt_WarnWarningsDeprecations)
+                                   (mk_msg imp_spec txt)
                 Nothing  -> return () } }
   | otherwise
   = return ()
@@ -1205,7 +1228,7 @@ data HsSigCtxt
   | ClsDeclCtxt   Name       -- Class decl for this class
   | InstDeclCtxt  NameSet    -- Instance decl whose user-written method
                              -- bindings are for these methods
-  | HsBootCtxt               -- Top level of a hs-boot file
+  | HsBootCtxt NameSet       -- Top level of a hs-boot file, binding these names
   | RoleAnnotCtxt NameSet    -- A role annotation, with the names of all types
                              -- in the group
 
@@ -1247,7 +1270,7 @@ lookupBindGroupOcc ctxt what rdr_name
 
   | otherwise
   = case ctxt of
-      HsBootCtxt       -> lookup_top (const True)
+      HsBootCtxt ns    -> lookup_top (`elemNameSet` ns)
       TopSigCtxt ns    -> lookup_top (`elemNameSet` ns)
       RoleAnnotCtxt ns -> lookup_top (`elemNameSet` ns)
       LocalBindCtxt ns -> lookup_group ns
@@ -1717,7 +1740,9 @@ checkShadowedOccs (global_env,local_env) get_loc_occ ns
                 -- we don't find any GREs that are in scope qualified-only
 
           complain []      = return ()
-          complain pp_locs = addWarnAt loc (shadowedNameWarn occ pp_locs)
+          complain pp_locs = addWarnAt (Reason Opt_WarnNameShadowing)
+                                       loc
+                                       (shadowedNameWarn occ pp_locs)
 
     is_shadowed_gre :: GlobalRdrElt -> RnM Bool
         -- Returns False for record selectors that are shadowed, when
@@ -2097,7 +2122,8 @@ warnUnusedLocals names = do
 warnUnusedLocal :: NameEnv (FieldLabelString, Name) -> Name -> RnM ()
 warnUnusedLocal fld_env name
   = when (reportable name) $
-    addUnusedWarning occ (nameSrcSpan name)
+    addUnusedWarning Opt_WarnUnusedLocalBinds
+                     occ (nameSrcSpan name)
                      (text "Defined but not used")
   where
     occ = case lookupNameEnv fld_env name of
@@ -2111,7 +2137,7 @@ warnUnusedGRE gre@(GRE { gre_name = name, gre_lcl = lcl, gre_imp = is })
   | otherwise = when (reportable name) (mapM_ warn is)
   where
     occ = greOccName gre
-    warn spec = addUnusedWarning occ span msg
+    warn spec = addUnusedWarning Opt_WarnUnusedTopBinds occ span msg
         where
            span = importSpecLoc spec
            pp_mod = quotes (ppr (importSpecModule spec))
@@ -2133,9 +2159,9 @@ reportable name
                                   -- from Data.Tuple
   | otherwise = not (startsWithUnderscore (nameOccName name))
 
-addUnusedWarning :: OccName -> SrcSpan -> SDoc -> RnM ()
-addUnusedWarning occ span msg
-  = addWarnAt span $
+addUnusedWarning :: WarningFlag -> OccName -> SrcSpan -> SDoc -> RnM ()
+addUnusedWarning flag occ span msg
+  = addWarnAt (Reason flag) span $
     sep [msg <> colon,
          nest 2 $ pprNonVarNameSpace (occNameSpace occ)
                         <+> quotes (ppr occ)]

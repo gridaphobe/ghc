@@ -51,7 +51,7 @@ import GHC ( LoadHowMuch(..), Target(..),  TargetId(..), InteractiveImport(..),
 import HsImpExp
 import HsSyn
 import HscTypes ( tyThingParent_maybe, handleFlagWarnings, getSafeMode, hsc_IC,
-                  setInteractivePrintName, hsc_dflags )
+                  setInteractivePrintName, hsc_dflags, msObjFilePath )
 import Module
 import Name
 import Packages ( trusted, getPackageDetails, listVisibleModuleNames, pprFlag )
@@ -473,8 +473,8 @@ resetLastErrorLocations = do
     liftIO $ writeIORef (lastErrorLocations st) []
 
 ghciLogAction :: IORef [(FastString, Int)] ->  LogAction
-ghciLogAction lastErrLocations dflags severity srcSpan style msg = do
-    defaultLogAction dflags severity srcSpan style msg
+ghciLogAction lastErrLocations dflags flag severity srcSpan style msg = do
+    defaultLogAction dflags flag severity srcSpan style msg
     case severity of
         SevError -> case srcSpan of
             RealSrcSpan rsp -> modifyIORef lastErrLocations
@@ -1463,7 +1463,8 @@ checkModule m = do
 -- '-fdefer-type-errors' again if it has not been set before.
 deferredLoad :: Bool -> InputT GHCi SuccessFlag -> InputT GHCi ()
 deferredLoad defer load = do
-  originalFlags <- getDynFlags
+  -- Force originalFlags to avoid leaking the associated HscEnv
+  !originalFlags <- getDynFlags
   when defer $ Monad.void $
     GHC.setProgramDynFlags $ setGeneralFlag' Opt_DeferTypeErrors originalFlags
   Monad.void $ load
@@ -1568,10 +1569,9 @@ afterLoad :: SuccessFlag
 afterLoad ok retain_context = do
   lift revertCAFs  -- always revert CAFs on load.
   lift discardTickArrays
-  loaded_mod_summaries <- getLoadedModules
-  let loaded_mods = map GHC.ms_mod loaded_mod_summaries
+  loaded_mods <- getLoadedModules
   modulesLoadedMsg ok loaded_mods
-  lift $ setContextAfterLoad retain_context loaded_mod_summaries
+  lift $ setContextAfterLoad retain_context loaded_mods
 
 setContextAfterLoad :: Bool -> [GHC.ModSummary] -> GHCi ()
 setContextAfterLoad keep_ctxt [] = do
@@ -1645,14 +1645,22 @@ keepPackageImports = filterM is_pkg_import
           mod_name = unLoc (ideclName d)
 
 
-modulesLoadedMsg :: SuccessFlag -> [Module] -> InputT GHCi ()
+modulesLoadedMsg :: SuccessFlag -> [GHC.ModSummary] -> InputT GHCi ()
 modulesLoadedMsg ok mods = do
   dflags <- getDynFlags
   unqual <- GHC.getPrintUnqual
+  let mod_name mod = do
+        is_interpreted <- GHC.isModuleInterpreted mod
+        return $ if is_interpreted
+                  then ppr (GHC.ms_mod mod)
+                  else ppr (GHC.ms_mod mod)
+                       <> text " ("
+                       <> text (normalise $ msObjFilePath mod)
+                       <> text ")" -- fix #9887
+  mod_names <- mapM mod_name mods
   let mod_commas
         | null mods = text "none."
-        | otherwise = hsep (
-            punctuate comma (map ppr mods)) <> text "."
+        | otherwise = hsep (punctuate comma mod_names) <> text "."
       status = case ok of
                    Failed    -> text "Failed"
                    Succeeded -> text "Ok"
@@ -2861,11 +2869,11 @@ listHomeModules w = do
 completeSetOptions = wrapCompleter flagWordBreakChars $ \w -> do
   return (filter (w `isPrefixOf`) opts)
     where opts = "args":"prog":"prompt":"prompt2":"editor":"stop":flagList
-          flagList = map head $ group $ sort allFlags
+          flagList = map head $ group $ sort allNonDeprecatedFlags
 
 completeSeti = wrapCompleter flagWordBreakChars $ \w -> do
   return (filter (w `isPrefixOf`) flagList)
-    where flagList = map head $ group $ sort allFlags
+    where flagList = map head $ group $ sort allNonDeprecatedFlags
 
 completeShowOptions = wrapCompleter flagWordBreakChars $ \w -> do
   return (filter (w `isPrefixOf`) opts)
@@ -3483,7 +3491,8 @@ showException se =
 
 ghciHandle :: (HasDynFlags m, ExceptionMonad m) => (SomeException -> m a) -> m a -> m a
 ghciHandle h m = gmask $ \restore -> do
-                 dflags <- getDynFlags
+                 -- Force dflags to avoid leaking the associated HscEnv
+                 !dflags <- getDynFlags
                  gcatch (restore (GHC.prettyPrintGhcErrors dflags m)) $ \e -> restore (h e)
 
 ghciTry :: GHCi a -> GHCi (Either SomeException a)

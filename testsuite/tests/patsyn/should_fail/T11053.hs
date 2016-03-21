@@ -1,5 +1,5 @@
 {-# LANGUAGE PatternSynonyms #-}
--- turn on with -fwarn-missing-pat-syn-sigs
+-- turn on with -fwarn-missing-pattern-synonym-signatures
 
 module Foo where
 

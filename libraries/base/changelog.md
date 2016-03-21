@@ -13,7 +13,9 @@
 
   * New `GHC.Generics.packageName` operation
 
-  * New `GHC.Stack.CallStack` data type
+  * Redesigned `GHC.Stack.CallStack` data type. As a result, `CallStack`'s
+    `Show` instance produces different output, and `CallStack` no longer has an
+    `Eq` instance.
 
   * New `GHC.Generics.packageName` operation
 
@@ -25,6 +27,9 @@
   * New `GHC.Stack.Types.freezeCallStack` function freezes a `CallStack` preventing future `pushCallStack` operations from having any effect
 
   * New `GHC.Stack.Types.pushCallStack` function pushes a call-site onto a `CallStack`
+
+  * New `GHC.Stack.Types.fromCallSiteList` function creates a `CallStack` from
+    a list of call-sites (i.e., `[(String, SrcLoc)]`)
 
   * `GHC.SrcLoc` has been removed
 
@@ -43,6 +48,9 @@
   * Add `URec`, `UAddr`, `UChar`, `UDouble`, `UFloat`, `UInt`, and `UWord` to
     `GHC.Generics` as part of making GHC generics capable of handling
     unlifted types (#10868)
+
+  * The `Eq`, `Ord`, `Read`, and `Show` instances for `U1` now use lazier
+    pattern-matching
 
   * Keep `shift{L,R}` on `Integer` with negative shift-arguments from
     segfaulting (#10571)
@@ -99,6 +107,11 @@
   * `Alt`, `Dual`, `First`, `Last`, `Product`, and `Sum` now have `Data`,
     `MonadZip`, and `MonadFix` instances
 
+  * The datatypes in `GHC.Generics` now have `Enum`, `Bounded`, `Ix`,
+    `Functor`, `Applicative`, `Monad`, `MonadFix`, `MonadPlus`, `MonadZip`,
+    `Foldable`, `Foldable`, `Traversable`, `Generic1`, and `Data` instances
+    as appropriate.
+
   * `Maybe` now has a `MonadZip` instance
 
   * `All` and `Any` now have `Data` instances
@@ -132,6 +145,8 @@
 
   * Add `MonadPlus IO` and `Alternative IO` instances
     (previously orphans in `transformers`) (#10755)
+
+  * `CallStack` now has an `IsList` instance
 
 ### Generalizations
 

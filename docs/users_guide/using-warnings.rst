@@ -62,8 +62,8 @@ The following flags are simple ways to select standard "packages" of warnings:
         * :ghc-flag:`-Wincomplete-record-updates`
         * :ghc-flag:`-Wmonomorphism-restriction`
         * :ghc-flag:`-Wimplicit-prelude`
-        * :ghc-flag:`-Wmissing-local-sigs`
-        * :ghc-flag:`-Wmissing-exported-sigs`
+        * :ghc-flag:`-Wmissing-local-signatures`
+        * :ghc-flag:`-Wmissing-exported-signatures`
         * :ghc-flag:`-Wmissing-import-lists`
         * :ghc-flag:`-Widentities`
 
@@ -101,6 +101,16 @@ The following flags are simple ways to select standard "packages" of warnings:
 
     Warnings are treated only as warnings, not as errors. This is the
     default, but can be useful to negate a :ghc-flag:`-Werror` flag.
+
+When a warning is emitted, the specific warning flag which controls
+it is shown.
+
+.. ghc-flag:: -fshow-warning-groups
+
+    When showing which flag controls a warning, also show the
+    respective warning group flag(s) that warning is contained in.
+
+    This option is off by default.
 
 The full set of warning options is described below. To turn off any
 warning, simply give the corresponding ``-Wno-...`` option on the
@@ -371,10 +381,6 @@ of ``-W(no-)*``.
     Causes a warning to be emitted if an enumeration is empty, e.g.
     ``[5 .. 3]``.
 
-.. ghc-flag:: -Wlazy-unlifted-bindings
-
-    This flag is a no-op, and will be removed in GHC 7.10.
-
 .. ghc-flag:: -Wduplicate-constraints
 
     .. index::
@@ -602,32 +608,51 @@ of ``-W(no-)*``.
     .. index::
        single: type signatures, missing
 
+    This option is now deprecated in favour of
+    :ghc-flag:`-Wmissing-exported-signatures`.
+
+.. ghc-flag:: -Wmissing-exported-signatures
+
+    .. index::
+       single: type signatures, missing
+
     If you would like GHC to check that every exported top-level
     function/value has a type signature, but not check unexported
-    values, use the :ghc-flag:`-Wmissing-exported-sigs` option. This option
-    takes precedence over :ghc-flag:`-Wmissing-signatures`. As part of the
-    warning GHC also reports the inferred type. The option is off by
-    default.
+    values, use the :ghc-flag:`-Wmissing-exported-signatures`
+    option. This option takes precedence over
+    :ghc-flag:`-Wmissing-signatures`. As part of the warning GHC also
+    reports the inferred type. The option is off by default.
 
 .. ghc-flag:: -Wmissing-local-sigs
 
     .. index::
        single: type signatures, missing
 
-    If you use the :ghc-flag:`-Wmissing-local-sigs` flag GHC will warn you
-    about any polymorphic local bindings. As part of the warning GHC
-    also reports the inferred type. The option is off by default.
+    This option is now deprecated in favour of
+    :ghc-flag:`-Wmissing-local-signatures`.
 
-.. ghc-flag:: -Wmissing-pat-syn-sigs
+.. ghc-flag:: -Wmissing-local-signatures
+
+    .. index::
+       single: type signatures, missing
+
+    If you use the :ghc-flag:`-Wmissing-local-signatures` flag GHC
+    will warn you about any polymorphic local bindings. As part of the
+    warning GHC also reports the inferred type. The option is off by
+    default.
+
+.. ghc-flag:: -Wmissing-pattern-synonym-signatures
 
     .. index::
          single: type signatures, missing, pattern synonyms
 
-    If you would like GHC to check that every pattern synonym has a type
-    signature, use the :ghc-flag:`-Wmissing-pat-syn-sigs` option. If this option is
-    used in conjunction with :ghc-flag:`-Wmissing-exported-sigs` then only
-    exported pattern synonyms must have a type signature. GHC also reports the
-    inferred type. This option is off by default.
+    If you would like GHC to check that every pattern synonym has a
+    type signature, use the
+    :ghc-flag:`-Wmissing-pattern-synonym-signatures` option. If this
+    option is used in conjunction with
+    :ghc-flag:`-Wmissing-exported-signatures` then only exported pattern
+    synonyms must have a type signature. GHC also reports the inferred
+    type. This option is off by default.
 
 .. ghc-flag:: -Wname-shadowing
 

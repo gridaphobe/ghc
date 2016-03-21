@@ -53,7 +53,7 @@ module Coercion (
         splitAppCo_maybe,
         splitForAllCo_maybe,
 
-        nthRole, tyConRolesX, setNominalRole_maybe,
+        nthRole, tyConRolesX, tyConRolesRepresentational, setNominalRole_maybe,
 
         pickLR,
 
@@ -73,7 +73,7 @@ module Coercion (
         lookupCoVar,
         substCo, substCos, substCoVar, substCoVars, substCoWith,
         substCoVarBndr,
-        extendTCvSubstAndInScope, getCvSubstEnv,
+        extendTvSubstAndInScope, getCvSubstEnv,
 
         -- ** Lifting
         liftCoSubst, liftCoSubstTyVar, liftCoSubstWith, liftCoSubstWithEx,
@@ -126,13 +126,6 @@ import Maybes
 import Control.Monad (foldM)
 import Control.Arrow ( first )
 import Data.Function ( on )
-
------------------------------------------------------------------
--- These synonyms are very useful as documentation
-
-type CoercionN = Coercion   -- nominal coercion
-type CoercionR = Coercion   -- representational coercion
-type CoercionP = Coercion   -- phantom coercion
 
 {-
 %************************************************************************
@@ -307,7 +300,7 @@ ppr_co_ax_branch ppr_rhs
                           , cab_rhs = rhs
                           , cab_loc = loc })
   = foldr1 (flip hangNotEmpty 2)
-        [ pprUserForAll (map (flip mkNamedBinder Invisible) (tvs ++ cvs))
+        [ pprUserForAll (map (mkNamedBinder Invisible) (tvs ++ cvs))
         , pprTypeApp fam_tc lhs <+> equals <+> ppr_rhs fam_tc rhs
         , text "-- Defined" <+> pprLoc loc ]
   where
@@ -609,7 +602,7 @@ mkAppCo (TyConAppCo r tc args) arg
   = case r of
       Nominal          -> TyConAppCo Nominal tc (args ++ [arg])
       Representational -> TyConAppCo Representational tc (args ++ [arg'])
-        where new_role = (tyConRolesX Representational tc) !! (length args)
+        where new_role = (tyConRolesRepresentational tc) !! (length args)
               arg'     = downgradeRole new_role Nominal arg
       Phantom          -> TyConAppCo Phantom tc (args ++ [toPhantomCo arg])
 mkAppCo co arg = AppCo co  arg
@@ -670,13 +663,13 @@ mkTransAppCo r1 co1 ty1a ty1b r2 co2 ty2a ty2b r3
       , nextRole ty1b == r2
       = (mkAppCo co1_repr (mkNomReflCo ty2a)) `mkTransCo`
         (mkTyConAppCo Representational tc1b
-           (zipWith mkReflCo (tyConRolesX Representational tc1b) tys1b
+           (zipWith mkReflCo (tyConRolesRepresentational tc1b) tys1b
             ++ [co2]))
 
       | Just (tc1a, tys1a) <- splitTyConApp_maybe ty1a
       , nextRole ty1a == r2
       = (mkTyConAppCo Representational tc1a
-           (zipWith mkReflCo (tyConRolesX Representational tc1a) tys1a
+           (zipWith mkReflCo (tyConRolesRepresentational tc1a) tys1a
             ++ [co2]))
         `mkTransCo`
         (mkAppCo co1_repr (mkNomReflCo ty2b))
@@ -1053,20 +1046,23 @@ toPhantomCo co
 -- Convert args to a TyConAppCo Nominal to the same TyConAppCo Representational
 applyRoles :: TyCon -> [Coercion] -> [Coercion]
 applyRoles tc cos
-  = zipWith (\r -> downgradeRole r Nominal) (tyConRolesX Representational tc) cos
+  = zipWith (\r -> downgradeRole r Nominal) (tyConRolesRepresentational tc) cos
 
 -- the Role parameter is the Role of the TyConAppCo
 -- defined here because this is intimiately concerned with the implementation
 -- of TyConAppCo
 tyConRolesX :: Role -> TyCon -> [Role]
-tyConRolesX Representational tc = tyConRoles tc ++ repeat Nominal
+tyConRolesX Representational tc = tyConRolesRepresentational tc
 tyConRolesX role             _  = repeat role
+
+tyConRolesRepresentational :: TyCon -> [Role]
+tyConRolesRepresentational tc = tyConRoles tc ++ repeat Nominal
 
 nthRole :: Role -> TyCon -> Int -> Role
 nthRole Nominal _ _ = Nominal
 nthRole Phantom _ _ = Phantom
 nthRole Representational tc n
-  = (tyConRolesX Representational tc) `getNth` n
+  = (tyConRolesRepresentational tc) `getNth` n
 
 ltRole :: Role -> Role -> Bool
 -- Is one role "less" than another?
@@ -1770,7 +1766,7 @@ coercionKind co = go co
     -- Collect up all the arguments and apply all at once
     -- See Note [Nested InstCos]
     go_app (InstCo co arg) args = go_app co (arg:args)
-    go_app co              args = applyTys <$> go co <*> (sequenceA $ map go args)
+    go_app co              args = piResultTys <$> go co <*> (sequenceA $ map go args)
 
     -- The real mkCastTy is too slow, and we can easily have nested ForAllCos.
     mk_cast_ty :: Type -> Coercion -> Type
@@ -1835,7 +1831,7 @@ coercionKindRole = go
     go_app (InstCo co arg) args = go_app co (arg:args)
     go_app co              args
       = let (pair, r) = go co in
-        (applyTys <$> pair <*> (sequenceA $ map coercionKind args), r)
+        (piResultTys <$> pair <*> (sequenceA $ map coercionKind args), r)
 
 -- | Retrieve the role from a coercion.
 coercionRole :: Coercion -> Role
@@ -1856,8 +1852,7 @@ If we deal with the InstCos one at a time, we'll do this:
    1.  Find the kind of (g @ ty1 .. @ ty99) : forall a100. phi'
    2.  Substitute phi'[ ty100/a100 ], a single tyvar->type subst
 But this is a *quadratic* algorithm, and the blew up Trac #5631.
-So it's very important to do the substitution simultaneously.
-
-cf Type.applyTys (which in fact we call here)
+So it's very important to do the substitution simultaneously;
+cf Type.piResultTys (which in fact we call here).
 
 -}

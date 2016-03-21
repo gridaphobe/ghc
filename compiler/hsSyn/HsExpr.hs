@@ -9,6 +9,7 @@
 {-# LANGUAGE UndecidableInstances #-} -- Note [Pass sensitive types]
                                       -- in module PlaceHolder
 {-# LANGUAGE ConstraintKinds #-}
+{-# LANGUAGE ExistentialQuantification #-}
 
 -- | Abstract Haskell syntax for expressions.
 module HsExpr where
@@ -122,8 +123,8 @@ instance OutputableBndr id => Outputable (SyntaxExpr id) where
     = sdocWithDynFlags $ \ dflags ->
       getPprStyle $ \s ->
       if debugStyle s || gopt Opt_PrintExplicitCoercions dflags
-      then ppr expr <> braces (pprWithCommas (pprHsWrapper (text "<>")) arg_wraps)
-                    <> braces (pprHsWrapper (text "<>") res_wrap)
+      then ppr expr <> braces (pprWithCommas ppr arg_wraps)
+                    <> braces (ppr res_wrap)
       else ppr expr
 
 type CmdSyntaxTable id = [(Name, HsExpr id)]
@@ -202,6 +203,16 @@ data HsExpr id
        -- For details on above see note [Api annotations] in ApiAnnotation
 
   | HsApp     (LHsExpr id) (LHsExpr id) -- ^ Application
+
+  | HsAppType (LHsExpr id) (LHsWcType id) -- ^ Visible type application
+       --
+       -- Explicit type argument; e.g  f @Int x y
+       -- NB: Has wildcards, but no implicit quantification
+       --
+       -- - 'ApiAnnotation.AnnKeywordId' : 'ApiAnnotation.AnnAt',
+
+  | HsAppTypeOut (LHsExpr id) (LHsWcType Name) -- just for pretty-printing
+
 
   -- | Operator applications:
   -- NB Bracketed ops such as (+) come out as Vars.
@@ -545,14 +556,6 @@ data HsExpr id
   -- For details on above see note [Api annotations] in ApiAnnotation
   | ELazyPat    (LHsExpr id) -- ~ pattern
 
-  -- | Use for type application in expressions.
-  -- 'ApiAnnotation.AnnKeywordId' : 'ApiAnnotation.AnnAt'
-
-  -- For details on above see note [Api annotations] in ApiAnnotation
-  | HsType      (LHsWcType id) -- Explicit type argument; e.g  f @Int x y
-                               -- NB: Has wildcards, but no implicit quant.
-
-  | HsTypeOut   (LHsWcType Name)  -- just for pretty-printing
 
   ---------------------------------------
   -- Finally, HsWrap appears only in typechecker output
@@ -663,10 +666,12 @@ isQuietHsExpr :: HsExpr id -> Bool
 -- Parentheses do display something, but it gives little info and
 -- if we go deeper when we go inside them then we get ugly things
 -- like (...)
-isQuietHsExpr (HsPar _) = True
+isQuietHsExpr (HsPar _)          = True
 -- applications don't display anything themselves
-isQuietHsExpr (HsApp _ _) = True
-isQuietHsExpr (OpApp _ _ _ _) = True
+isQuietHsExpr (HsApp _ _)        = True
+isQuietHsExpr (HsAppType _ _)    = True
+isQuietHsExpr (HsAppTypeOut _ _) = True
+isQuietHsExpr (OpApp _ _ _ _)    = True
 isQuietHsExpr _ = False
 
 pprBinds :: (OutputableBndr idL, OutputableBndr idR)
@@ -689,12 +694,9 @@ ppr_expr (HsPar e)        = parens (ppr_lexpr e)
 ppr_expr (HsCoreAnn _ (StringLiteral _ s) e)
   = vcat [text "HsCoreAnn" <+> ftext s, ppr_lexpr e]
 
-ppr_expr (HsApp e1 e2)
-  = let (fun, args) = collect_args e1 [e2] in
-    hang (ppr_lexpr fun) 2 (sep (map pprParendExpr args))
-  where
-    collect_args (L _ (HsApp fun arg)) args = collect_args fun (arg:args)
-    collect_args fun args = (fun, args)
+ppr_expr e@(HsApp {})        = ppr_apps e []
+ppr_expr e@(HsAppType {})    = ppr_apps e []
+ppr_expr e@(HsAppTypeOut {}) = ppr_apps e []
 
 ppr_expr (OpApp e1 op _ e2)
   = case unLoc op of
@@ -803,19 +805,17 @@ ppr_expr (ArithSeq _ _ info) = brackets (ppr info)
 ppr_expr (PArrSeq  _ info) = paBrackets (ppr info)
 
 ppr_expr EWildPat       = char '_'
-ppr_expr (ELazyPat e)   = char '~' <> pprParendExpr e
-ppr_expr (EAsPat v e)   = ppr v <> char '@' <> pprParendExpr e
+ppr_expr (ELazyPat e)   = char '~' <> pprParendLExpr e
+ppr_expr (EAsPat v e)   = ppr v <> char '@' <> pprParendLExpr e
 ppr_expr (EViewPat p e) = ppr p <+> text "->" <+> ppr e
 
 ppr_expr (HsSCC _ (StringLiteral _ lbl) expr)
   = sep [ text "{-# SCC" <+> doubleQuotes (ftext lbl) <+> ptext (sLit "#-}"),
-          pprParendExpr expr ]
+          pprParendLExpr expr ]
 
-ppr_expr (HsWrap co_fn e) = pprHsWrapper (pprExpr e) co_fn
-ppr_expr (HsType (HsWC { hswc_body = ty }))
-  = char '@' <> pprParendHsType (unLoc ty)
-ppr_expr (HsTypeOut (HsWC { hswc_body = ty }))
-  = char '@' <> pprParendHsType (unLoc ty)
+ppr_expr (HsWrap co_fn e)
+  = pprHsWrapper co_fn (\parens -> if parens then pprParendExpr e
+                                             else pprExpr       e)
 
 ppr_expr (HsSpliceE s)         = pprSplice s
 ppr_expr (HsBracket b)         = pprHsBracket b
@@ -828,7 +828,7 @@ ppr_expr (HsProc pat (L _ (HsCmdTop cmd _ _ _)))
   = hsep [text "proc", ppr pat, ptext (sLit "->"), ppr cmd]
 
 ppr_expr (HsStatic e)
-  = hsep [text "static", pprParendExpr e]
+  = hsep [text "static", pprParendLExpr e]
 
 ppr_expr (HsTick tickish exp)
   = pprTicks (ppr exp) $
@@ -865,6 +865,26 @@ ppr_expr (HsArrForm op _ args)
          4 (sep (map (pprCmdArg.unLoc) args) <+> text "|)")
 ppr_expr (HsRecFld f) = ppr f
 
+-- We must tiresomely make the "id" parameter to the LHsWcType existential
+-- because it's different in the HsAppType case and the HsAppTypeOut case
+data LHsWcTypeX = forall id. OutputableBndr id => LHsWcTypeX (LHsWcType id)
+
+ppr_apps :: OutputableBndr id
+         => HsExpr id
+         -> [Either (LHsExpr id) LHsWcTypeX]
+         -> SDoc
+ppr_apps (HsApp (L _ fun) arg)        args
+  = ppr_apps fun (Left arg : args)
+ppr_apps (HsAppType (L _ fun) arg)    args
+  = ppr_apps fun (Right (LHsWcTypeX arg) : args)
+ppr_apps (HsAppTypeOut (L _ fun) arg) args
+  = ppr_apps fun (Right (LHsWcTypeX arg) : args)
+ppr_apps fun args = hang (ppr_expr fun) 2 (sep (map pp args))
+  where
+    pp (Left arg)                             = pprParendLExpr arg
+    pp (Right (LHsWcTypeX (HsWC { hswc_body = L _ arg })))
+      = char '@' <> pprParendHsType arg
+
 pprExternalSrcLoc :: (StringLiteral,(Int,Int),(Int,Int)) -> SDoc
 pprExternalSrcLoc (StringLiteral _ src,(n1,n2),(n3,n4))
   = ppr (src,(n1,n2),(n3,n4))
@@ -874,7 +894,7 @@ HsSyn records exactly where the user put parens, with HsPar.
 So generally speaking we print without adding any parens.
 However, some code is internally generated, and in some places
 parens are absolutely required; so for these places we use
-pprParendExpr (but don't print double parens of course).
+pprParendLExpr (but don't print double parens of course).
 
 For operator applications we don't add parens, because the operator
 fixities should do the job, except in debug mode (-dppr-debug) so we
@@ -884,13 +904,16 @@ can see the structure of the parse tree.
 pprDebugParendExpr :: OutputableBndr id => LHsExpr id -> SDoc
 pprDebugParendExpr expr
   = getPprStyle (\sty ->
-    if debugStyle sty then pprParendExpr expr
+    if debugStyle sty then pprParendLExpr expr
                       else pprLExpr      expr)
 
-pprParendExpr :: OutputableBndr id => LHsExpr id -> SDoc
+pprParendLExpr :: OutputableBndr id => LHsExpr id -> SDoc
+pprParendLExpr (L _ e) = pprParendExpr e
+
+pprParendExpr :: OutputableBndr id => HsExpr id -> SDoc
 pprParendExpr expr
-  | hsExprNeedsParens (unLoc expr) = parens (pprLExpr expr)
-  | otherwise                      = pprLExpr expr
+  | hsExprNeedsParens expr = parens (pprExpr expr)
+  | otherwise              = pprExpr expr
         -- Using pprLExpr makes sure that we go 'deeper'
         -- I think that is usually (always?) right
 
@@ -917,8 +940,6 @@ hsExprNeedsParens (HsTcBracketOut {}) = False
 hsExprNeedsParens (HsDo sc _ _)
        | isListCompExpr sc            = False
 hsExprNeedsParens (HsRecFld{})        = False
-hsExprNeedsParens (HsType {})         = False
-hsExprNeedsParens (HsTypeOut {})      = False
 hsExprNeedsParens _ = True
 
 
@@ -1082,7 +1103,7 @@ ppr_cmd (HsCmdPar c) = parens (ppr_lcmd c)
 
 ppr_cmd (HsCmdApp c e)
   = let (fun, args) = collect_args c [e] in
-    hang (ppr_lcmd fun) 2 (sep (map pprParendExpr args))
+    hang (ppr_lcmd fun) 2 (sep (map pprParendLExpr args))
   where
     collect_args (L _ (HsCmdApp fun arg)) args = collect_args fun (arg:args)
     collect_args fun args = (fun, args)
@@ -1111,8 +1132,8 @@ ppr_cmd (HsCmdLet (L _ binds) cmd)
 
 ppr_cmd (HsCmdDo (L _ stmts) _)  = pprDo ArrowExpr stmts
 
-ppr_cmd (HsCmdWrap w cmd) = pprHsWrapper (ppr_cmd cmd) w
-
+ppr_cmd (HsCmdWrap w cmd)
+  = pprHsWrapper w (\_ -> parens (ppr_cmd cmd))
 ppr_cmd (HsCmdArrApp arrow arg _ HsFirstOrderApp True)
   = hsep [ppr_lexpr arrow, larrowt, ppr_lexpr arg]
 ppr_cmd (HsCmdArrApp arrow arg _ HsFirstOrderApp False)
@@ -1925,7 +1946,7 @@ ppr_splice :: OutputableBndr id => SDoc -> id -> LHsExpr id -> SDoc
 ppr_splice herald n e
     = herald <> ifPprDebug (brackets (ppr n)) <> eDoc
     where
-          -- We use pprLExpr to match pprParendExpr:
+          -- We use pprLExpr to match pprParendLExpr:
           --     Using pprLExpr makes sure that we go 'deeper'
           --     I think that is usually (always?) right
           pp_as_was = pprLExpr e

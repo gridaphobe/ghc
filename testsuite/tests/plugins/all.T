@@ -3,7 +3,6 @@ def f(name, opts):
         opts.skip = 1
 
 setTestOpts(f)
-setTestOpts(when(compiler_lt('ghc', '7.1'), skip))
 
 test('plugins01',
      [pre_cmd('$MAKE -s --no-print-directory -C simple-plugin package.plugins01'),
@@ -14,7 +13,7 @@ test('plugins02',
      [pre_cmd('$MAKE -s --no-print-directory -C simple-plugin package.plugins02'),
       clean_cmd('$MAKE -s --no-print-directory -C simple-plugin clean.plugins02')],
      compile_fail,
-     ['-package-db simple-plugin/pkg.plugins02/local.package.conf -fplugin Simple.BadlyTypedPlugin -package simple-plugin ' + config.ghci_way_flags])
+     ['-package-db simple-plugin/pkg.plugins02/local.package.conf -fplugin Simple.BadlyTypedPlugin -package simple-plugin ' + config.plugin_way_flags])
 
 test('plugins03',
      [pre_cmd('$MAKE -s --no-print-directory -C simple-plugin package.plugins03'),

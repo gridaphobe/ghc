@@ -61,5 +61,7 @@ test('T10524', normal, compile, [''])
 test('T11148', normal, run_command,
      ['$MAKE -s --no-print-directory T11148'])
 test('T9968', normal, compile, [''])
+test('T11174', normal, compile, [''])
 test('T11416', normal, compile, [''])
 test('T11396', normal, compile, [''])
+test('T11357', normal, compile, [''])

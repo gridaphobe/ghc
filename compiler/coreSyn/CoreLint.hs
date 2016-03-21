@@ -284,7 +284,7 @@ displayLintResults :: DynFlags -> CoreToDo
                    -> IO ()
 displayLintResults dflags pass warns errs binds
   | not (isEmptyBag errs)
-  = do { log_action dflags dflags Err.SevDump noSrcSpan defaultDumpStyle
+  = do { log_action dflags dflags NoReason Err.SevDump noSrcSpan defaultDumpStyle
            (vcat [ lint_banner "errors" (ppr pass), Err.pprMessageBag errs
                  , text "*** Offending Program ***"
                  , pprCoreBindings binds
@@ -294,7 +294,7 @@ displayLintResults dflags pass warns errs binds
   | not (isEmptyBag warns)
   , not opt_NoDebugOutput
   , showLintWarnings pass
-  = log_action dflags dflags Err.SevDump noSrcSpan defaultDumpStyle
+  = log_action dflags dflags NoReason Err.SevDump noSrcSpan defaultDumpStyle
         (lint_banner "warnings" (ppr pass) $$ Err.pprMessageBag warns)
 
   | otherwise = return ()
@@ -324,7 +324,8 @@ lintInteractiveExpr what hsc_env expr
     dflags = hsc_dflags hsc_env
 
     display_lint_err err
-      = do { log_action dflags dflags Err.SevDump noSrcSpan defaultDumpStyle
+      = do { log_action dflags dflags NoReason Err.SevDump
+               noSrcSpan defaultDumpStyle
                (vcat [ lint_banner "errors" (text what)
                      , err
                      , text "*** Offending Program ***"
@@ -590,10 +591,7 @@ lintCoreExpr :: CoreExpr -> LintM OutType
 -- If you edit this function, you may need to update the GHC formalism
 -- See Note [GHC Formalism]
 lintCoreExpr (Var var)
-  = do  { checkL (not (var == oneTupleDataConId))
-                 (text "Illegal one-tuple")
-
-        ; checkL (isId var && not (isCoVar var))
+  = do  { checkL (isId var && not (isCoVar var))
                  (text "Non term variable" <+> ppr var)
 
         ; checkDeadIdOcc var
@@ -912,7 +910,7 @@ lintCoreAlt scrut_ty alt_ty alt@(DataAlt con, args, rhs)
         -- type variables of the data constructor
         -- We've already check
       lintL (tycon == dataConTyCon con) (mkBadConMsg tycon con)
-    ; let con_payload_ty = applyTys (dataConRepType con) tycon_arg_tys
+    ; let con_payload_ty = piResultTys (dataConRepType con) tycon_arg_tys
 
         -- And now bring the new binders into scope
     ; lintBinders args $ \ args' -> do
@@ -988,8 +986,8 @@ lintAndScopeId id linterF
                 (text "Non-local Id binder" <+> ppr id)
                 -- See Note [Checking for global Ids]
        ; (ty, k) <- lintInTy (idType id)
-       ; lintL (not (isLevityPolymorphic k))
-           (text "Levity polymorphic binder:" <+>
+       ; lintL (not (isRuntimeRepPolymorphic k))
+           (text "RuntimeRep-polymorphic binder:" <+>
                  (ppr id <+> dcolon <+> parens (ppr ty <+> dcolon <+> ppr k)))
        ; let id' = setIdType id ty
        ; addInScopeVar id' $ (linterF id') }
@@ -1177,7 +1175,10 @@ lintCoreRule fun_ty (Rule { ru_name = name, ru_bndrs = bndrs
        ; ensureEqTys lhs_ty rhs_ty $
          (rule_doc <+> vcat [ text "lhs type:" <+> ppr lhs_ty
                             , text "rhs type:" <+> ppr rhs_ty ])
-       ; let bad_bndrs = filterOut (`elemVarSet` exprsFreeVars args) bndrs
+       ; let bad_bndrs = filterOut (`elemVarSet` exprsFreeVars args) $
+                         filter (`elemVarSet` exprFreeVars rhs) $
+                         bndrs
+
        ; checkL (null bad_bndrs)
                 (rule_doc <+> text "unbound" <+> ppr bad_bndrs)
             -- See Note [Linting rules]
@@ -1188,9 +1189,9 @@ lintCoreRule fun_ty (Rule { ru_name = name, ru_bndrs = bndrs
 {- Note [Linting rules]
 ~~~~~~~~~~~~~~~~~~~~~~~
 It's very bad if simplifying a rule means that one of the template
-variables (ru_bndrs) becomes not-mentioned in the template argumments
-(ru_args).  How can that happen?  Well, in Trac #10602, SpecConstr
-stupidly constructed a rule like
+variables (ru_bndrs) that /is/ mentioned on the RHS becomes
+not-mentioned in the LHS (ru_args).  How can that happen?  Well, in
+Trac #10602, SpecConstr stupidly constructed a rule like
 
   forall x,c1,c2.
      f (x |> c1 |> c2) = ....
@@ -1200,6 +1201,16 @@ Trac #10602, it collapsed to the identity and was removed altogether.)
 
 We don't have a great story for what to do here, but at least
 this check will nail it.
+
+NB (Trac #11643): it's possible that a variable listed in the
+binders becomes not-mentioned on both LHS and RHS.  Here's a silly
+example:
+   RULE forall x y. f (g x y) = g (x+1 (y-1)
+And suppose worker/wrapper decides that 'x' is Absent.  Then
+we'll end up with
+   RULE forall x y. f ($gw y) = $gw (x+1)
+This seems sufficiently obscure that there isn't enough payoff to
+try to trim the forall'd binder list.
 -}
 
 {-
@@ -1231,6 +1242,11 @@ lintStarCoercion g
 lintCoercion :: OutCoercion -> LintM (LintedKind, LintedKind, LintedType, LintedType, Role)
 -- Check the kind of a coercion term, returning the kind
 -- Post-condition: the returned OutTypes are lint-free
+--
+-- If   lintCorecion co = (k1, k2, s1, s2, r)
+-- then co :: s1 ~r s2
+--      s1 :: k2
+--      s2 :: k2
 
 -- If you edit this function, you may need to update the GHC formalism
 -- See Note [GHC Formalism]
@@ -1266,7 +1282,7 @@ lintCoercion co@(AppCo co1 co2)
   | Refl _ (TyConApp {}) <- co1
   = failWithL (text "Refl (TyConApp ...) to the left of AppCo:" <+> ppr co)
   | otherwise
-  = do { (k1,k2,s1,s2,r1) <- lintCoercion co1
+  = do { (k1,  k2,  s1, s2, r1) <- lintCoercion co1
        ; (k'1, k'2, t1, t2, r2) <- lintCoercion co2
        ; k3 <- lint_co_app co k1 [(t1,k'1)]
        ; k4 <- lint_co_app co k2 [(t2,k'2)]
@@ -1448,7 +1464,7 @@ lintCoercion co@(AxiomInstCo con ind cos)
                                       (empty_subst, empty_subst)
                                       (zip3 (ktvs ++ cvs) roles cos)
        ; let lhs' = substTys subst_l lhs
-             rhs' = substTy subst_r rhs
+             rhs' = substTy  subst_r rhs
        ; case checkAxInstCo co of
            Just bad_branch -> bad_ax $ text "inconsistent with" <+>
                                        pprCoAxBranch con bad_branch
@@ -1683,7 +1699,7 @@ addInScopeVar var m
 extendSubstL :: TyVar -> Type -> LintM a -> LintM a
 extendSubstL tv ty m
   = LintM $ \ env errs ->
-    unLintM m (env { le_subst = Type.extendTCvSubst (le_subst env) tv ty }) errs
+    unLintM m (env { le_subst = Type.extendTvSubst (le_subst env) tv ty }) errs
 
 updateTCvSubst :: TCvSubst -> LintM a -> LintM a
 updateTCvSubst subst' m
@@ -1713,10 +1729,6 @@ lookupIdInScope id
                               ; return id } }
   where
     out_of_scope = pprBndr LetBind id <+> text "is out of scope"
-
-
-oneTupleDataConId :: Id -- Should not happen
-oneTupleDataConId = dataConWorkId (tupleDataCon Boxed 1)
 
 lintTyCoVarInScope :: Var -> LintM ()
 lintTyCoVarInScope v = lintInScope (text "is out of scope") v

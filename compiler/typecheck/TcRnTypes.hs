@@ -219,7 +219,7 @@ type RnM  = TcRn
 -- | Historical "type-checking monad" (now it's just 'TcRn').
 type TcM  = TcRn
 
--- We 'stack' these envs through the Reader like monad infastructure
+-- We 'stack' these envs through the Reader like monad infrastructure
 -- as we move into an expression (although the change is focused in
 -- the lcl type).
 data Env gbl lcl
@@ -905,7 +905,8 @@ data PromotionErr
 
   | RecDataConPE     -- Data constructor in a recursive loop
                      -- See Note [ARecDataCon: recusion and promoting data constructors] in TcTyClsDecls
-  | NoDataKinds      -- -XDataKinds not enabled
+  | NoDataKindsTC    -- -XDataKinds not enabled (for a tycon)
+  | NoDataKindsDC    -- -XDataKinds not enabled (for a datacon)
   | NoTypeInTypeTC   -- -XTypeInType not enabled (for a tycon)
   | NoTypeInTypeDC   -- -XTypeInType not enabled (for a datacon)
 
@@ -925,7 +926,8 @@ instance Outputable PromotionErr where
   ppr PatSynPE       = text "PatSynPE"
   ppr FamDataConPE   = text "FamDataConPE"
   ppr RecDataConPE   = text "RecDataConPE"
-  ppr NoDataKinds    = text "NoDataKinds"
+  ppr NoDataKindsTC  = text "NoDataKindsTC"
+  ppr NoDataKindsDC  = text "NoDataKindsDC"
   ppr NoTypeInTypeTC = text "NoTypeInTypeTC"
   ppr NoTypeInTypeDC = text "NoTypeInTypeDC"
 
@@ -942,7 +944,8 @@ pprPECategory TyConPE        = text "Type constructor"
 pprPECategory PatSynPE       = text "Pattern synonym"
 pprPECategory FamDataConPE   = text "Data constructor"
 pprPECategory RecDataConPE   = text "Data constructor"
-pprPECategory NoDataKinds    = text "Data constructor"
+pprPECategory NoDataKindsTC  = text "Type constructor"
+pprPECategory NoDataKindsDC  = text "Data constructor"
 pprPECategory NoTypeInTypeTC = text "Type constructor"
 pprPECategory NoTypeInTypeDC = text "Data constructor"
 
@@ -1180,7 +1183,7 @@ data TcIdSigInfo
     }
 
 data TcIdSigBndr   -- See Note [Complete and partial type signatures]
-  = CompleteSig    -- A complete signature with no wildards,
+  = CompleteSig    -- A complete signature with no wildcards,
                    -- so the complete polymorphic type is known.
         TcId          -- The polymorphic Id with that type
 
@@ -1366,7 +1369,7 @@ data Ct
       cc_class  :: Class,
       cc_tyargs :: [Xi],       -- cc_tyargs are function-free, hence Xi
       cc_pend_sc :: Bool       -- True <=> (a) cc_class has superclasses
-                               --          (b) we have not yet added those
+                               --          (b) we have not (yet) added those
                                --              superclasses as Givens
            -- NB: cc_pend_sc is used for G/W/D.  For W/D the reason
            --     we need superclasses is to expose possible improvement
@@ -1769,6 +1772,7 @@ isUserTypeErrorCt ct = case getUserTypeErrorMsg ct of
                          _      -> False
 
 isPendingScDict :: Ct -> Maybe Ct
+-- Says whether cc_pend_sc is True, AND if so flips the flag
 isPendingScDict ct@(CDictCan { cc_pend_sc = True })
                   = Just (ct { cc_pend_sc = False })
 isPendingScDict _ = Nothing
@@ -1792,11 +1796,10 @@ superClassesMightHelp :: Ct -> Bool
 -- expose more equalities or functional dependencies) might help to
 -- solve this constraint.  See Note [When superclases help]
 superClassesMightHelp ct
-  | CDictCan { cc_class = cls } <- ct
-  , cls `hasKey` ipClassKey
-  = False
-  | otherwise
-  = True
+  = isWantedCt ct && not (is_ip ct)
+  where
+    is_ip (CDictCan { cc_class = cls }) = isIPClass cls
+    is_ip _                             = False
 
 {- Note [When superclasses help]
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -1804,26 +1807,35 @@ First read Note [The superclass story] in TcCanonical.
 
 We expand superclasses and iterate only if there is at unsolved wanted
 for which expansion of superclasses (e.g. from given constraints)
-might actually help. Usually the answer is "yes" but for implicit
-paramters it is "no".  If we have [W] ?x::ty, expanding superclasses
-won't help:
-  - Superclasses can't be implicit parameters
-  - If we have a [G] ?x:ty2, then we'll have another unsolved
-      [D] ty ~ ty2 (from the functional dependency)
-    which will trigger superclass expansion.
+might actually help. The function superClassesMightHelp tells if
+doing this superclass expansion might help solve this constraint.
+Note that
 
-It's a bit of a special case, but it's easy to do.  The runtime cost
-is low because the unsolved set is usually empty anyway (errors
-aside), and the first non-imlicit-parameter will terminate the search.
+  * Superclasses help only for Wanted constraints.  Derived constraints
+    are not really "unsolved" and we certainly don't want them to
+    trigger superclass expansion. This was a good part of the loop
+    in  Trac #11523
 
-The special case is worth it (Trac #11480, comment:2) because it
-applies to CallStack constraints, which aren't type errors. If we have
-   f :: (C a) => blah
-   f x = ...undefined...
-we'll get a CallStack constraint.  If that's the only unsolved constraint
-it'll eventually be solved by defaulting.  So we don't want to emit warnings
-about hitting the simplifier's iteration limit.  A CallStack constraint
-really isn't an unsolved constraint; it can always be solved by defaulting.
+  * Even for Wanted constraints, we say "no" for implicit paramters.
+    we have [W] ?x::ty, expanding superclasses won't help:
+      - Superclasses can't be implicit parameters
+      - If we have a [G] ?x:ty2, then we'll have another unsolved
+        [D] ty ~ ty2 (from the functional dependency)
+        which will trigger superclass expansion.
+
+    It's a bit of a special case, but it's easy to do.  The runtime cost
+    is low because the unsolved set is usually empty anyway (errors
+    aside), and the first non-imlicit-parameter will terminate the search.
+
+    The special case is worth it (Trac #11480, comment:2) because it
+    applies to CallStack constraints, which aren't type errors. If we have
+       f :: (C a) => blah
+       f x = ...undefined...
+    we'll get a CallStack constraint.  If that's the only unsolved
+    constraint it'll eventually be solved by defaulting.  So we don't
+    want to emit warnings about hitting the simplifier's iteration
+    limit.  A CallStack constraint really isn't an unsolved
+    constraint; it can always be solved by defaulting.
 -}
 
 singleCt :: Ct -> Cts
@@ -2162,7 +2174,7 @@ For Givens we make new EvVars and bind them immediately. Two main reasons:
     But that superclass selector can't (yet) appear in a coercion
     (see evTermCoercion), so the easy thing is to bind it to an Id.
 
-So a Given has EvVar inside it rather that (as previously) an EvTerm.
+So a Given has EvVar inside it rather than (as previously) an EvTerm.
 -}
 
 -- | A place for type-checking evidence to go after it is generated.
@@ -2435,7 +2447,7 @@ level.
 equalities involving type functions. Example:
   Assume we have a wanted at depth 7:
     [W] d{7} : F () ~ a
-  If thre is an type function equation "F () = Int", this would be rewritten to
+  If there is an type function equation "F () = Int", this would be rewritten to
     [W] d{8} : Int ~ a
   and remembered as having depth 8.
 
@@ -2701,6 +2713,9 @@ data CtOrigin
   | ExprSigOrigin       -- e :: ty
   | PatSigOrigin        -- p :: ty
   | PatOrigin           -- Instantiating a polytyped pattern at a constructor
+  | ProvCtxtOrigin      -- The "provided" context of a pattern synonym signature
+        (PatSynBind Name Name) -- Information about the pattern synonym, in particular
+                               -- the name and the right-hand side
   | RecordUpdOrigin
   | ViewPatOrigin
 
@@ -2801,6 +2816,8 @@ exprCtOrigin (HsLit {})         = Shouldn'tHappenOrigin "concrete literal"
 exprCtOrigin (HsLam matches)    = matchesCtOrigin matches
 exprCtOrigin (HsLamCase _ ms)   = matchesCtOrigin ms
 exprCtOrigin (HsApp (L _ e1) _) = exprCtOrigin e1
+exprCtOrigin (HsAppType (L _ e1) _) = exprCtOrigin e1
+exprCtOrigin (HsAppTypeOut {})      = panic "exprCtOrigin HsAppTypeOut"
 exprCtOrigin (OpApp _ (L _ op) _ _) = exprCtOrigin op
 exprCtOrigin (NegApp (L _ e) _) = exprCtOrigin e
 exprCtOrigin (HsPar (L _ e))    = exprCtOrigin e
@@ -2838,8 +2855,6 @@ exprCtOrigin EWildPat           = panic "exprCtOrigin EWildPat"
 exprCtOrigin (EAsPat {})        = panic "exprCtOrigin EAsPat"
 exprCtOrigin (EViewPat {})      = panic "exprCtOrigin EViewPat"
 exprCtOrigin (ELazyPat {})      = panic "exprCtOrigin ELazyPat"
-exprCtOrigin (HsType {})        = Shouldn'tHappenOrigin "type application"
-exprCtOrigin (HsTypeOut {})     = panic "exprCtOrigin HsTypeOut"
 exprCtOrigin (HsWrap {})        = panic "exprCtOrigin HsWrap"
 
 -- | Extract a suitable CtOrigin from a MatchGroup
@@ -2926,7 +2941,7 @@ pprCtOrigin (MCompPatOrigin pat)
 pprCtOrigin (FailablePattern pat)
     = ctoHerald <+> text "the failable pattern" <+> quotes (ppr pat)
       $$
-      text "(this will become an error a future GHC release)"
+      text "(this will become an error in a future GHC release)"
 
 pprCtOrigin (Shouldn'tHappenOrigin note)
   = sdocWithDynFlags $ \dflags ->
@@ -2936,6 +2951,10 @@ pprCtOrigin (Shouldn'tHappenOrigin note)
     vcat [ text "<< This should not appear in error messages. If you see this"
          , text "in an error message, please report a bug mentioning" <+> quotes (text note) <+> text "at"
          , text "https://ghc.haskell.org/trac/ghc/wiki/ReportABug >>" ]
+
+pprCtOrigin (ProvCtxtOrigin PSB{ psb_id = (L _ name) })
+  = hang (ctoHerald <+> text "the \"provided\" constraints claimed by")
+       2 (text "the signature of" <+> quotes (ppr name))
 
 pprCtOrigin simple_origin
   = ctoHerald <+> pprCtO simple_origin

@@ -9,7 +9,7 @@ This module is an extension of @HsSyn@ syntax, for use in the type
 checker.
 -}
 
-{-# LANGUAGE CPP #-}
+{-# LANGUAGE CPP, TupleSections #-}
 
 module TcHsSyn (
         mkHsConApp, mkHsDictLet, mkHsApp,
@@ -29,7 +29,7 @@ module TcHsSyn (
         zonkTopBndrs, zonkTyBndrsX,
         emptyZonkEnv, mkEmptyZonkEnv,
         zonkTcTypeToType, zonkTcTypeToTypes, zonkTyVarOcc,
-        zonkCoToCo
+        zonkCoToCo, zonkTcKindToKind
   ) where
 
 #include "HsVersions.h"
@@ -44,6 +44,7 @@ import TcEvidence
 import TysPrim
 import TysWiredIn
 import Type
+import TyCoRep  ( TyBinder(..) )
 import Coercion
 import ConLike
 import DataCon
@@ -278,6 +279,7 @@ zonkIdOccs env ids = map (zonkIdOcc env) ids
 zonkIdBndr :: ZonkEnv -> TcId -> TcM Id
 zonkIdBndr env id
   = do ty' <- zonkTcTypeToType env (idType id)
+       ensureNotRepresentationPolymorphic id ty'
        return (setIdType id ty')
 
 zonkIdBndrs :: ZonkEnv -> [TcId] -> TcM [Id]
@@ -327,6 +329,15 @@ zonkTyBndrX env tv
                -- Internal names tidy up better, for iface files.
        ; let tv' = mkTyVar (tyVarName tv) ki
        ; return (extendTyZonkEnv1 env tv', tv') }
+
+zonkTyBinders :: ZonkEnv -> [TcTyBinder] -> TcM (ZonkEnv, [TyBinder])
+zonkTyBinders = mapAccumLM zonkTyBinder
+
+zonkTyBinder :: ZonkEnv -> TcTyBinder -> TcM (ZonkEnv, TyBinder)
+zonkTyBinder env (Anon ty) = (env, ) <$> (Anon <$> zonkTcTypeToType env ty)
+zonkTyBinder env (Named tv vis)
+  = do { (env', tv') <- zonkTyBndrX env tv
+       ; return (env', Named tv' vis) }
 
 zonkTopExpr :: HsExpr TcId -> TcM (HsExpr Id)
 zonkTopExpr e = zonkExpr emptyZonkEnv e
@@ -438,37 +449,54 @@ zonk_bind env (AbsBinds { abs_tvs = tyvars, abs_ev_vars = evs
                           , abs_ev_binds = new_ev_binds
                           , abs_exports = new_exports, abs_binds = new_val_bind }) }
   where
-    zonkExport env (ABE{ abe_wrap = wrap, abe_inst_wrap = inst_wrap
+    zonkExport env (ABE{ abe_wrap = wrap
                        , abe_poly = poly_id
                        , abe_mono = mono_id, abe_prags = prags })
         = do new_poly_id <- zonkIdBndr env poly_id
              (_, new_wrap) <- zonkCoFn env wrap
-             (_, new_inst_wrap) <- zonkCoFn env inst_wrap
              new_prags <- zonkSpecPrags env prags
-             return (ABE{ abe_wrap = new_wrap, abe_inst_wrap = new_inst_wrap
+             return (ABE{ abe_wrap = new_wrap
                         , abe_poly = new_poly_id
                         , abe_mono = zonkIdOcc env mono_id
                         , abe_prags = new_prags })
 
-zonk_bind env (AbsBindsSig { abs_tvs         = tyvars
-                           , abs_ev_vars     = evs
-                           , abs_sig_export  = poly
-                           , abs_sig_prags   = prags
-                           , abs_sig_ev_bind = ev_bind
-                           , abs_sig_bind    = bind })
+zonk_bind env outer_bind@(AbsBindsSig { abs_tvs         = tyvars
+                                      , abs_ev_vars     = evs
+                                      , abs_sig_export  = poly
+                                      , abs_sig_prags   = prags
+                                      , abs_sig_ev_bind = ev_bind
+                                      , abs_sig_bind    = lbind })
+  | L bind_loc bind@(FunBind { fun_id      = L loc local
+                             , fun_matches = ms
+                             , fun_co_fn   = co_fn }) <- lbind
   = ASSERT( all isImmutableTyVar tyvars )
     do { (env0, new_tyvars)  <- zonkTyBndrsX env  tyvars
        ; (env1, new_evs)     <- zonkEvBndrsX env0 evs
        ; (env2, new_ev_bind) <- zonkTcEvBinds env1 ev_bind
-       ; new_val_bind        <- zonk_lbind env2 bind
+           -- Inline zonk_bind (FunBind ...) because we wish to skip
+           -- the check for representation-polymorphic binders. The
+           -- local binder in the FunBind in an AbsBindsSig is never actually
+           -- bound in Core -- indeed, that's the whole point of AbsBindsSig.
+           -- just calling zonk_bind causes #11405.
+       ; new_local           <- updateVarTypeM (zonkTcTypeToType env2) local
+       ; (env3, new_co_fn)   <- zonkCoFn env2 co_fn
+       ; new_ms              <- zonkMatchGroup env3 zonkLExpr ms
+           -- If there is a representation polymorphism problem, it will
+           -- be caught here:
        ; new_poly_id         <- zonkIdBndr env2 poly
        ; new_prags           <- zonkSpecPrags env2 prags
+       ; let new_val_bind = L bind_loc (bind { fun_id      = L loc new_local
+                                             , fun_matches = new_ms
+                                             , fun_co_fn   = new_co_fn })
        ; return (AbsBindsSig { abs_tvs         = new_tyvars
                              , abs_ev_vars     = new_evs
                              , abs_sig_export  = new_poly_id
                              , abs_sig_prags   = new_prags
                              , abs_sig_ev_bind = new_ev_bind
                              , abs_sig_bind    = new_val_bind  }) }
+
+  | otherwise
+  = pprPanic "zonk_bind" (ppr outer_bind)
 
 zonk_bind env (PatSynBind bind@(PSB { psb_id = L loc id
                                     , psb_args = details
@@ -599,6 +627,11 @@ zonkExpr env (HsApp e1 e2)
   = do new_e1 <- zonkLExpr env e1
        new_e2 <- zonkLExpr env e2
        return (HsApp new_e1 new_e2)
+
+zonkExpr env (HsAppTypeOut e t)
+  = do new_e <- zonkLExpr env e
+       return (HsAppTypeOut new_e t)
+       -- NB: the type is an HsType; can't zonk that!
 
 zonkExpr _ e@(HsRnBracketOut _ _)
   = pprPanic "zonkExpr: HsRnBracketOut" (ppr e)
@@ -762,9 +795,6 @@ zonkExpr env (HsWrap co_fn expr)
 
 zonkExpr _ (HsUnboundVar v)
   = return (HsUnboundVar v)
-
-  -- nothing to do here. The payload is an LHsType, not a Type.
-zonkExpr _ e@(HsTypeOut {}) = return e
 
 zonkExpr _ expr = pprPanic "zonkExpr" (ppr expr)
 
@@ -1583,6 +1613,14 @@ zonkTcTypeToType = mapType zonk_tycomapper
 zonkTcTypeToTypes :: ZonkEnv -> [TcType] -> TcM [Type]
 zonkTcTypeToTypes env tys = mapM (zonkTcTypeToType env) tys
 
+-- | Used during kind-checking in TcTyClsDecls, where it's more convenient
+-- to keep the binders and result kind separate.
+zonkTcKindToKind :: [TcTyBinder] -> TcKind -> TcM ([TyBinder], Kind)
+zonkTcKindToKind binders res_kind
+  = do { (env, binders') <- zonkTyBinders emptyZonkEnv binders
+       ; res_kind' <- zonkTcTypeToType env res_kind
+       ; return (binders', res_kind') }
+
 zonkCoToCo :: ZonkEnv -> Coercion -> TcM Coercion
 zonkCoToCo = mapCoercion zonk_tycomapper
 
@@ -1605,7 +1643,38 @@ zonkTypeZapping :: UnboundTyVarZonker
 -- It zaps unbound type variables to (), or some other arbitrary type
 -- Works on both types and kinds
 zonkTypeZapping tv
-  = do { let ty | isLevityVar tv = liftedDataConTy
-                | otherwise      = anyTypeOfKind (tyVarKind tv)
+  = do { let ty | isRuntimeRepVar tv = ptrRepLiftedTy
+                | otherwise          = anyTypeOfKind (tyVarKind tv)
        ; writeMetaTyVar tv ty
        ; return ty }
+
+---------------------------------------
+-- | According to the rules around representation polymorphism
+-- (see https://ghc.haskell.org/trac/ghc/wiki/NoSubKinds), no binder
+-- can have a representation-polymorphic type. This check ensures
+-- that we respect this rule. It is a bit regrettable that this error
+-- occurs in zonking, after which we should have reported all errors.
+-- But it's hard to see where else to do it, because this can be discovered
+-- only after all solving is done. And, perhaps most importantly, this
+-- isn't really a compositional property of a type system, so it's
+-- not a terrible surprise that the check has to go in an awkward spot.
+ensureNotRepresentationPolymorphic
+  :: TcId  -- the id we're checking (for errors only)
+  -> Type  -- its zonked type
+  -> TcM ()
+ensureNotRepresentationPolymorphic id ty
+  = whenNoErrs $   -- sometimes we end up zonking bogus definitions of type
+                   -- forall a. a. See, for example, test ghci/scripts/T9140
+    unless (isEmptyVarSet (tyCoVarsOfType ki)) $
+    addErrAt (nameSrcSpan $ idName id) $
+    vcat [ text "The following variable has an unknown runtime representation:"
+         , text "    Var name:" <+> ppr id
+         , text "    Var type:" <+> ppr tidy_ty
+         , text " Type's kind:" <+> ppr tidy_ki
+         , text "Perhaps add a type or kind signature to fix the representation."
+         ]
+  where
+    ki = typeKind ty
+
+    (tidy_env, tidy_ty) = tidyOpenType emptyTidyEnv ty
+    tidy_ki             = tidyType tidy_env ki

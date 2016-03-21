@@ -1,6 +1,8 @@
-{-# LANGUAGE DataKinds, PolyKinds #-}
+{-# LANGUAGE TypeInType #-}
 
 module KindLevels where
+
+import Data.Kind
 
 data A
 data B :: A -> *

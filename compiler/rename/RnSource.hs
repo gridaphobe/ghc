@@ -152,7 +152,13 @@ rnSrcDecls group@(HsGroup { hs_valds   = val_decls,
    -- (F) Rename Value declarations right-hand sides
    traceRn (text "Start rnmono") ;
    let { val_bndr_set = mkNameSet id_bndrs `unionNameSet` mkNameSet pat_syn_bndrs } ;
-   (rn_val_decls, bind_dus) <- rnTopBindsRHS val_bndr_set new_lhs ;
+   is_boot <- tcIsHsBootOrSig ;
+   (rn_val_decls, bind_dus) <- if is_boot
+    -- For an hs-boot, use tc_bndrs (which collects how we're renamed
+    -- signatures), since val_bndr_set is empty (there are no x = ...
+    -- bindings in an hs-boot.)
+    then rnTopBindsBoot tc_bndrs new_lhs
+    else rnValBindsRHS (TopSigCtxt val_bndr_set) new_lhs ;
    traceRn (text "finish rnmono" <+> ppr rn_val_decls) ;
 
    -- (G) Rename Fixity and deprecations
@@ -500,10 +506,12 @@ checkCanonicalInstances cls poly_ty mbinds = do
               case mbind of
                   FunBind { fun_id = L _ name, fun_matches = mg }
                       | name == pureAName, isAliasMG mg == Just returnMName
-                      -> addWarnNonCanonicalMethod1 "pure" "return"
+                      -> addWarnNonCanonicalMethod1
+                            Opt_WarnNonCanonicalMonadInstances "pure" "return"
 
                       | name == thenAName, isAliasMG mg == Just thenMName
-                      -> addWarnNonCanonicalMethod1 "(*>)" "(>>)"
+                      -> addWarnNonCanonicalMethod1
+                            Opt_WarnNonCanonicalMonadInstances "(*>)" "(>>)"
 
                   _ -> return ()
 
@@ -512,10 +520,12 @@ checkCanonicalInstances cls poly_ty mbinds = do
               case mbind of
                   FunBind { fun_id = L _ name, fun_matches = mg }
                       | name == returnMName, isAliasMG mg /= Just pureAName
-                      -> addWarnNonCanonicalMethod2 "return" "pure"
+                      -> addWarnNonCanonicalMethod2
+                            Opt_WarnNonCanonicalMonadInstances "return" "pure"
 
                       | name == thenMName, isAliasMG mg /= Just thenAName
-                      -> addWarnNonCanonicalMethod2 "(>>)" "(*>)"
+                      -> addWarnNonCanonicalMethod2
+                            Opt_WarnNonCanonicalMonadInstances "(>>)" "(*>)"
 
                   _ -> return ()
 
@@ -540,7 +550,9 @@ checkCanonicalInstances cls poly_ty mbinds = do
               case mbind of
                   FunBind { fun_id = L _ name, fun_matches = mg }
                       | name == failMName, isAliasMG mg == Just failMName_preMFP
-                      -> addWarnNonCanonicalMethod1 "fail" "Control.Monad.fail"
+                      -> addWarnNonCanonicalMethod1
+                            Opt_WarnNonCanonicalMonadFailInstances "fail"
+                            "Control.Monad.fail"
 
                   _ -> return ()
 
@@ -549,8 +561,9 @@ checkCanonicalInstances cls poly_ty mbinds = do
               case mbind of
                   FunBind { fun_id = L _ name, fun_matches = mg }
                       | name == failMName_preMFP, isAliasMG mg /= Just failMName
-                      -> addWarnNonCanonicalMethod2 "fail"
-                                                    "Control.Monad.Fail.fail"
+                      -> addWarnNonCanonicalMethod2
+                            Opt_WarnNonCanonicalMonadFailInstances "fail"
+                            "Control.Monad.Fail.fail"
                   _ -> return ()
 
       | otherwise = return ()
@@ -574,7 +587,8 @@ checkCanonicalInstances cls poly_ty mbinds = do
               case mbind of
                   FunBind { fun_id = L _ name, fun_matches = mg }
                       | name == sappendName, isAliasMG mg == Just mappendName
-                      -> addWarnNonCanonicalMethod1 "(<>)" "mappend"
+                      -> addWarnNonCanonicalMethod1
+                            Opt_WarnNonCanonicalMonoidInstances "(<>)" "mappend"
 
                   _ -> return ()
 
@@ -583,7 +597,8 @@ checkCanonicalInstances cls poly_ty mbinds = do
               case mbind of
                   FunBind { fun_id = L _ name, fun_matches = mg }
                       | name == mappendName, isAliasMG mg /= Just sappendName
-                      -> addWarnNonCanonicalMethod2NoDefault "mappend" "(<>)"
+                      -> addWarnNonCanonicalMethod2NoDefault
+                            Opt_WarnNonCanonicalMonoidInstances "mappend" "(<>)"
 
                   _ -> return ()
 
@@ -599,8 +614,9 @@ checkCanonicalInstances cls poly_ty mbinds = do
     isAliasMG _ = Nothing
 
     -- got "lhs = rhs" but expected something different
-    addWarnNonCanonicalMethod1 lhs rhs = do
-        addWarn $ vcat [ text "Noncanonical" <+>
+    addWarnNonCanonicalMethod1 flag lhs rhs = do
+        addWarn (Reason flag) $ vcat
+                       [ text "Noncanonical" <+>
                          quotes (text (lhs ++ " = " ++ rhs)) <+>
                          text "definition detected"
                        , instDeclCtxt1 poly_ty
@@ -610,8 +626,9 @@ checkCanonicalInstances cls poly_ty mbinds = do
                        ]
 
     -- expected "lhs = rhs" but got something else
-    addWarnNonCanonicalMethod2 lhs rhs = do
-        addWarn $ vcat [ text "Noncanonical" <+>
+    addWarnNonCanonicalMethod2 flag lhs rhs = do
+        addWarn (Reason flag) $ vcat
+                       [ text "Noncanonical" <+>
                          quotes (text lhs) <+>
                          text "definition detected"
                        , instDeclCtxt1 poly_ty
@@ -621,8 +638,9 @@ checkCanonicalInstances cls poly_ty mbinds = do
                        ]
 
     -- like above, but method has no default impl
-    addWarnNonCanonicalMethod2NoDefault lhs rhs = do
-        addWarn $ vcat [ text "Noncanonical" <+>
+    addWarnNonCanonicalMethod2NoDefault flag lhs rhs = do
+        addWarn (Reason flag) $ vcat
+                       [ text "Noncanonical" <+>
                          quotes (text lhs) <+>
                          text "definition detected"
                        , instDeclCtxt1 poly_ty
@@ -633,8 +651,7 @@ checkCanonicalInstances cls poly_ty mbinds = do
     -- stolen from TcInstDcls
     instDeclCtxt1 :: LHsSigType Name -> SDoc
     instDeclCtxt1 hs_inst_ty
-      | (_, _, head_ty) <- splitLHsInstDeclTy hs_inst_ty
-      = inst_decl_ctxt (ppr head_ty)
+      = inst_decl_ctxt (ppr (getLHsInstDeclHead hs_inst_ty))
 
     inst_decl_ctxt :: SDoc -> SDoc
     inst_decl_ctxt doc = hang (text "in the instance declaration for")
@@ -799,7 +816,7 @@ rnDataFamInstDecl :: Maybe (Name, [Name])
 rnDataFamInstDecl mb_cls (DataFamInstDecl { dfid_tycon = tycon
                                           , dfid_pats  = pats
                                           , dfid_defn  = defn })
-  = do { (tycon', pats', defn', fvs) <-
+  = do { (tycon', pats', (defn', _), fvs) <-
            rnFamInstDecl (TyDataCtx tycon) mb_cls tycon pats defn rnDataDefn
        ; return (DataFamInstDecl { dfid_tycon = tycon'
                                  , dfid_pats  = pats'
@@ -1007,6 +1024,7 @@ validRuleLhs foralls lhs
 
     check (OpApp e1 op _ e2)              = checkl op `mplus` checkl_e e1 `mplus` checkl_e e2
     check (HsApp e1 e2)                   = checkl e1 `mplus` checkl_e e2
+    check (HsAppType e _)                 = checkl e
     check (HsVar (L _ v)) | v `notElem` foralls = Nothing
     check other                           = Just other  -- Failure
 
@@ -1164,7 +1182,7 @@ See also Note [Grouping of type and class declarations] in TcTyClsDecls.
 
 rnTyClDecls :: [TyClGroup RdrName]
             -> RnM ([TyClGroup Name], FreeVars)
--- Rename the declarations and do depedency analysis on them
+-- Rename the declarations and do dependency analysis on them
 rnTyClDecls tycl_ds
   = do { ds_w_fvs       <- mapM (wrapLocFstM rnTyClDecl) (tyClGroupConcat tycl_ds)
        ; let decl_names = mkNameSet (map (tcdName . unLoc . fst) ds_w_fvs)
@@ -1246,11 +1264,17 @@ rnTyClDecl (DataDecl { tcdLName = tycon, tcdTyVars = tyvars, tcdDataDefn = defn 
        ; kvs <- extractDataDefnKindVars defn
        ; let doc = TyDataCtx tycon
        ; traceRn (text "rntycl-data" <+> ppr tycon <+> ppr kvs)
-       ; ((tyvars', defn'), fvs) <- bindHsQTyVars doc Nothing Nothing kvs tyvars $ \ tyvars' ->
-                                    do { (defn', fvs) <- rnDataDefn doc defn
-                                       ; return ((tyvars', defn'), fvs) }
+       ; ((tyvars', defn', no_kvs), fvs)
+           <- bindHsQTyVars doc Nothing Nothing kvs tyvars $ \ tyvars' ->
+              do { ((defn', no_kvs), fvs) <- rnDataDefn doc defn
+                 ; return ((tyvars', defn', no_kvs), fvs) }
+          -- See Note [Complete user-supplied kind signatures] in HsDecls
+       ; typeintype <- xoptM LangExt.TypeInType
+       ; let cusk = hsTvbAllKinded tyvars' &&
+                    (not typeintype || no_kvs)
        ; return (DataDecl { tcdLName = tycon', tcdTyVars = tyvars'
-                          , tcdDataDefn = defn', tcdFVs = fvs }, fvs) }
+                          , tcdDataDefn = defn', tcdDataCusk = cusk
+                          , tcdFVs = fvs }, fvs) }
 
 rnTyClDecl (ClassDecl { tcdCtxt = context, tcdLName = lcls,
                         tcdTyVars = tyvars, tcdFDs = fds, tcdSigs = sigs,
@@ -1373,14 +1397,23 @@ orphanRoleAnnotErr (L loc decl)
             quotes (ppr $ roleAnnotDeclName decl) <+>
             text "is declared.")
 
-rnDataDefn :: HsDocContext -> HsDataDefn RdrName -> RnM (HsDataDefn Name, FreeVars)
+rnDataDefn :: HsDocContext -> HsDataDefn RdrName
+           -> RnM ((HsDataDefn Name, Bool), FreeVars)
+                -- the Bool is True if the DataDefn is consistent with
+                -- having a CUSK. See Note [Complete user-supplied kind signatures]
+                -- in HsDecls
 rnDataDefn doc (HsDataDefn { dd_ND = new_or_data, dd_cType = cType
                            , dd_ctxt = context, dd_cons = condecls
-                           , dd_kindSig = sig, dd_derivs = derivs })
+                           , dd_kindSig = m_sig, dd_derivs = derivs })
   = do  { checkTc (h98_style || null (unLoc context))
                   (badGadtStupidTheta doc)
 
-        ; (sig', sig_fvs)  <- rnLHsMaybeKind doc sig
+        ; (m_sig', cusk, sig_fvs) <- case m_sig of
+             Just sig -> do { fkvs <- freeKiTyVarsAllVars <$>
+                                      extractHsTyRdrTyVars sig
+                            ; (sig', fvs) <- rnLHsKind doc sig
+                            ; return (Just sig', null fkvs, fvs) }
+             Nothing  -> return (Nothing, True, emptyFVs)
         ; (context', fvs1) <- rnContext doc context
         ; (derivs',  fvs3) <- rn_derivs derivs
 
@@ -1396,10 +1429,11 @@ rnDataDefn doc (HsDataDefn { dd_ND = new_or_data, dd_cType = cType
 
         ; let all_fvs = fvs1 `plusFV` fvs3 `plusFV`
                         con_fvs `plusFV` sig_fvs
-        ; return ( HsDataDefn { dd_ND = new_or_data, dd_cType = cType
-                              , dd_ctxt = context', dd_kindSig = sig'
-                              , dd_cons = condecls'
-                              , dd_derivs = derivs' }
+        ; return (( HsDataDefn { dd_ND = new_or_data, dd_cType = cType
+                               , dd_ctxt = context', dd_kindSig = m_sig'
+                               , dd_cons = condecls'
+                               , dd_derivs = derivs' }
+                  , cusk )
                  , all_fvs )
         }
   where
@@ -1486,7 +1520,7 @@ rnFamResultSig doc kv_names (TyVarSig tvbndr)
                           (mkNameSet kv_names) emptyNameSet
                                        -- use of emptyNameSet here avoids
                                        -- redundant duplicate errors
-                          tvbndr $ \ _ tvbndr' ->
+                          tvbndr $ \ _ _ tvbndr' ->
          return (TyVarSig tvbndr', unitFV (hsLTyVarName tvbndr')) }
 
 -- Note [Renaming injectivity annotation]

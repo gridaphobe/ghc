@@ -366,21 +366,37 @@ mkGivensWithSuperClasses :: CtLoc -> [EvId] -> TcS [Ct]
 -- From a given EvId, make its Ct, plus the Ct's of its superclasses
 -- See Note [The superclass story]
 -- The loop-breaking here follows Note [Expanding superclasses] in TcType
+--
+-- Example:  class D a => C a
+--           class C [a] => D a
+-- makeGivensWithSuperClasses (C x) will return (C x, D x, C[x])
+--   i.e. up to and including the first repetition of C
 mkGivensWithSuperClasses loc ev_ids = concatMapM go ev_ids
   where
-    go ev_id = mk_superclasses emptyNameSet $
-               CtGiven { ctev_evar = ev_id
-                       , ctev_pred = evVarPred ev_id
-                       , ctev_loc  = loc }
+    go ev_id = mk_superclasses emptyNameSet this_ev
+       where
+         this_ev = CtGiven { ctev_evar = ev_id
+                           , ctev_pred = evVarPred ev_id
+                           , ctev_loc = loc }
 
 makeSuperClasses :: [Ct] -> TcS [Ct]
 -- Returns strict superclasses, transitively, see Note [The superclasses story]
 -- See Note [The superclass story]
 -- The loop-breaking here follows Note [Expanding superclasses] in TcType
+-- Specifically, for an incoming (C t) constraint, we return all of (C t)'s
+--    superclasses, up to /and including/ the first repetition of C
+--
+-- Example:  class D a => C a
+--           class C [a] => D a
+-- makeSuperClasses (C x) will return (D x, C [x])
+--
+-- NB: the incoming constraints have had their cc_pend_sc flag already
+--     flipped to False, by isPendingScDict, so we are /obliged/ to at
+--     least produce the immediate superclasses
 makeSuperClasses cts = concatMapM go cts
   where
     go (CDictCan { cc_ev = ev, cc_class = cls, cc_tyargs = tys })
-          = mk_strict_superclasses emptyNameSet ev cls tys
+          = mk_strict_superclasses (unitNameSet (className cls)) ev cls tys
     go ct = pprPanic "makeSuperClasses" (ppr ct)
 
 mk_superclasses :: NameSet -> CtEvidence -> TcS [Ct]
@@ -393,13 +409,13 @@ mk_superclasses rec_clss ev
   = return [mkNonCanonical ev]
 
 mk_superclasses_of :: NameSet -> CtEvidence -> Class -> [Type] -> TcS [Ct]
--- Return this class constraint, plus its superclasses
+-- Always return this class constraint,
+-- and expand its superclasses
 mk_superclasses_of rec_clss ev cls tys
-  | loop_found
-  = return [this_ct]
-  | otherwise
-  = do { sc_cts <- mk_strict_superclasses rec_clss' ev cls tys
-       ; return (this_ct : sc_cts) }
+  | loop_found = return [this_ct]  -- cc_pend_sc of this_ct = True
+  | otherwise  = do { sc_cts <- mk_strict_superclasses rec_clss' ev cls tys
+                    ; return (this_ct : sc_cts) }
+                                   -- cc_pend_sc of this_ct = False
   where
     cls_nm     = className cls
     loop_found = cls_nm `elemNameSet` rec_clss
@@ -407,14 +423,18 @@ mk_superclasses_of rec_clss ev cls tys
                | otherwise         = rec_clss `extendNameSet` cls_nm
     this_ct    = CDictCan { cc_ev = ev, cc_class = cls, cc_tyargs = tys
                           , cc_pend_sc = loop_found }
+                 -- NB: If there is a loop, we cut off, so we have not
+                 --     added the superclasses, hence cc_pend_sc = True
 
 mk_strict_superclasses :: NameSet -> CtEvidence -> Class -> [Type] -> TcS [Ct]
+-- Always return the immediate superclasses of (cls tys);
+-- and expand their superclasses, provided none of them are in rec_clss
+-- nor are repeated
 mk_strict_superclasses rec_clss ev cls tys
   | CtGiven { ctev_evar = evar, ctev_loc = loc } <- ev
   = do { sc_evs <- newGivenEvVars (mk_given_loc loc)
                                   (mkEvScSelectors (EvId evar) cls tys)
        ; concatMapM (mk_superclasses rec_clss) sc_evs }
-
 
   | isEmptyVarSet (tyCoVarsOfTypes tys)
   = return [] -- Wanteds with no variables yield no deriveds.
@@ -443,7 +463,6 @@ mk_strict_superclasses rec_clss ev cls tys
 
        | otherwise  -- Probably doesn't happen, since this function
        = loc        -- is only used for Givens, but does no harm
-
 
 
 {-
@@ -540,7 +559,7 @@ can_eq_nc' flat _rdr_env _envs ev eq_rel ty1 ps_ty1 ty2 ps_ty2
 -- Check only when flat because the zonk_eq_types check in canEqNC takes
 -- care of the non-flat case.
 can_eq_nc' True _rdr_env _envs ev ReprEq ty1 _ ty2 _
-  | ty1 `eqType` ty2
+  | ty1 `tcEqType` ty2
   = canEqReflexive ev ReprEq ty1
 
 -- When working with ReprEq, unwrap newtypes.
@@ -847,12 +866,13 @@ can_eq_app ev NomEq s1 t1 s2 t2
 
 -----------------------
 -- | Break apart an equality over a casted type
+-- looking like   (ty1 |> co1) ~ ty2   (modulo a swap-flag)
 canEqCast :: Bool         -- are both types flat?
           -> CtEvidence
           -> EqRel
           -> SwapFlag
-          -> TcType -> Coercion   -- LHS (res. RHS), the casted type
-          -> TcType -> TcType     -- RHS (res. LHS), both normal and pretty
+          -> TcType -> Coercion   -- LHS (res. RHS), ty1 |> co1
+          -> TcType -> TcType     -- RHS (res. LHS), ty2 both normal and pretty
           -> TcS (StopOrContinue Ct)
 canEqCast flat ev eq_rel swapped ty1 co1 ty2 ps_ty2
   = do { traceTcS "Decomposing cast" (vcat [ ppr ev
@@ -1115,7 +1135,7 @@ canDecomposableTyConAppOK ev eq_rel tc tys1 tys2
 
       -- the following makes a better distinction between "kind" and "type"
       -- in error messages
-    (bndrs, _) = splitPiTys (tyConKind tc)
+    bndrs      = tyConBinders tc
     kind_loc   = toKindLoc loc
     is_kinds   = map isNamedBinder bndrs
     new_locs | Just KindLevel <- ctLocTypeOrKind_maybe loc
@@ -1485,7 +1505,7 @@ homogeniseRhsKind :: CtEvidence -- ^ the evidence to homogenise
                            -- the 'Xi' is the new RHS
                   -> TcS (StopOrContinue Ct)
 homogeniseRhsKind ev eq_rel lhs rhs build_ct
-  | k1 `eqType` k2
+  | k1 `tcEqType` k2
   = continueWith (build_ct ev rhs)
 
   | CtGiven { ctev_evar = evar } <- ev
@@ -1943,10 +1963,8 @@ unify_derived loc role    orig_ty1 orig_ty2
                 Nothing   -> bale_out }
     go _ _ = bale_out
 
-     -- no point in having *boxed* deriveds.
     bale_out = emitNewDerivedEq loc role orig_ty1 orig_ty2
 
 maybeSym :: SwapFlag -> TcCoercion -> TcCoercion
 maybeSym IsSwapped  co = mkTcSymCo co
 maybeSym NotSwapped co = co
-

@@ -92,7 +92,7 @@ $(error Your make does not support abspath. You need GNU make >= 3.81)
 endif
 ##################################################
 
-
+# -----------------------------------------------------------------------------
 # Catch make if it runs away into an infinite loop
 ifeq      "$(MAKE_RESTARTS)" ""
 else ifeq "$(MAKE_RESTARTS)" "1"
@@ -192,6 +192,24 @@ ifeq "$(HSCOLOUR_CMD)" ""
 $(error HSCOLOUR_SRCS=YES, but HSCOLOUR_CMD is empty. \
   Run `cabal install hscolour`, then rerun `./configure`. \
   See https://ghc.haskell.org/trac/ghc/wiki/Building/Preparation)
+endif
+endif
+
+ifeq "$(HADDOCK_DOCS)" "YES"
+ifneq "$(CrossCompiling) $(Stage1Only)" "NO NO"
+$(error Can not build haddock docs when CrossCompiling or Stage1Only. \
+  Set HADDOCK_DOCS=NO in your mk/build.mk file. \
+  See Note [No stage2 packages when CrossCompiling or Stage1Only])
+endif
+endif
+
+ifneq "$(BUILD_SPHINX_HTML) $(BUILD_SPHINX_PDF)" "NO NO"
+# The User's Guide requires mkUserGuidePart, which uses the GHC API.
+ifneq "$(CrossCompiling) $(Stage1Only)" "NO NO"
+$(error Can not build User's Guide when CrossCompiling or Stage1Only. \
+  Set BUILD_SPHINX_HTML=NO, BUILD_SPHINX_PDF=NO in your \
+  mk/build.mk file. \
+  See Note [No stage2 packages when CrossCompiling or Stage1Only])
 endif
 endif
 
@@ -691,7 +709,7 @@ ifeq "$(HADDOCK_DOCS)" "NO"
 BUILD_DIRS := $(filter-out utils/haddock,$(BUILD_DIRS))
 BUILD_DIRS := $(filter-out utils/haddock/doc,$(BUILD_DIRS))
 endif
-ifeq "$(BUILD_SPHINX_HTML) $(BUILD_SPHINX_PDF)" "NO NO NO"
+ifeq "$(BUILD_SPHINX_HTML) $(BUILD_SPHINX_PDF)" "NO NO"
 # Don't to build this little utility if we're not building the User's Guide.
 BUILD_DIRS := $(filter-out utils/mkUserGuidePart,$(BUILD_DIRS))
 endif
@@ -711,11 +729,8 @@ endif
 ifneq "$(CrossCompiling) $(Stage1Only)" "NO NO"
 # See Note [No stage2 packages when CrossCompiling or Stage1Only].
 # See Note [Stage1Only vs stage=1] in mk/config.mk.in.
-BUILD_DIRS := $(filter-out utils/haddock,$(BUILD_DIRS))
-BUILD_DIRS := $(filter-out utils/haddock/doc,$(BUILD_DIRS))
 BUILD_DIRS := $(filter-out utils/ghctags,$(BUILD_DIRS))
 BUILD_DIRS := $(filter-out utils/check-api-annotations,$(BUILD_DIRS))
-BUILD_DIRS := $(filter-out utils/mkUserGuidePart,$(BUILD_DIRS))
 endif
 endif # CLEANING
 

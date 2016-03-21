@@ -105,7 +105,7 @@ Dumping out compiler intermediate structures
 
         Dump strictness analyser output
 
-    .. ghc-flag:: -ddump-strsigs
+    .. ghc-flag:: -ddump-str-signatures
 
         Dump strictness signatures
 
@@ -143,6 +143,8 @@ Dumping out compiler intermediate structures
         generator <native-code-gen>`
 
     .. ghc-flag:: -ddump-llvm
+
+        :implies: :ghc-flag:`-fllvm`
 
         LLVM code from the :ref:`LLVM code generator <llvm-code-gen>`
 

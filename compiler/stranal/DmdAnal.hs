@@ -48,7 +48,8 @@ dmdAnalProgram :: DynFlags -> FamInstEnvs -> CoreProgram -> IO CoreProgram
 dmdAnalProgram dflags fam_envs binds
   = do {
         let { binds_plus_dmds = do_prog binds } ;
-        dumpIfSet_dyn dflags Opt_D_dump_strsigs "Strictness signatures" $
+        dumpIfSet_dyn dflags Opt_D_dump_str_signatures
+                      "Strictness signatures" $
             dumpStrSig binds_plus_dmds ;
         return binds_plus_dmds
     }
@@ -1173,7 +1174,7 @@ binders the CPR property.  Specifically
         fw False x = 3
 
    Of course there is the usual risk of re-boxing: we have 'x' available
-   boxed and unboxed, but we return the unboxed verison for the wrapper to
+   boxed and unboxed, but we return the unboxed version for the wrapper to
    box.  If the wrapper doesn't cancel with its caller, we'll end up
    re-boxing something that we did have available in boxed form.
 

@@ -6,7 +6,9 @@
 -}
 
 {-# LANGUAGE DeriveDataTypeable #-}
-{-# LANGUAGE DeriveDataTypeable #-}
+{-# LANGUAGE DeriveFunctor #-}
+{-# LANGUAGE DeriveFoldable #-}
+{-# LANGUAGE DeriveTraversable #-}
 {-# LANGUAGE StandaloneDeriving #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE UndecidableInstances #-} -- Note [Pass sensitive types]
@@ -57,6 +59,7 @@ import Outputable
 import Type
 import SrcLoc
 import Bag -- collect ev vars from pats
+import DynFlags( gopt, GeneralFlag(..) )
 import Maybes
 -- libraries:
 import Data.Data hiding (TyCon,Fixity)
@@ -243,8 +246,9 @@ data HsRecFields id arg         -- A bunch of record fields
         -- Used for both expressions and patterns
   = HsRecFields { rec_flds   :: [LHsRecField id arg],
                   rec_dotdot :: Maybe Int }  -- Note [DotDot fields]
-  deriving (Typeable)
+  deriving (Typeable, Functor, Foldable, Traversable)
 deriving instance (DataId id, Data arg) => Data (HsRecFields id arg)
+
 
 -- Note [DotDot fields]
 -- ~~~~~~~~~~~~~~~~~~~~
@@ -274,7 +278,7 @@ data HsRecField' id arg = HsRecField {
         hsRecFieldLbl :: Located id,
         hsRecFieldArg :: arg,           -- ^ Filled in by renamer when punning
         hsRecPun      :: Bool           -- ^ Note [Punning]
-  } deriving (Data, Typeable)
+  } deriving (Data, Typeable, Functor, Foldable, Traversable)
 
 
 -- Note [Punning]
@@ -378,17 +382,18 @@ pprParendLPat :: (OutputableBndr name) => LPat name -> SDoc
 pprParendLPat (L _ p) = pprParendPat p
 
 pprParendPat :: (OutputableBndr name) => Pat name -> SDoc
-pprParendPat p = getPprStyle $ \ sty ->
-                 if need_parens sty p
+pprParendPat p = sdocWithDynFlags $ \ dflags ->
+                 if need_parens dflags p
                  then parens (pprPat p)
                  else  pprPat p
   where
-    need_parens sty p
-      | CoPat {} <- p          -- In debug style we print the cast
-      , debugStyle sty = True  -- (see pprHsWrapper) so parens are needed
-      | otherwise      = hsPatNeedsParens p
-                         -- But otherwise the CoPat is discarded, so it
-                         -- is the pattern inside that matters.  Sigh.
+    need_parens dflags p
+      | CoPat {} <- p = gopt Opt_PrintTypecheckerElaboration dflags
+      | otherwise     = hsPatNeedsParens p
+      -- For a CoPat we need parens if we are going to show it, which
+      -- we do if -fprint-typechecker-elaboration is on (c.f. pprHsWrapper)
+      -- But otherwise the CoPat is discarded, so it
+      -- is the pattern inside that matters.  Sigh.
 
 pprPat :: (OutputableBndr name) => Pat name -> SDoc
 pprPat (VarPat (L _ var))     = pprPatBndr var
@@ -403,7 +408,9 @@ pprPat (NPat l Nothing  _ _)  = ppr l
 pprPat (NPat l (Just _) _ _)  = char '-' <> ppr l
 pprPat (NPlusKPat n k _ _ _ _)= hcat [ppr n, char '+', ppr k]
 pprPat (SplicePat splice)     = pprSplice splice
-pprPat (CoPat co pat _)       = pprHsWrapper (ppr pat) co
+pprPat (CoPat co pat _)       = pprHsWrapper co (\parens -> if parens
+                                                            then pprParendPat pat
+                                                            else pprPat pat)
 pprPat (SigPatIn pat ty)      = ppr pat <+> dcolon <+> ppr ty
 pprPat (SigPatOut pat ty)     = ppr pat <+> dcolon <+> ppr ty
 pprPat (ListPat pats _ _)     = brackets (interpp'SP pats)
@@ -412,9 +419,11 @@ pprPat (TuplePat pats bx _)   = tupleParens (boxityTupleSort bx) (pprWithCommas 
 pprPat (ConPatIn con details) = pprUserCon (unLoc con) details
 pprPat (ConPatOut { pat_con = con, pat_tvs = tvs, pat_dicts = dicts,
                     pat_binds = binds, pat_args = details })
-  = getPprStyle $ \ sty ->      -- Tiresome; in TcBinds.tcRhs we print out a
-    if debugStyle sty then      -- typechecked Pat in an error message,
-                                -- and we want to make sure it prints nicely
+  = sdocWithDynFlags $ \dflags ->
+       -- Tiresome; in TcBinds.tcRhs we print out a
+       -- typechecked Pat in an error message,
+       -- and we want to make sure it prints nicely
+    if gopt Opt_PrintTypecheckerElaboration dflags then
         ppr con
           <> braces (sep [ hsep (map pprPatBndr (tvs ++ dicts))
                          , ppr binds])

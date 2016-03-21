@@ -55,7 +55,8 @@ compilerDebuggingOptions =
          , flagType = DynamicFlag
          }
   , flag { flagName = "-ddump-llvm"
-         , flagDescription = "Dump LLVM intermediate code"
+         , flagDescription = "Dump LLVM intermediate code. "++
+           "Implies :ghc-flag:`-fllvm`."
          , flagType = DynamicFlag
          }
   , flag { flagName = "-ddump-occur-anal"
@@ -119,7 +120,7 @@ compilerDebuggingOptions =
          , flagDescription = "Dump strictness analyser output"
          , flagType = DynamicFlag
          }
-  , flag { flagName = "-ddump-strsigs"
+  , flag { flagName = "-ddump-str-signatures"
          , flagDescription = "Dump strictness signatures"
          , flagType = DynamicFlag
          }

@@ -1,3 +1,6 @@
+# Don't blindly unexport MAKEFLAGS, see
+# Note [Communicating options and variables to a submake].
+
 # Eliminate use of the built-in implicit rules, and clear out the default list
 # of suffixes for suffix rules. Speeds up make quite a bit. Both are needed
 # for the shortest `make -d` output.
@@ -124,6 +127,8 @@ IMPLICIT_COMPILER = NO
 endif
 IN_TREE_COMPILER = NO
 
+# Note [The TEST_HC variable]
+#
 # As values of TEST_HC passed in by the user, we want to support:
 #  * both "ghc" and "/usr/bin/ghc"
 #      We use 'which' to convert the former to the latter.
@@ -242,6 +247,19 @@ ifeq "$(findstring clean,$(MAKECMDGOALS))" ""
 include $(ghc-config-mk)
 endif
 
+# Note [WayFlags]
+#
+# Code that uses TemplateHaskell should either use -fexternal-interpreter, or
+# be built in the same way as the compiler (-prof, -dynamic or -static).
+#
+# We therefore add those flags to ghcThWayFlags and ghc_th_way_flags here and
+# in testsuite/config/ghc, and use them in all tests that use TemplateHaskell.
+#
+# The same applies to code loaded in regular GHCi, and code that uses the
+# plugin system.
+#
+# See #11495 and TEST=TH_spliceE5_prof for a complication: trying to compile
+# code that uses TemplateHaskell with -prof, while GhcDynamic=YES.
 ifeq "$(GhcDynamic)" "YES"
 ghcThWayFlags     = -dynamic
 ghciWayFlags      = -dynamic

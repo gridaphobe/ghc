@@ -28,7 +28,8 @@
 module GHC.Stack.Types (
     -- * Implicit call stacks
     CallStack(..), HasCallStack,
-    emptyCallStack, freezeCallStack, getCallStack, pushCallStack,
+    emptyCallStack, freezeCallStack, fromCallSiteList,
+    getCallStack, pushCallStack,
 
     -- * Source locations
     SrcLoc(..)
@@ -47,6 +48,7 @@ import cycle,
     which imports ‘Data.Maybe’ (libraries/base/Data/Maybe.hs)
 -}
 
+import GHC.Classes (Eq)
 import GHC.Types
 
 -- Make implicit dependency known to build system
@@ -147,6 +149,12 @@ getCallStack stk = case stk of
   PushCallStack cs stk' -> cs : getCallStack stk'
   FreezeCallStack stk'  -> getCallStack stk'
 
+-- | Convert a list of call-sites to a 'CallStack'.
+--
+-- @since 4.9.0.0
+fromCallSiteList :: [([Char], SrcLoc)] -> CallStack
+fromCallSiteList (c:cs) = PushCallStack c (fromCallSiteList cs)
+fromCallSiteList []     = EmptyCallStack
 
 -- Note [Definition of CallStack]
 -- ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -205,4 +213,4 @@ data SrcLoc = SrcLoc
   , srcLocStartCol  :: Int
   , srcLocEndLine   :: Int
   , srcLocEndCol    :: Int
-  }
+  } deriving Eq

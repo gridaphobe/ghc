@@ -7,28 +7,32 @@
 {-# LANGUAGE CPP #-}
 
 module SimplEnv (
+        -- * Basic types
         InId, InBind, InExpr, InAlt, InArg, InType, InBndr, InVar,
         OutId, OutTyVar, OutBind, OutExpr, OutAlt, OutArg, OutType, OutBndr, OutVar,
         InCoercion, OutCoercion,
 
-        -- The simplifier mode
+        -- * The simplifier mode
         setMode, getMode, updMode,
 
-        -- Environments
+        -- * Environments
         SimplEnv(..), StaticEnv, pprSimplEnv,   -- Temp not abstract
-        mkSimplEnv, extendIdSubst, SimplEnv.extendTCvSubst,
+        mkSimplEnv, extendIdSubst,
+        SimplEnv.extendTvSubst, SimplEnv.extendCvSubst,
         zapSubstEnv, setSubstEnv,
         getInScope, setInScope, setInScopeSet, modifyInScope, addNewInScopeIds,
         getSimplRules,
 
+        -- * Substitution results
         SimplSR(..), mkContEx, substId, lookupRecBndr, refineFromInScope,
 
+        -- * Simplifying 'Id' binders
         simplNonRecBndr, simplRecBndrs,
         simplBinder, simplBinders,
         substTy, substTyVar, getTCvSubst,
         substCo, substCoVar,
 
-        -- Floats
+        -- * Floats
         Floats, emptyFloats, isEmptyFloats, addNonRec, addFloats, extendFloats,
         wrapFloats, setFloats, zapFloats, addRecFloats, mapFloats,
         doFloatFromRhs, getFloatBinds
@@ -37,7 +41,7 @@ module SimplEnv (
 #include "HsVersions.h"
 
 import SimplMonad
-import CoreMonad        ( SimplifierMode(..) )
+import CoreMonad                ( SimplifierMode(..) )
 import CoreSyn
 import CoreUtils
 import Var
@@ -138,6 +142,7 @@ pprSimplEnv env
 type SimplIdSubst = IdEnv SimplSR       -- IdId |--> OutExpr
         -- See Note [Extending the Subst] in CoreSubst
 
+-- | A substitution result.
 data SimplSR
   = DoneEx OutExpr              -- Completed term
   | DoneId OutId                -- Completed term variable
@@ -271,14 +276,15 @@ extendIdSubst env@(SimplEnv {seIdSubst = subst}) var res
   = ASSERT2( isId var && not (isCoVar var), ppr var )
     env {seIdSubst = extendVarEnv subst var res}
 
-extendTCvSubst :: SimplEnv -> TyVar -> Type -> SimplEnv
-extendTCvSubst env@(SimplEnv {seTvSubst = tsubst, seCvSubst = csubst}) var res
-  | isTyVar var
-  = env {seTvSubst = extendVarEnv tsubst var res}
-  | Just co <- isCoercionTy_maybe res
-  = env {seCvSubst = extendVarEnv csubst var co}
-  | otherwise
-  = pprPanic "SimplEnv.extendTCvSubst" (ppr res)
+extendTvSubst :: SimplEnv -> TyVar -> Type -> SimplEnv
+extendTvSubst env@(SimplEnv {seTvSubst = tsubst}) var res
+  = ASSERT( isTyVar var )
+    env {seTvSubst = extendVarEnv tsubst var res}
+
+extendCvSubst :: SimplEnv -> CoVar -> Coercion -> SimplEnv
+extendCvSubst env@(SimplEnv {seCvSubst = csubst}) var co
+  = ASSERT( isCoVar var )
+    env {seCvSubst = extendVarEnv csubst var co}
 
 ---------------------
 getInScope :: SimplEnv -> InScopeSet

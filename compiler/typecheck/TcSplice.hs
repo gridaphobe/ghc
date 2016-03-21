@@ -513,7 +513,7 @@ spliceCtxtDoc splice
 spliceResultDoc :: LHsExpr Name -> SDoc
 spliceResultDoc expr
   = sep [ text "In the result of the splice:"
-        , nest 2 (char '$' <> pprParendExpr expr)
+        , nest 2 (char '$' <> pprParendLExpr expr)
         , text "To see what the splice expanded to, use -ddump-splices"]
 
 -------------------
@@ -807,7 +807,7 @@ instance TH.Quasi TcM where
   -- 'msg' is forced to ensure exceptions don't escape,
   -- see Note [Exceptions in TH]
   qReport True msg  = seqList msg $ addErr  (text msg)
-  qReport False msg = seqList msg $ addWarn (text msg)
+  qReport False msg = seqList msg $ addWarn NoReason (text msg)
 
   qLocation = do { m <- getModule
                  ; l <- getSrcSpanM
@@ -1309,14 +1309,9 @@ reifyTyCon tc
 
   | isTypeFamilyTyCon tc
   = do { let tvs      = tyConTyVars tc
-             kind     = tyConKind tc
+             res_kind = tyConResKind tc
              resVar   = famTcResVar tc
 
-             -- we need the *result kind* (see #8884)
-             (kvs, mono_kind) = splitForAllTys kind
-                                -- tyConArity includes *kind* params
-             (_, res_kind)    = splitFunTysN (tyConArity tc - length kvs)
-                                             mono_kind
        ; kind' <- reifyKind res_kind
        ; let (resultSig, injectivity) =
                  case resVar of
@@ -1351,13 +1346,8 @@ reifyTyCon tc
 
   | isDataFamilyTyCon tc
   = do { let tvs      = tyConTyVars tc
-             kind     = tyConKind tc
+             res_kind = tyConResKind tc
 
-             -- we need the *result kind* (see #8884)
-             (kvs, mono_kind) = splitForAllTys kind
-                                -- tyConArity includes *kind* params
-             (_, res_kind)    = splitFunTysN (tyConArity tc - length kvs)
-                                             mono_kind
        ; kind' <- fmap Just (reifyKind res_kind)
 
        ; tvs' <- reifyTyVars tvs (Just tc)
@@ -1732,8 +1722,9 @@ reify_tc_app tc tys
   = do { tys' <- reifyTypes (filterOutInvisibleTypes tc tys)
        ; maybe_sig_t (mkThAppTs r_tc tys') }
   where
-    arity   = tyConArity tc
-    tc_kind = tyConKind tc
+    arity       = tyConArity tc
+    tc_binders  = tyConBinders tc
+    tc_res_kind = tyConResKind tc
 
     r_tc | isTupleTyCon tc                = if isPromotedDataCon tc
                                             then TH.PromotedTupleT arity
@@ -1756,18 +1747,15 @@ reify_tc_app tc tys
       = return th_type
 
     needs_kind_sig
-      | Just result_ki <- peel_off_n_args tc_kind (length tys)
-      = not $ isEmptyVarSet $ filterVarSet isTyVar $ tyCoVarsOfType result_ki
-      | otherwise
+      | GT <- compareLength tys tc_binders
+      , tcIsTyVarTy tc_res_kind
       = True
-
-    peel_off_n_args :: Kind -> Arity -> Maybe Kind
-    peel_off_n_args k 0 = Just k
-    peel_off_n_args k n
-      | Just (_, res_k) <- splitPiTy_maybe k
-      = peel_off_n_args res_k (n-1)
       | otherwise
-      = Nothing
+      = not $
+        isEmptyVarSet $
+        filterVarSet isTyVar $
+        tyCoVarsOfType $
+        mkForAllTys (dropList tys tc_binders) tc_res_kind
 
 reifyPred :: TyCoRep.PredType -> TcM TH.Pred
 reifyPred ty

@@ -166,7 +166,7 @@ test('T7796',
      extra_clean(['T7796.prep']),
      run_command,
      ['$MAKE -s --no-print-directory T7796'])
-test('T5550', normal, compile, [''])
+test('T5550', omit_ways(prof_ways), compile, [''])
 test('T7865', normal, run_command, ['$MAKE -s --no-print-directory T7865'])
 test('T7785', only_ways(['optasm']), compile, ['-ddump-rules'])
 test('T7702', 
@@ -179,7 +179,7 @@ test('T7702',
           [(wordsize(32), 18, 70), (wordsize(64), 18, 70)]) 
      ], 
      compile, 
-     ['-v0 -package-db T7702plugin/pkg.T7702/local.package.conf -fplugin T7702Plugin -package T7702plugin ' + config.ghci_way_flags])
+     ['-v0 -package-db T7702plugin/pkg.T7702/local.package.conf -fplugin T7702Plugin -package T7702plugin ' + config.plugin_way_flags])
 
 test('T7995',
      # RULE doesn't seem to fire unless optimizations are turned on.
@@ -229,3 +229,4 @@ test('T11155',
      run_command,
      ['$MAKE -s --no-print-directory T11155'])
 test('T11232', normal, compile, ['-O2'])
+test('T11562', normal, compile, ['-O2'])

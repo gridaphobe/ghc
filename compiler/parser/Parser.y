@@ -2241,10 +2241,12 @@ hpc_annot :: { Located ( (([AddAnn],SourceText),(StringLiteral,(Int,Int),(Int,In
                                          }
 
 fexp    :: { LHsExpr RdrName }
-        : fexp aexp                             { sLL $1 $> $ HsApp $1 $2 }
-        | 'static' aexp                         {% ams (sLL $1 $> $ HsStatic $2)
-                                                       [mj AnnStatic $1] }
-        | aexp                                  { $1 }
+        : fexp aexp                  { sLL $1 $> $ HsApp $1 $2 }
+        | fexp TYPEAPP atype         {% ams (sLL $1 $> $ HsAppType $1 (mkHsWildCardBndrs $3))
+                                            [mj AnnAt $2] }
+        | 'static' aexp              {% ams (sLL $1 $> $ HsStatic $2)
+                                            [mj AnnStatic $1] }
+        | aexp                       { $1 }
 
 aexp    :: { LHsExpr RdrName }
         : qvar '@' aexp         {% ams (sLL $1 $> $ EAsPat $1 $3) [mj AnnAt $2] }
@@ -2252,7 +2254,6 @@ aexp    :: { LHsExpr RdrName }
             -- Note [Lexing type applications] in Lexer.x
 
         | '~' aexp              {% ams (sLL $1 $> $ ELazyPat $2) [mj AnnTilde $1] }
-        | TYPEAPP atype         {% ams (sLL $1 $> $ HsType (mkHsWildCardBndrs $2)) [mj AnnAt $1] }
         | aexp1                 { $1 }
 
 aexp1   :: { LHsExpr RdrName }
@@ -2696,7 +2697,7 @@ fbind   :: { LHsRecField RdrName (LHsExpr RdrName) }
         : qvar '=' texp {% ams  (sLL $1 $> $ HsRecField (sL1 $1 $ mkFieldOcc $1) $3 False)
                                 [mj AnnEqual $2] }
                         -- RHS is a 'texp', allowing view patterns (Trac #6038)
-                        -- and, incidentaly, sections.  Eg
+                        -- and, incidentally, sections.  Eg
                         -- f (R { x = show -> s }) = ...
 
         | qvar          { sLL $1 $> $ HsRecField (sL1 $1 $ mkFieldOcc $1) placeHolderPunRhs True }

@@ -1,13 +1,12 @@
 SRC_HC_OPTS        = -O0 -H64m
 SRC_HC_OPTS_STAGE1 = -fllvm-fill-undef-with-garbage   # See Trac 11487
-GhcStage1HcOpts    = -O
+GhcStage1HcOpts    = -O -DDEBUG
 GhcStage2HcOpts    = -O -dcore-lint
 GhcLibHcOpts       = -O -dcore-lint
 BUILD_PROF_LIBS    = NO
 SplitObjs          = NO
 HADDOCK_DOCS       = YES
 BUILD_SPHINX_HTML  = YES
-BUILD_SPHINX_PS    = NO
 BUILD_SPHINX_PDF   = NO
 
 ifeq "$(ValidateHpc)" "YES"

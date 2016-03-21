@@ -137,8 +137,11 @@ solveSimpleGivens givens
   | null givens  -- Shortcut for common case
   = return emptyCts
   | otherwise
-  = do { go givens
-       ; takeGivenInsolubles }
+  = do { traceTcS "solveSimpleGivens {" (ppr givens)
+       ; go givens
+       ; given_insols <- takeGivenInsolubles
+       ; traceTcS "End solveSimpleGivens }" (text "Insoluble:" <+> pprCts given_insols)
+       ; return given_insols }
   where
     go givens = do { solveSimples (listToBag givens)
                    ; new_givens <- runTcPluginsGiven
@@ -149,10 +152,10 @@ solveSimpleWanteds :: Cts -> TcS WantedConstraints
 -- NB: 'simples' may contain /derived/ equalities, floated
 --     out from a nested implication. So don't discard deriveds!
 solveSimpleWanteds simples
-  = do { traceTcS "solveSimples {" (ppr simples)
+  = do { traceTcS "solveSimpleWanteds {" (ppr simples)
        ; dflags <- getDynFlags
        ; (n,wc) <- go 1 (solverIterations dflags) (emptyWC { wc_simple = simples })
-       ; traceTcS "solveSimples end }" $
+       ; traceTcS "solveSimpleWanteds end }" $
              vcat [ text "iterations =" <+> ppr n
                   , text "residual =" <+> ppr wc ]
        ; return wc }
@@ -375,10 +378,10 @@ runSolverPipeline :: [(String,SimplifierStage)] -- The pipeline
                   -> TcS ()
 -- Run this item down the pipeline, leaving behind new work and inerts
 runSolverPipeline pipeline workItem
-  = do { initial_is <- getTcSInerts
+  = do { wl <- getWorkList
        ; traceTcS "Start solver pipeline {" $
-                  vcat [ text "work item = " <+> ppr workItem
-                       , text "inerts    = " <+> ppr initial_is]
+                  vcat [ text "work item =" <+> ppr workItem
+                       , text "rest of worklist =" <+> ppr wl ]
 
        ; bumpStepCountTcS    -- One step for each constraint processed
        ; final_res  <- run_pipeline pipeline (ContinueWith workItem)
@@ -1524,47 +1527,39 @@ shortCutReduction :: CtEvidence -> TcTyVar -> TcCoercion
                   -> TyCon -> [TcType] -> TcS (StopOrContinue Ct)
 -- See Note [Top-level reductions for type functions]
 shortCutReduction old_ev fsk ax_co fam_tc tc_args
-  | isGiven old_ev
-  = ASSERT( ctEvEqRel old_ev == NomEq )
+  = ASSERT( ctEvEqRel old_ev == NomEq)
     do { (xis, cos) <- flattenManyNom old_ev tc_args
                -- ax_co :: F args ~ G tc_args
                -- cos   :: xis ~ tc_args
                -- old_ev :: F args ~ fsk
                -- G cos ; sym ax_co ; old_ev :: G xis ~ fsk
 
-       ; new_ev <- newGivenEvVar deeper_loc
+       ; new_ev <- case ctEvFlavour old_ev of
+           Given -> newGivenEvVar deeper_loc
                          ( mkPrimEqPred (mkTyConApp fam_tc xis) (mkTyVarTy fsk)
                          , EvCoercion (mkTcTyConAppCo Nominal fam_tc cos
                                         `mkTcTransCo` mkTcSymCo ax_co
                                         `mkTcTransCo` ctEvCoercion old_ev) )
 
-       ; let new_ct = CFunEqCan { cc_ev = new_ev, cc_fun = fam_tc, cc_tyargs = xis, cc_fsk = fsk }
-       ; updWorkListTcS (extendWorkListFunEq new_ct)
-       ; stopWith old_ev "Fun/Top (given, shortcut)" }
+           Derived -> newDerivedNC deeper_loc $
+                      mkPrimEqPred (mkTyConApp fam_tc xis)
+                                   (mkTyVarTy fsk)
 
-  | otherwise
-  = ASSERT( not (isDerived old_ev) )   -- Caller ensures this
-    ASSERT( ctEvEqRel old_ev == NomEq )
-    do { (xis, cos) <- flattenManyNom old_ev tc_args
-               -- ax_co :: F args ~ G tc_args
-               -- cos   :: xis ~ tc_args
-               -- G cos ; sym ax_co ; old_ev :: G xis ~ fsk
-               -- new_ev :: G xis ~ fsk
-               -- old_ev :: F args ~ fsk := ax_co ; sym (G cos) ; new_ev
-
-       ; (new_ev, new_co) <- newWantedEq deeper_loc Nominal
-                                     (mkTyConApp fam_tc xis) (mkTyVarTy fsk)
-       ; setWantedEq (ctev_dest old_ev)
-                     (ax_co `mkTcTransCo` mkTcSymCo (mkTcTyConAppCo Nominal fam_tc cos)
-                            `mkTcTransCo` new_co)
+           Wanted ->
+             do { (new_ev, new_co) <- newWantedEq deeper_loc Nominal
+                                        (mkTyConApp fam_tc xis) (mkTyVarTy fsk)
+                ; setWantedEq (ctev_dest old_ev) $
+                     ax_co `mkTcTransCo` mkTcSymCo (mkTcTyConAppCo Nominal
+                                                      fam_tc cos)
+                           `mkTcTransCo` new_co
+                ; return new_ev }
 
        ; let new_ct = CFunEqCan { cc_ev = new_ev, cc_fun = fam_tc
                                 , cc_tyargs = xis, cc_fsk = fsk }
        ; updWorkListTcS (extendWorkListFunEq new_ct)
-       ; stopWith old_ev "Fun/Top (wanted, shortcut)" }
+       ; stopWith old_ev "Fun/Top (shortcut)" }
   where
-    loc = ctEvLoc old_ev
-    deeper_loc = bumpCtLocDepth loc
+    deeper_loc = bumpCtLocDepth (ctEvLoc old_ev)
 
 dischargeFmv :: CtEvidence -> TcTyVar -> TcCoercion -> TcType -> TcS ()
 -- (dischargeFmv x fmv co ty)
@@ -2024,7 +2019,7 @@ onlyNamedBndrsApplied tc ks
  = all isNamedBinder used_bndrs &&
    not (any isNamedBinder leftover_bndrs)
  where
-   (bndrs, _)                   = splitPiTys (tyConKind tc)
+   bndrs                        = tyConBinders tc
    (used_bndrs, leftover_bndrs) = splitAtList ks bndrs
 
 doTyApp :: Class -> Type -> Type -> KindOrType -> TcS LookupInstResult

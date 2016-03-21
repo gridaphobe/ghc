@@ -20,13 +20,13 @@ which deal with the instantiated versions are located elsewhere:
 
 module HsUtils(
   -- Terms
-  mkHsPar, mkHsApp, mkHsConApp, mkSimpleHsAlt,
+  mkHsPar, mkHsApp, mkHsAppType, mkHsAppTypeOut, mkHsConApp, mkSimpleHsAlt,
   mkSimpleMatch, unguardedGRHSs, unguardedRHS,
   mkMatchGroup, mkMatchGroupName, mkMatch, mkHsLam, mkHsIf,
   mkHsWrap, mkLHsWrap, mkHsWrapCo, mkHsWrapCoR, mkLHsWrapCo,
   mkHsDictLet, mkHsLams,
   mkHsOpApp, mkHsDo, mkHsComp, mkHsWrapPat, mkHsWrapPatCo,
-  mkLHsPar, mkHsCmdWrap, mkLHsCmdWrap, isLHsTypeExpr_maybe, isLHsTypeExpr,
+  mkLHsPar, mkHsCmdWrap, mkLHsCmdWrap,
 
   nlHsTyApp, nlHsTyApps, nlHsVar, nlHsLit, nlHsApp, nlHsApps, nlHsSyntaxApps,
   nlHsIntLit, nlHsVarApps,
@@ -56,8 +56,6 @@ module HsUtils(
   mkHsAppTy, mkHsAppTys, userHsTyVarBndrs, userHsLTyVarBndrs,
   mkLHsSigType, mkLHsSigWcType, mkClassOpSigs,
   nlHsAppTy, nlHsTyVar, nlHsFunTy, nlHsTyConApp,
-  getAppsTyHead_maybe, hsTyGetAppHead_maybe, splitHsAppsTy,
-  getLHsInstDeclClass_maybe,
 
   -- Stmts
   mkTransformStmt, mkTransformByStmt, mkBodyStmt, mkBindStmt, mkTcBindStmt,
@@ -168,14 +166,14 @@ mkMatchGroupName origin matches = MG { mg_alts = mkLocatedList matches
                                      , mg_res_ty = placeHolderType
                                      , mg_origin = origin }
 
-mkHsAppTy :: LHsType name -> LHsType name -> LHsType name
-mkHsAppTy t1 t2 = addCLoc t1 t2 (HsAppTy t1 t2)
-
-mkHsAppTys :: LHsType name -> [LHsType name] -> LHsType name
-mkHsAppTys = foldl mkHsAppTy
-
 mkHsApp :: LHsExpr name -> LHsExpr name -> LHsExpr name
 mkHsApp e1 e2 = addCLoc e1 e2 (HsApp e1 e2)
+
+mkHsAppType :: LHsExpr name -> LHsWcType name -> LHsExpr name
+mkHsAppType e t = addCLoc e (hswc_body t) (HsAppType e t)
+
+mkHsAppTypeOut :: LHsExpr Id -> LHsWcType Name -> LHsExpr Id
+mkHsAppTypeOut e t = addCLoc e (hswc_body t) (HsAppTypeOut e t)
 
 mkHsLam :: [LPat RdrName] -> LHsExpr RdrName -> LHsExpr RdrName
 mkHsLam pats body = mkHsPar (L (getLoc body) (HsLam matches))
@@ -465,21 +463,6 @@ nlHsFunTy a b           = noLoc (HsFunTy a b)
 
 nlHsTyConApp :: name -> [LHsType name] -> LHsType name
 nlHsTyConApp tycon tys  = foldl nlHsAppTy (nlHsTyVar tycon) tys
-
--- | Extract a type argument from an HsExpr, with the list of wildcards in
--- the type
-isLHsTypeExpr_maybe :: LHsExpr name -> Maybe (LHsWcType name)
-isLHsTypeExpr_maybe (L _ (HsPar e))       = isLHsTypeExpr_maybe e
-isLHsTypeExpr_maybe (L _ (HsType ty))     = Just ty
-  -- the HsTypeOut case is ill-typed. We never need it here anyway.
-isLHsTypeExpr_maybe _                     = Nothing
-
--- | Is an expression a visible type application?
-isLHsTypeExpr :: LHsExpr name -> Bool
-isLHsTypeExpr (L _ (HsPar e))     = isLHsTypeExpr e
-isLHsTypeExpr (L _ (HsType _))    = True
-isLHsTypeExpr (L _ (HsTypeOut _)) = True
-isLHsTypeExpr _                   = False
 
 {-
 Tuples.  All these functions are *pre-typechecker* because they lack
@@ -1140,61 +1123,3 @@ lPatImplicits = hs_lpat
                                                                      (unLoc fld)
                                                           pat_explicit = maybe True (i<) (rec_dotdot fs)]
     details (InfixCon p1 p2) = hs_lpat p1 `unionNameSet` hs_lpat p2
-
-{-
-************************************************************************
-*                                                                      *
-   Dealing with HsAppsTy
-*                                                                      *
-************************************************************************
--}
-
--- | Retrieves the head of an HsAppsTy, if this can be done unambiguously,
--- without consulting fixities.
-getAppsTyHead_maybe :: [LHsAppType name] -> Maybe (LHsType name, [LHsType name])
-getAppsTyHead_maybe tys = case splitHsAppsTy tys of
-  ([app1:apps], []) ->  -- no symbols, some normal types
-    Just (mkHsAppTys app1 apps, [])
-  ([app1l:appsl, app1r:appsr], [L loc op]) ->  -- one operator
-    Just (L loc (HsTyVar (L loc op)), [mkHsAppTys app1l appsl, mkHsAppTys app1r appsr])
-  _ -> -- can't figure it out
-    Nothing
-
--- | Splits a [HsAppType name] (the payload of an HsAppsTy) into regions of prefix
--- types (normal types) and infix operators.
--- If @splitHsAppsTy tys = (non_syms, syms)@, then @tys@ starts with the first
--- element of @non_syms@ followed by the first element of @syms@ followed by
--- the next element of @non_syms@, etc. It is guaranteed that the non_syms list
--- has one more element than the syms list.
-splitHsAppsTy :: [LHsAppType name] -> ([[LHsType name]], [Located name])
-splitHsAppsTy = go [] [] []
-  where
-    go acc acc_non acc_sym [] = (reverse (reverse acc : acc_non), reverse acc_sym)
-    go acc acc_non acc_sym (L _ (HsAppPrefix ty) : rest)
-      = go (ty : acc) acc_non acc_sym rest
-    go acc acc_non acc_sym (L _ (HsAppInfix op) : rest)
-      = go [] (reverse acc : acc_non) (op : acc_sym) rest
-
--- retrieve the name of the "head" of a nested type application
--- somewhat like splitHsAppTys, but a little more thorough
--- used to examine the result of a GADT-like datacon, so it doesn't handle
--- *all* cases (like lists, tuples, (~), etc.)
-hsTyGetAppHead_maybe :: LHsType name -> Maybe (Located name, [LHsType name])
-hsTyGetAppHead_maybe = go []
-  where
-    go tys (L _ (HsTyVar ln))           = Just (ln, tys)
-    go tys (L _ (HsAppsTy apps))
-      | Just (head, args) <- getAppsTyHead_maybe apps
-                                         = go (args ++ tys) head
-    go tys (L _ (HsAppTy l r))           = go (r : tys) l
-    go tys (L _ (HsOpTy l (L loc n) r))  = Just (L loc n, l : r : tys)
-    go tys (L _ (HsParTy t))             = go tys t
-    go tys (L _ (HsKindSig t _))         = go tys t
-    go _   _                             = Nothing
-
-getLHsInstDeclClass_maybe :: LHsSigType name -> Maybe (Located name)
--- Works on (HsSigType RdrName)
-getLHsInstDeclClass_maybe inst_ty
-  = do { let (_, tau) = splitLHsQualTy (hsSigType inst_ty)
-       ; (cls, _) <- hsTyGetAppHead_maybe tau
-       ; return cls }

@@ -28,8 +28,8 @@ module GHC.Exception
        , divZeroException, overflowException, ratioZeroDenomException
        , errorCallException, errorCallWithCallStackException
          -- re-export CallStack and SrcLoc from GHC.Types
-       , CallStack, getCallStack, prettyCallStack, prettyCallStackLines
-       , showCCSStack
+       , CallStack, fromCallSiteList, getCallStack, prettyCallStack
+       , prettyCallStackLines, showCCSStack
        , SrcLoc(..), prettySrcLoc
        ) where
 
@@ -202,7 +202,7 @@ showCCSStack stk = "CallStack (from -prof):" : map ("  " ++) (reverse stk)
 
 -- | Pretty print a 'SrcLoc'.
 --
--- @since 4.8.1.0
+-- @since 4.9.0.0
 prettySrcLoc :: SrcLoc -> String
 prettySrcLoc SrcLoc {..}
   = foldr (++) ""
@@ -214,7 +214,7 @@ prettySrcLoc SrcLoc {..}
 
 -- | Pretty print a 'CallStack'.
 --
--- @since 4.8.1.0
+-- @since 4.9.0.0
 prettyCallStack :: CallStack -> String
 prettyCallStack = intercalate "\n" . prettyCallStackLines
 
