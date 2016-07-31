@@ -42,6 +42,7 @@ import TysPrim ( mkProxyPrimTy )
 import TyCon
 import TcEvidence
 import TcType
+import TcRnMonad
 import Type
 import Coercion
 import TysWiredIn ( typeNatKind, typeSymbolKind )
@@ -62,7 +63,6 @@ import BasicTypes hiding ( TopLevel )
 import DynFlags
 import FastString
 import Util
-import MonadUtils
 import qualified GHC.LanguageExtensions as LangExt
 import Control.Monad
 
@@ -1086,7 +1086,7 @@ dsEvTerm (EvId v)           = return (Var v)
 dsEvTerm (EvCallStack cs)   = dsEvCallStack cs
 dsEvTerm (EvTypeable ty ev) = dsEvTypeable ty ev
 dsEvTerm (EvLit (EvNum n))  = mkIntegerExpr n
-dsEvTerm (EvLit (EvStr s))  = mkStringExprFS s
+dsEvTerm (EvLit (EvStr s))  = mkStringExprFSDs s
 
 dsEvTerm (EvCast tm co)
   = do { tm' <- dsEvTerm tm
@@ -1230,11 +1230,11 @@ dsEvCallStack cs = do
   df            <- getDynFlags
   m             <- getModule
   srcLocDataCon <- dsLookupDataCon srcLocDataConName
-  let mkSrcLoc l =
+  let mkSrcLoc l = bindExprAtTopLevel =<<
         liftM (mkCoreConApps srcLocDataCon)
-              (sequence [ mkStringExprFS (unitIdFS $ moduleUnitId m)
-                        , mkStringExprFS (moduleNameFS $ moduleName m)
-                        , mkStringExprFS (srcSpanFile l)
+              (sequence [ mkStringExprFSDs (unitIdFS $ moduleUnitId m)
+                        , mkStringExprFSDs (moduleNameFS $ moduleName m)
+                        , mkStringExprFSDs (srcSpanFile l)
                         , return $ mkIntExprInt df (srcSpanStartLine l)
                         , return $ mkIntExprInt df (srcSpanStartCol l)
                         , return $ mkIntExprInt df (srcSpanEndLine l)
@@ -1248,7 +1248,7 @@ dsEvCallStack cs = do
         mkCoreApps (Var pushCSVar) [mkCoreTup [name, loc], rest]
 
   let mkPush name loc tm = do
-        nameExpr <- mkStringExprFS name
+        nameExpr <- mkStringExprFSDs name
         locExpr <- mkSrcLoc loc
         case tm of
           EvCallStack EvCsEmpty -> return (pushCS nameExpr locExpr emptyCS)
@@ -1259,6 +1259,7 @@ dsEvCallStack cs = do
                   -- See Note [Overview of implicit CallStacks]
                   let ip_co = unwrapIP (exprType tmExpr)
                   return (pushCS nameExpr locExpr (mkCastDs tmExpr ip_co))
+
   case cs of
     EvCsPushCall name loc tm -> mkPush (occNameFS $ getOccName name) loc tm
     EvCsEmpty -> return emptyCS

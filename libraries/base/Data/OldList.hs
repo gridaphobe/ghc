@@ -1129,9 +1129,9 @@ unwords (w:ws)          = w ++ go ws
 -- the words are on the short side.
 {-# RULES
 "unwords" [~1] forall ws .
-   unwords ws = tailUnwords (foldr unwordsFB "" ws)
+   unwords ws = tailUnwords (foldr unwordsFB [] ws)
 "unwordsList" [1] forall ws .
-   tailUnwords (foldr unwordsFB "" ws) = unwords ws
+   tailUnwords (foldr unwordsFB [] ws) = unwords ws
  #-}
 
 {-# INLINE [0] tailUnwords #-}

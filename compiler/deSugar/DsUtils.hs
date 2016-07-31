@@ -25,6 +25,8 @@ module DsUtils (
         wrapBind, wrapBinds,
 
         mkErrorAppDs, mkCoreAppDs, mkCoreAppsDs, mkCastDs,
+        mkStringExprDs, mkStringExprFSDs,
+        bindExprAtTopLevel,
 
         seqVar,
 
@@ -73,11 +75,14 @@ import SrcLoc
 import Util
 import DynFlags
 import FastString
+import Data.IORef
+import TcRnMonad
 import qualified GHC.LanguageExtensions as LangExt
 
 import TcEvidence
 
 import Control.Monad    ( zipWithM )
+import Data.List        ( find )
 
 {-
 ************************************************************************
@@ -565,6 +570,38 @@ mkCastDs :: CoreExpr -> Coercion -> CoreExpr
 -- CoreUtils.mkCast; and we do less peephole optimisation too
 mkCastDs e co | isReflCo co = e
               | otherwise   = Cast e co
+
+-- | Like 'mkStringExpr' except it makes the string a new top-level binder.
+mkStringExprDs :: String -> DsM CoreExpr
+mkStringExprDs = mkStringExprFSDs . fsLit
+
+-- | Like 'mkStringExprFS' except it makes the string a new top-level binder.
+mkStringExprFSDs :: FastString -> DsM CoreExpr
+mkStringExprFSDs str = do
+  str_expr <- mkStringExprFS str
+  bindExprAtTopLevel str_expr
+
+-- | Attempt to bind an expression at the top level.
+--
+-- @bindExprAtTopLevel e@ returns a @Var v@ where @v@ is bound to @e@
+-- if we are compiling a whole module.
+-- If we are compiling an individual expression, e.g. in GHCi,
+-- it returns @e@ unmodified.
+bindExprAtTopLevel :: CoreExpr -> DsM CoreExpr
+-- see Note [Adding Top-Level Binders in the Desguarer]
+bindExprAtTopLevel expr = do
+  top_binds_var_maybe <- ds_top_binds <$> getGblEnv
+  case top_binds_var_maybe of
+    Nothing
+      -> return expr
+    Just var -> do
+      top_binds <- liftIO $ readIORef var
+      case find (cheapEqExpr expr . snd) top_binds of
+       Just (id, _) -> return (Var id)
+       Nothing      -> do id <- newSysLocalDs (exprType expr)
+                          liftIO $ modifyIORef var ((id, expr) :)
+                          return (Var id)
+
 
 {-
 ************************************************************************

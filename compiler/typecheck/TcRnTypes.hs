@@ -336,7 +336,37 @@ data DsGblEnv
                                                 -- exported entities of 'Data.Array.Parallel' iff
                                                 -- '-XParallelArrays' was given; otherwise, empty
         , ds_parr_bi :: PArrBuiltin             -- desugarar names for '-XParallelArrays'
+        , ds_top_binds :: Maybe (IORef [(Id, CoreExpr)])
+          -- extra top-level bindings added by the desugarer, e.g. string literals and callstacks
+          -- see Note [Adding Top-Level Bindings in the Desugarer]
         }
+
+-- Note [Adding Top-Level Bindings in the Desugarer]
+-- ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+-- Inlining can cause wasteful duplication of constant values like
+-- String literals or CallStacks. For example, if we have a function
+-- that adds a common prefix to an error message
+--
+--   myError msg = error ("some header: " ++ msg)
+--
+-- each time GHC inlines myError we will get a duplicate copy of the
+-- "some header: " literal, which can lead to a sizeable increase in
+-- binary size.
+--
+-- To avoid this, we give the desugarer the ability to add new top-level
+-- bindings, which are stored in the ds_top_binds field of the DsGblEnv.
+--
+-- We call the desugarer in two contexts: compiling an entire module, and
+-- compiling and individual expression (e.g. for ghci). In the context of
+-- an individual expression it makes no sense to add top-level bindings,
+-- so the ds_top_binds field is a Maybe.
+--
+-- The function DsUtils.bindExprAtTopLevel takes care of determining
+-- whether we can actually create a new binding, and returns a Var if
+-- able, and the original Expr otherwise. The function DsMonad.withTopBinds
+-- initializes the ds_top_binds field to a fresh IORef for the duration
+-- of the wrapped action, and returns a pair of the action's result and
+-- any added top-level binders.
 
 instance ContainsModule DsGblEnv where
     extractModule = ds_mod
