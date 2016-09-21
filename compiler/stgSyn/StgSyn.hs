@@ -400,11 +400,14 @@ The second flavour of right-hand-side is for constructors (simple but important)
                          -- are not allocated.
         [GenStgArg occ]  -- Args
 
+  | StgRhsLit Literal -- should only be a String literal!
+
 stgRhsArity :: StgRhs -> Int
 stgRhsArity (StgRhsClosure _ _ _ _ bndrs _)
   = ASSERT( all isId bndrs ) length bndrs
   -- The arity never includes type parameters, but they should have gone by now
 stgRhsArity (StgRhsCon _ _ _) = 0
+stgRhsArity (StgRhsLit _) = 0
 
 -- Note [CAF consistency]
 -- ~~~~~~~~~~~~~~~~~~~~~~
@@ -431,6 +434,7 @@ topRhsHasCafRefs (StgRhsClosure _ _ _ upd _ body)
     isUpdatable upd || exprHasCafRefs body
 topRhsHasCafRefs (StgRhsCon _ _ args)
   = any stgArgHasCafRefs args
+topRhsHasCafRefs (StgRhsLit _) = False
 
 exprHasCafRefs :: GenStgExpr bndr Id -> Bool
 exprHasCafRefs (StgApp f args)
@@ -463,6 +467,8 @@ rhsHasCafRefs (StgRhsClosure _ _ _ _ _ body)
   = exprHasCafRefs body
 rhsHasCafRefs (StgRhsCon _ _ args)
   = any stgArgHasCafRefs args
+rhsHasCafRefs (StgRhsLit _)
+  = False
 
 altHasCafRefs :: GenStgAlt bndr Id -> Bool
 altHasCafRefs (_, _, rhs) = exprHasCafRefs rhs
@@ -771,3 +777,6 @@ pprStgRhs (StgRhsClosure cc bi free_vars upd_flag args body)
 pprStgRhs (StgRhsCon cc con args)
   = hcat [ ppr cc,
            space, ppr con, text "! ", brackets (interppSP args)]
+
+pprStgRhs (StgRhsLit lit)
+  = ppr lit

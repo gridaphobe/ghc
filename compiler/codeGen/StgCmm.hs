@@ -41,10 +41,13 @@ import Module
 import Outputable
 import Stream
 import BasicTypes
+import Literal
+import Unique
 
 import OrdList
 import MkGraph
 
+import qualified Data.ByteString as BS
 import Data.IORef
 import Control.Monad (when,void)
 import Util
@@ -146,6 +149,18 @@ cgTopRhs dflags rec bndr (StgRhsClosure cc bi fvs upd_flag args body)
   = ASSERT(null fvs)    -- There should be no free variables
     cgTopRhsClosure dflags rec bndr cc bi upd_flag args body
 
+cgTopRhs dflags _rec bndr (StgRhsLit (MachStr bs))
+  = let id_info = litIdInfo dflags bndr (mkLFArgument bndr) (CmmLabel lbl)
+    in (id_info, gen_code)
+  where
+  lbl = mkStringLitLabel (getUnique bndr)
+  --lbl = mkClosureLabel (idName bndr) (idCafInfo bndr)
+  gen_code = do
+    -- cmm_lit <- cgLit lit
+    -- _ <- emitDataLits lbl [ cmm_lit]
+    _ <- emitDecl (CmmData (Section ReadOnlyData lbl)
+                    (Statics lbl [CmmString (BS.unpack bs)]))
+    return ()
 
 ---------------------------------------------------------------
 --      Module initialisation code

@@ -37,7 +37,7 @@ import CoreUtils
 import CoreArity
 --import PrimOp           ( tagToEnumKey ) -- temporalily commented out. See #8326
 import Rules            ( mkRuleInfo, lookupRule, getRules )
-import TysPrim          ( voidPrimTy ) --, intPrimTy ) -- temporalily commented out. See #8326
+import TysPrim          ( voidPrimTy, addrPrimTy ) --, intPrimTy ) -- temporalily commented out. See #8326
 import BasicTypes       ( TopLevelFlag(..), isTopLevel, RecFlag(..) )
 import MonadUtils       ( foldlM, mapAccumLM, liftIO )
 import Maybes           ( orElse )
@@ -606,7 +606,7 @@ bindingOk :: TopLevelFlag -> CoreExpr -> Type -> Bool
 -- True iff we can have a binding of this expression at this level
 -- Precondition: the type is the type of the expression
 bindingOk top_lvl _ expr_ty
-  | isTopLevel top_lvl = not (isUnliftedType expr_ty)
+  | isTopLevel top_lvl = not (isUnliftedType expr_ty) || expr_ty `eqType` addrPrimTy
   | otherwise          = True
 
 {-

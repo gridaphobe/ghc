@@ -26,6 +26,7 @@ import Control.Monad (liftM, ap)
 --     - invariant on CmmBlock in CmmExpr (see comment there)
 --     - check for branches to blocks that don't exist
 --     - check types
+--     - invariant that top level primitive strings are literals (not computations)
 
 -- -----------------------------------------------------------------------------
 -- Exported entry points:

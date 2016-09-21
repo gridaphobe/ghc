@@ -291,6 +291,8 @@ unariseRhs rho (StgRhsCon ccs con args)
   = ASSERT(not (isUnboxedTupleCon con || isUnboxedSumCon con))
     return (StgRhsCon ccs con (unariseConArgs rho args))
 
+unariseRhs rho (StgRhsLit lit) = return (StgRhsLit lit)
+
 --------------------------------------------------------------------------------
 
 unariseExpr :: UnariseEnv -> StgExpr -> UniqSM StgExpr

@@ -215,7 +215,7 @@ coreTopBindToStg dflags this_mod env body_fvs (NonRec id rhs)
 
         bind = StgNonRec id stg_rhs
     in
-    ASSERT2(consistentCafInfo id bind, ppr id )
+    ASSERT2(consistentCafInfo id bind, ppr id <+> ppr bind)
       -- NB: previously the assertion printed 'rhs' and 'bind'
       --     as well as 'id', but that led to a black hole
       --     where printing the assertion error tripped the
@@ -776,6 +776,8 @@ mkStgRhs' con_updateable rhs_fvs bndr binder_info rhs
   = -- CorePrep does this right, but just to make sure
     ASSERT(not (isUnboxedTupleCon con || isUnboxedSumCon con))
     StgRhsCon noCCS con args
+  | StgLit lit@(MachStr _) <- unticked_rhs
+  = StgRhsLit lit
   | otherwise
   = StgRhsClosure noCCS binder_info
                    (getFVs rhs_fvs)

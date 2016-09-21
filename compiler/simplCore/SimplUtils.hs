@@ -60,6 +60,7 @@ import Util
 import MonadUtils
 import Outputable
 import Pair
+import TysPrim
 
 import Control.Monad    ( when )
 
@@ -1022,6 +1023,7 @@ preInlineUnconditionally dflags env top_lvl bndr rhs
   | isTopLevel top_lvl && isBottomingId bndr = False -- Note [Top-level bottoming Ids]
   | not (gopt Opt_SimplPreInlining dflags)   = False
   | isCoVar bndr                             = False -- Note [Do not inline CoVars unconditionally]
+  | addrPrimTy `eqType` varType bndr         = False -- Do not inline primitive string literals
   | otherwise = case idOccInfo bndr of
                   IAmDead                    -> True -- Happens in ((\x.1) v)
                   OneOcc in_lam True int_cxt -> try_once in_lam int_cxt

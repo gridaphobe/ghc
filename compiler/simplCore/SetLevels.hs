@@ -82,7 +82,7 @@ import Literal          ( litIsTrivial )
 import Demand           ( StrictSig )
 import Name             ( getOccName, mkSystemVarName )
 import OccName          ( occNameString )
-import Type             ( isUnliftedType, Type, mkLamTypes )
+import Type             ( isUnliftedType, Type, mkLamTypes, eqType )
 import BasicTypes       ( Arity, RecFlag(..) )
 import UniqSupply
 import Util
@@ -90,6 +90,7 @@ import Outputable
 import FastString
 import UniqDFM
 import FV
+import TysPrim          ( addrPrimTy )
 import Data.Maybe
 
 {-
@@ -483,7 +484,7 @@ lvlMFE True env e@(_, AnnCase {})
 lvlMFE strict_ctxt env ann_expr
   |  floatTopLvlOnly env && not (isTopLvl dest_lvl)
          -- Only floating to the top level is allowed.
-  || isUnliftedType (exprType expr)
+  || isUnliftedType (exprType expr) && not (addrPrimTy `eqType` (exprType expr))
          -- Can't let-bind it; see Note [Unlifted MFEs]
          -- This includes coercions, which we don't want to float anyway
          -- NB: no need to substitute cos isUnliftedType doesn't change

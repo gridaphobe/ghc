@@ -39,6 +39,7 @@ import VarEnv
 import Id
 import IdInfo
 import TysWiredIn
+import TysPrim
 import DataCon
 import PrimOp
 import BasicTypes
@@ -1093,7 +1094,8 @@ mkFloat dmd is_unlifted bndr rhs
   where
     is_hnf    = exprIsHNF rhs
     is_strict = isStrictDmd dmd
-    use_case  = is_unlifted || is_strict && not is_hnf
+    use_case  = is_unlifted && not (addrPrimTy `eqType` varType bndr)
+                || is_strict && not is_hnf
                 -- Don't make a case for a value binding,
                 -- even if it's strict.  Otherwise we get
                 --      case (\x -> e) of ...!
