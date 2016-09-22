@@ -1094,7 +1094,7 @@ mkFloat dmd is_unlifted bndr rhs
   where
     is_hnf    = exprIsHNF rhs
     is_strict = isStrictDmd dmd
-    use_case  = is_unlifted && not (addrPrimTy `eqType` varType bndr)
+    use_case  = is_unlifted && not (isLitStr rhs)
                 || is_strict && not is_hnf
                 -- Don't make a case for a value binding,
                 -- even if it's strict.  Otherwise we get

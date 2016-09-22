@@ -24,6 +24,7 @@ import StgCmmHpc
 import StgCmmTicky
 
 import Cmm
+import CmmUtils
 import CLabel
 
 import StgSyn
@@ -150,17 +151,11 @@ cgTopRhs dflags rec bndr (StgRhsClosure cc bi fvs upd_flag args body)
     cgTopRhsClosure dflags rec bndr cc bi upd_flag args body
 
 cgTopRhs dflags _rec bndr (StgRhsLit (MachStr bs))
-  = let id_info = litIdInfo dflags bndr (mkLFArgument bndr) (CmmLabel lbl)
-    in (id_info, gen_code)
+  = (id_info, gen_code)
   where
-  lbl = mkStringLitLabel (getUnique bndr)
-  --lbl = mkClosureLabel (idName bndr) (idCafInfo bndr)
-  gen_code = do
-    -- cmm_lit <- cgLit lit
-    -- _ <- emitDataLits lbl [ cmm_lit]
-    _ <- emitDecl (CmmData (Section ReadOnlyData lbl)
-                    (Statics lbl [CmmString (BS.unpack bs)]))
-    return ()
+  (CmmLabel lbl, decl) = mkByteStringCLit (getUnique bndr) (BS.unpack bs)
+  id_info = litIdInfo dflags bndr (mkLFArgument bndr) (CmmLabel lbl)
+  gen_code = emitDecl decl
 
 ---------------------------------------------------------------
 --      Module initialisation code
