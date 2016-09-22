@@ -605,8 +605,8 @@ makeTrivialWithInfo top_lvl env context info expr
 bindingOk :: TopLevelFlag -> CoreExpr -> Type -> Bool
 -- True iff we can have a binding of this expression at this level
 -- Precondition: the type is the type of the expression
-bindingOk top_lvl _ expr_ty
-  | isTopLevel top_lvl = not (isUnliftedType expr_ty) || expr_ty `eqType` addrPrimTy
+bindingOk top_lvl expr expr_ty
+  | isTopLevel top_lvl = not (isUnliftedType expr_ty) || isLitStr expr
   | otherwise          = True
 
 {-

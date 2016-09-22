@@ -40,6 +40,8 @@ module CoreSyn (
         isValArg, isTypeArg, isTyCoArg, valArgCount, valBndrCount,
         isRuntimeArg, isRuntimeVar,
 
+        isLitStr,
+
         tickishCounts, tickishScoped, tickishScopesLike, tickishFloatable,
         tickishCanSplit, mkNoCount, mkNoScope,
         tickishIsCode, tickishPlace,
@@ -1741,6 +1743,11 @@ valBndrCount = count isId
 -- | The number of argument expressions that are values rather than types at their top level
 valArgCount :: [Arg b] -> Int
 valArgCount = count isValArg
+
+-- | Returns @True@ iff the expression is a string literal.
+isLitStr :: Expr b -> Bool
+isLitStr (Lit (MachStr _)) = True
+isLitStr _                 = False
 
 {-
 ************************************************************************
