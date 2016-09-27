@@ -29,6 +29,7 @@ module CoreUtils (
         exprIsHNF, exprOkForSpeculation, exprOkForSideEffects, exprIsWorkFree,
         exprIsBig, exprIsConLike,
         rhsIsStatic, isCheapApp, isExpandableApp,
+        exprIsTopLevelBindable,
 
         -- * Equality
         cheapEqExpr, cheapEqExpr', eqExpr,
@@ -1514,6 +1515,10 @@ regarded as HNF if the expression they surround is HNF, because the
 tick is there to tell us that the expression was evaluated, so we
 don't want to discard a seq on it.
 -}
+
+exprIsTopLevelBindable :: CoreExpr -> Bool
+exprIsTopLevelBindable (Lit (MachStr _)) = True
+exprIsTopLevelBindable expr = not $ isUnliftedType (exprType expr)
 
 {-
 ************************************************************************

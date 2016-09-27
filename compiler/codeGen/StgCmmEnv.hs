@@ -17,7 +17,7 @@ module StgCmmEnv (
 
         addBindC, addBindsC,
 
-        bindArgsToRegs, bindToReg, rebindToReg,
+        bindArgsToRegs, bindToReg, rebindToReg, bindToStringLit,
         bindArgToReg, idToReg,
         getArgAmode, getNonVoidArgAmodes,
         getCgIdInfo,
@@ -44,6 +44,9 @@ import Outputable
 import StgSyn
 import UniqFM
 import VarEnv
+
+import Data.ByteString (ByteString)
+import qualified Data.ByteString as BS
 
 -------------------------------------
 --        Non-void types
@@ -197,6 +200,13 @@ rebindToReg :: NonVoid Id -> FCode LocalReg
 rebindToReg nvid@(NonVoid id)
   = do  { info <- getCgIdInfo id
         ; bindToReg nvid (cg_lf info) }
+
+bindToStringLit :: Id -> ByteString -> FCode ()
+-- Bind an Id to a string literal
+bindToStringLit id str
+  = do  { lit <- newByteStringCLit (BS.unpack str)
+        ; addBindC (mkCgIdInfo id (mkLFArgument id) (CmmLit lit))
+        }
 
 bindArgToReg :: NonVoid Id -> FCode LocalReg
 bindArgToReg nvid@(NonVoid id) = bindToReg nvid (mkLFArgument id)

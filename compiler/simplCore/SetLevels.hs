@@ -67,6 +67,7 @@ import CoreMonad        ( FloatOutSwitches(..) )
 import CoreUtils        ( exprType
                         , exprOkForSpeculation
                         , exprIsBottom
+                        , exprIsTopLevelBindable
                         , collectStaticPtrSatArgs
                         )
 import CoreArity        ( exprBotStrictness_maybe )
@@ -483,7 +484,7 @@ lvlMFE True env e@(_, AnnCase {})
 lvlMFE strict_ctxt env ann_expr
   |  floatTopLvlOnly env && not (isTopLvl dest_lvl)
          -- Only floating to the top level is allowed.
-  || isUnliftedType (exprType expr)
+  || not (exprIsTopLevelBindable expr)
          -- Can't let-bind it; see Note [Unlifted MFEs]
          -- This includes coercions, which we don't want to float anyway
          -- NB: no need to substitute cos isUnliftedType doesn't change

@@ -23,6 +23,7 @@ module StgCmmClosure (
         StandardFormInfo,        -- ...ditto...
         mkLFThunk, mkLFReEntrant, mkConLFInfo, mkSelectorLFInfo,
         mkApLFInfo, mkLFImported, mkLFArgument, mkLFLetNoEscape,
+        mkLFStringLit,
         lfDynTag,
         maybeIsLFCon, isLFThunk, isLFReEntrant, lfUpdatable,
 
@@ -288,6 +289,10 @@ mkLFImported id
   = mkLFArgument id -- Not sure of exact arity
   where
     arity = idFunRepArity id
+
+-------------
+mkLFStringLit :: LambdaFormInfo
+mkLFStringLit = LFUnlifted
 
 -----------------------------------------------------
 --                Dynamic pointer tagging
