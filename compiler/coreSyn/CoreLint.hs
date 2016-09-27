@@ -30,6 +30,7 @@ import Bag
 import Literal
 import DataCon
 import TysWiredIn
+import TysPrim
 import TcType ( isFloatingTy )
 import Var
 import VarEnv
@@ -484,9 +485,11 @@ lintSingleBinding top_lvl_flag rec_flag (binder,rhs)
             || (isNonRec rec_flag && exprOkForSpeculation rhs))
            (mkRhsPrimMsg binder rhs)
 
-        -- Check that if the binder is top-level or recursive, it's not demanded
+        -- Check that if the binder is top-level or recursive, it's not demanded.
+        -- Primitive string literals are exempt as there is no computation to perform.
        ; checkL (not (isStrictId binder)
-            || (isNonRec rec_flag && not (isTopLevel top_lvl_flag)))
+            || (isNonRec rec_flag && not (isTopLevel top_lvl_flag))
+            || isLitStr rhs)
            (mkStrictMsg binder)
 
         -- Check that if the binder is local, it is not marked as exported
@@ -496,6 +499,12 @@ lintSingleBinding top_lvl_flag rec_flag (binder,rhs)
         -- Check that if the binder is local, it does not have an external name
        ; checkL (not (isExternalName (Var.varName binder)) || isTopLevel top_lvl_flag)
            (mkNonTopExternalNameMsg binder)
+
+        -- Check that if the binder is at the top level and has type Addr#,
+        -- that it is a string literal
+       ; checkL (not (isTopLevel top_lvl_flag && binder_ty `eqType` addrPrimTy)
+                 || isLitStr rhs)
+           (mkTopNonLitStrMsg binder)
 
        ; flags <- getLintFlags
        ; when (lf_check_inline_loop_breakers flags
@@ -2025,6 +2034,10 @@ mkNonTopExportedMsg binder
 mkNonTopExternalNameMsg :: Id -> MsgDoc
 mkNonTopExternalNameMsg binder
   = hsep [text "Non-top-level binder has an external name:", ppr binder]
+
+mkTopNonLitStrMsg :: Id -> MsgDoc
+mkTopNonLitStrMsg binder
+  = hsep [text "Top-level Addr# binder has a non-literal rhs:", ppr binder]
 
 mkKindErrMsg :: TyVar -> Type -> MsgDoc
 mkKindErrMsg tyvar arg_ty
