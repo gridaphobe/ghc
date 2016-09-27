@@ -131,6 +131,9 @@ stgMassageForProfiling dflags mod_name _us stg_binds
         -- just slam in dontCareCostCentre
       = return (StgRhsCon dontCareCCS con args)
 
+    do_top_rhs _ (StgRhsLit lit)
+      = return (StgRhsLit lit)
+
     ------
     do_expr :: StgExpr -> MassageM StgExpr
 
@@ -212,6 +215,9 @@ stgMassageForProfiling dflags mod_name _us stg_binds
 
     do_rhs (StgRhsCon _ con args)
       = return (StgRhsCon currentCCS con args)
+
+    do_rhs (StgRhsLit lit)
+      = return (StgRhsLit lit)
 
 
 -- -----------------------------------------------------------------------------

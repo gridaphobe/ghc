@@ -16,7 +16,7 @@ import VarSet
 import DataCon
 import CoreSyn          ( AltCon(..) )
 import PrimOp           ( primOpType )
-import Literal          ( literalType )
+import Literal          ( literalType, Literal(..) )
 import Maybes
 import Name             ( getSrcLoc )
 import ErrUtils         ( MsgDoc, Severity(..), mkLocMessage )
@@ -144,6 +144,12 @@ lintStgRhs rhs@(StgRhsCon _ con args) = do
       MaybeT $ checkFunApp con_ty arg_tys (mkRhsConMsg con_ty arg_tys)
   where
     con_ty = dataConRepType con
+
+lintStgRhs rhs@(StgRhsLit lit) = do
+  case lit of
+    MachStr _ -> return ()
+    _ -> addErrL (text "StgRhsLit is not a string literal" $$ ppr rhs)
+  return (Just (literalType lit))
 
 lintStgExpr :: StgExpr -> LintM (Maybe Type) -- Just ty => type is exact
 

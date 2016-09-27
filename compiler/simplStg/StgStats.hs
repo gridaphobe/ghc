@@ -137,6 +137,9 @@ statRhs top (_, StgRhsClosure _ _ fv u _ body)
         SingleEntry -> SingleEntryBinds top
     )
 
+statRhs _ (_, StgRhsLit _)
+  = countOne Literals
+
 {-
 ************************************************************************
 *                                                                      *
