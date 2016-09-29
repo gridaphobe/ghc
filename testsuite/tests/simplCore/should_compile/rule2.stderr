@@ -10,14 +10,14 @@
 
 
 ==================== Grand total simplifier statistics ====================
-Total ticks:     13
+Total ticks:     20
 
 2 PreInlineUnconditionally
   1 f
   1 lvl
 1 UnfoldingDone 1 Roman.bar
 1 RuleFired 1 foo/bar
-1 LetFloatFromLet 1
+8 LetFloatFromLet 8
 1 EtaReduction 1 ds
 7 BetaReduction
   1 f
@@ -27,6 +27,6 @@ Total ticks:     13
   1 m
   1 b
   1 m
-9 SimplifierDone 9
+11 SimplifierDone 11
 
 
