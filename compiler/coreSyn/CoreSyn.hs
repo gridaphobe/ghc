@@ -183,9 +183,17 @@ These data types are the heart of the compiler
 --
 --    The right hand sides of all top-level and recursive @let@s
 --    /must/ be of lifted type (see "Type#type_classification" for
---    the meaning of /lifted/ vs. /unlifted/).
+--    the meaning of /lifted/ vs. /unlifted/), with two exceptions:
 --
---    See Note [CoreSyn let/app invariant]
+--    1. The right hand side of a top-level @let@ may be a primitive string literal
+--       (of type @Addr#@). This exception allows primitive string literals to
+--       be floated out to the top level. Without this, these literals may
+--       prevent floating of bindings that use them. See #8472.
+--
+--    2. The right hand side of a top-level @let@ may be a variable of type
+--       @Addr#@. Such a binding is usually a result of a CSE pass.
+--
+--    Also see Note [CoreSyn let/app invariant]
 --
 --    #type_let#
 --    We allow a /non-recursive/ let to bind a type variable, thus:
