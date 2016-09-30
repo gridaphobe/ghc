@@ -79,6 +79,7 @@ with respect to binder and occurrence information (just as in
 
 -- | A top-level binding.
 data GenStgTopBinding bndr occ
+-- See Note [CoreSyn top-level string literals]
   = StgTopLifted (GenStgBinding bndr occ)
   | StgTopStringLit bndr ByteString
 

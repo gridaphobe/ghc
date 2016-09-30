@@ -483,14 +483,15 @@ lintSingleBinding top_lvl_flag rec_flag (binder,rhs)
         -- See Note [CoreSyn let/app invariant] in CoreSyn
        ; checkL (not (isUnliftedType binder_ty)
             || (isNonRec rec_flag && exprOkForSpeculation rhs)
-            || isLitStr rhs || isVar rhs)
+            || isLitStrOrVar rhs)
            (mkRhsPrimMsg binder rhs)
 
         -- Check that if the binder is top-level or recursive, it's not demanded.
-        -- Primitive string literals are exempt as there is no computation to perform.
+        -- Primitive string literals are exempt as there is no computation to perform,
+        -- see Note [CoreSyn top-level string literals].
        ; checkL (not (isStrictId binder)
             || (isNonRec rec_flag && not (isTopLevel top_lvl_flag))
-            || isLitStr rhs || isVar rhs)
+            || isLitStrOrVar rhs)
            (mkStrictMsg binder)
 
         -- Check that if the binder is local, it is not marked as exported
@@ -502,9 +503,9 @@ lintSingleBinding top_lvl_flag rec_flag (binder,rhs)
            (mkNonTopExternalNameMsg binder)
 
         -- Check that if the binder is at the top level and has type Addr#,
-        -- that it is a string literal
+        -- that it is a string literal, see Note [CoreSyn top-level string literals].
        ; checkL (not (isTopLevel top_lvl_flag && binder_ty `eqType` addrPrimTy)
-                 || isLitStr rhs || isVar rhs)
+                 || isLitStrOrVar rhs)
            (mkTopNonLitStrMsg binder)
 
        ; flags <- getLintFlags
@@ -553,10 +554,12 @@ lintSingleBinding top_lvl_flag rec_flag (binder,rhs)
     lintBinder var | isId var  = lintIdBndr var $ \_ -> (return ())
                    | otherwise = return ()
 
-    isVar (Var _) = True
-    isVar _       = False
-    isLitStr (Lit (MachStr _)) = True
-    isLitStr _ = False
+    isLitStrOrVar (Lit (MachStr _))
+      = True
+    isLitStrOrVar (Var _)
+      = True
+    isLitStrOrVar _
+      = False
 
 -- | Checks the RHS of top-level bindings. It only differs from 'lintCoreExpr'
 -- in that it doesn't reject applications of the data constructor @StaticPtr@

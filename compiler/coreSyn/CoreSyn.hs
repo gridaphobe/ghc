@@ -183,7 +183,9 @@ These data types are the heart of the compiler
 --
 --    The right hand sides of all top-level and recursive @let@s
 --    /must/ be of lifted type (see "Type#type_classification" for
---    the meaning of /lifted/ vs. /unlifted/).
+--    the meaning of /lifted/ vs. /unlifted/). There is one exception
+--    to this rule, top-level @let@s are allowed to bind primitive
+--    string literals, see Note [CoreSyn top-level string literals].
 --
 --    See Note [CoreSyn let/app invariant]
 --
@@ -351,6 +353,36 @@ See #toplevel_invariant#
 Note [CoreSyn letrec invariant]
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 See #letrec_invariant#
+
+Note [CoreSyn top-level string literals]
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+As an exception to the usual rule that top-level binders must be lifted,
+we allow binding primitive string literals (of type Addr#) at the top-level.
+This allows us to share string literals earlier in the pipeline and crucially
+allows other optimizations in the Core2Core pipeline to fire. Consider,
+
+  f :: Int -> String
+  f n = let a::Addr# = "foo"
+        in let g y = ...a...g...
+        in g n
+
+We would like to float `g` out to the top, but cannot since it refers to `a`
+and top-level unlifted binders are not allowed. The solution is simply to
+allow top-level unlifted binders. We can't allow *any* unlifted expression at
+the top-level though, unlifted binders cannot be thunks, so we just allow
+string literals.
+
+To this end, we:
+
+- Add a new function CoreUtils.exprIsTopLevelBindable that checks if an Expr
+  is either lifted or a string literal, and update the checks in SetLevels.lvlMFE
+  and Simplify.bindingOk to allow floating string literals to the top.
+- Relax the checks in CoreLint.lintSingleBinding to allow top-level unlifted
+  binders, iff they are string literals.
+- Add a new StgSyn.GenStgTopBinding type to allow for top-level strings
+  at the STG-level. We do this instead of extending GenStgRhs because strings
+  should only be bound at the top level, not at any arbitrary let-binder.
+
 
 Note [CoreSyn let/app invariant]
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
