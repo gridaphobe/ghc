@@ -377,6 +377,7 @@ To this end, we:
 - Add a new function CoreUtils.exprIsTopLevelBindable that checks if an Expr
   is either lifted or a string literal, and update the checks in SetLevels.lvlMFE
   and Simplify.bindingOk to allow floating string literals to the top.
+- Prevent SimplUtils.preInlineUnconditionally from re-inlining a string literal.
 - Relax the checks in CoreLint.lintSingleBinding to allow top-level unlifted
   binders, iff they are string literals.
 - Add a new StgSyn.GenStgTopBinding type to allow for top-level strings

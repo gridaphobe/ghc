@@ -1,0 +1,79 @@
+
+==================== Tidy Core ====================
+Result size of Tidy Core = {terms: 91, types: 103, coercions: 7}
+
+-- RHS size: {terms: 1, types: 0, coercions: 0}
+$trModule4
+$trModule4 = "main"#
+
+-- RHS size: {terms: 2, types: 0, coercions: 0}
+$trModule3
+$trModule3 = TrNameS $trModule4
+
+-- RHS size: {terms: 1, types: 0, coercions: 0}
+$trModule2
+$trModule2 = "T8472"#
+
+-- RHS size: {terms: 2, types: 0, coercions: 0}
+$trModule1
+$trModule1 = TrNameS $trModule2
+
+-- RHS size: {terms: 3, types: 0, coercions: 0}
+$trModule
+$trModule = Module $trModule3 $trModule1
+
+-- RHS size: {terms: 1, types: 0, coercions: 0}
+t2
+t2 = "foo"#
+
+-- RHS size: {terms: 1, types: 0, coercions: 0}
+t1
+t1 = "bar"#
+
+-- RHS size: {terms: 63, types: 75, coercions: 7}
+$wt
+$wt =
+  \ w_s4AR ->
+    (# case w_s4AR of { (n_a3kF, f_a3kG) ->
+       (case n_a3kF of { I# x_a3Tx -> I# (+# (+# x_a3Tx 3#) 3#) },
+        (\ x_a3kJ s_a4k6 ->
+           case ((f_a3kG x_a3kJ) `cast` ...) s_a4k6 of
+           { (# ipv_a4k9, ipv1_a4ka #) ->
+           case hPutStr2
+                  stdout
+                  (case x_a3kJ of { I# y_a3TB ->
+                   case $w$cshowsPrec (plusAddr# t2 (+# 3# y_a3TB)) [] of
+                   { (# ww3_a4jW, ww4_a4jX #) ->
+                   : ww3_a4jW ww4_a4jX
+                   }
+                   })
+                  True
+                  ipv_a4k9
+           of
+           { (# ipv2_X4kG, ipv3_X4kI #) ->
+           hPutStr2
+             stdout
+             (case x_a3kJ of { I# y_a3TB ->
+              case $w$cshowsPrec (plusAddr# t1 (+# 3# y_a3TB)) [] of
+              { (# ww3_a4jW, ww4_a4jX #) ->
+              : ww3_a4jW ww4_a4jX
+              }
+              })
+             True
+             ipv2_X4kG
+           }
+           })
+        `cast` ...)
+       },
+       [] #)
+
+-- RHS size: {terms: 8, types: 11, coercions: 0}
+t
+t =
+  \ w_s4AR ->
+    case $wt w_s4AR of { (# ww1_s4AW, ww2_s4AX #) ->
+    : ww1_s4AW ww2_s4AX
+    }
+
+
+

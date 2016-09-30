@@ -76,7 +76,6 @@ import Cmm
 import BlockId
 import CLabel
 import Outputable
-import Unique
 import UniqSupply
 import DynFlags
 import Util
