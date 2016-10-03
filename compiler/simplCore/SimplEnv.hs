@@ -59,6 +59,7 @@ import BasicTypes
 import MonadUtils
 import Outputable
 import Util
+import Literal
 
 import Data.List
 
@@ -366,7 +367,8 @@ data Floats = Floats (OrdList OutBind) FloatFlag
         -- See Note [Simplifier floats]
 
 data FloatFlag
-  = FltLifted   -- All bindings are lifted and lazy
+  = FltLifted   -- All bindings are lifted and lazy *or*
+                --     consist of a single primitive string literal
                 --  Hence ok to float to top level, or recursive
 
   | FltOkSpec   -- All bindings are FltLifted *or*
@@ -429,6 +431,7 @@ unitFloat bind = Floats (unitOL bind) (flag bind)
     flag (Rec {})                = FltLifted
     flag (NonRec bndr rhs)
       | not (isStrictId bndr)    = FltLifted
+      | Lit (MachStr _) <- rhs   = FltLifted  -- String literals can be floated freely
       | exprOkForSpeculation rhs = FltOkSpec  -- Unlifted, and lifted but ok-for-spec (eg HNF)
       | otherwise                = ASSERT2( not (isUnliftedType (idType bndr)), ppr bndr )
                                    FltCareful

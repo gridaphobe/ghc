@@ -625,12 +625,14 @@ so we don't want to turn it into
 because we'll just end up inlining x back, and that makes the
 simplifier loop.  Better not to ANF-ise it at all.
 
-A case in point is literal strings (a MachStr is not regarded as
-trivial):
+Literal strings are an exception.
 
    foo = Ptr "blob"#
 
-We don't want to ANF-ise this.
+We want to turn this into:
+
+   foo1 = "blob"#
+   foo = Ptr foo1
 
 ************************************************************************
 *                                                                      *
