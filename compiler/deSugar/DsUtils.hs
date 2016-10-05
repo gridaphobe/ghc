@@ -82,7 +82,6 @@ import qualified GHC.LanguageExtensions as LangExt
 import TcEvidence
 
 import Control.Monad    ( zipWithM )
-import Data.List        ( find )
 
 {-
 ************************************************************************
@@ -595,10 +594,6 @@ bindExprAtTopLevel expr = do
     Nothing
       -> return expr
     Just var -> do
-      top_binds <- liftIO $ readIORef var
-      -- case find (cheapEqExpr expr . snd) top_binds of
-      --  Just (id, _) -> return (Var id)
-      --  Nothing      -> do
       id <- newSysLocalDs (exprType expr)
       liftIO $ modifyIORef var ((id, expr) :)
       return (Var id)

@@ -8,8 +8,8 @@ $wxs :: GHC.Prim.Int# -> ()
 [GblId, Arity=1, Caf=NoCafRefs, Str=<S,1*U>]
 $wxs =
   \ (ww :: GHC.Prim.Int#) ->
-    case ww of ds1 {
-      __DEFAULT -> $wxs (GHC.Prim.-# ds1 1#);
+    case ww of ds3 {
+      __DEFAULT -> $wxs (GHC.Prim.-# ds3 1#);
       1# -> GHC.Tuple.()
     }
 end Rec }

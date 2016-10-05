@@ -1,27 +1,39 @@
 [1 of 2] Compiling T10844a          ( T10844a.hs, T10844a.o )
 
 ==================== Tidy Core ====================
-Result size of Tidy Core = {terms: 87, types: 43, coercions: 9}
+Result size of Tidy Core = {terms: 101, types: 50, coercions: 9}
 
 -- RHS size: {terms: 3, types: 4, coercions: 2}
 foo
-foo = \ @ a_aqP tpl_B1 -> tpl_B1 `cast` ...
+foo = \ @ a_arH tpl_B1 -> tpl_B1 `cast` ...
+
+-- RHS size: {terms: 1, types: 0, coercions: 0}
+$fFooInt12
+$fFooInt12 = "main"#
 
 -- RHS size: {terms: 2, types: 0, coercions: 0}
 $trModule2
-$trModule2 = TrNameS "main"#
+$trModule2 = TrNameS $fFooInt12
+
+-- RHS size: {terms: 1, types: 0, coercions: 0}
+$fFooInt10
+$fFooInt10 = "T10844a"#
 
 -- RHS size: {terms: 2, types: 0, coercions: 0}
 $trModule1
-$trModule1 = TrNameS "T10844a"#
+$trModule1 = TrNameS $fFooInt10
 
 -- RHS size: {terms: 3, types: 0, coercions: 0}
 $trModule
 $trModule = Module $trModule2 $trModule1
 
+-- RHS size: {terms: 1, types: 0, coercions: 0}
+$tc'C:Foo2
+$tc'C:Foo2 = "'C:Foo"#
+
 -- RHS size: {terms: 2, types: 0, coercions: 0}
 $tc'C:Foo1
-$tc'C:Foo1 = TrNameS "'C:Foo"#
+$tc'C:Foo1 = TrNameS $tc'C:Foo2
 
 -- RHS size: {terms: 5, types: 0, coercions: 0}
 $tc'C:Foo
@@ -29,9 +41,13 @@ $tc'C:Foo =
   TyCon
     233533432778245908## 1742293306313839443## $trModule $tc'C:Foo1
 
+-- RHS size: {terms: 1, types: 0, coercions: 0}
+$tcFoo2
+$tcFoo2 = "Foo"#
+
 -- RHS size: {terms: 2, types: 0, coercions: 0}
 $tcFoo1
-$tcFoo1 = TrNameS "Foo"#
+$tcFoo1 = TrNameS $tcFoo2
 
 -- RHS size: {terms: 5, types: 0, coercions: 0}
 $tcFoo
@@ -39,66 +55,78 @@ $tcFoo =
   TyCon
     8250063231932161664## 13137098817658850007## $trModule $tcFoo1
 
--- RHS size: {terms: 2, types: 0, coercions: 0}
-$fFooInt6
-$fFooInt6 = unpackCString# "./T10844a.hs"#
+-- RHS size: {terms: 1, types: 0, coercions: 0}
+$fFooInt8
+$fFooInt8 = "./T10844a.hs"#
 
 -- RHS size: {terms: 2, types: 0, coercions: 0}
 $fFooInt7
-$fFooInt7 = unpackCString# "T10844a"#
-
--- RHS size: {terms: 2, types: 0, coercions: 0}
-$fFooInt8
-$fFooInt8 = unpackCString# "main"#
-
--- RHS size: {terms: 2, types: 0, coercions: 0}
-$fFooInt5
-$fFooInt5 = I# 6#
-
--- RHS size: {terms: 2, types: 0, coercions: 0}
-$fFooInt4
-$fFooInt4 = I# 13#
-
--- RHS size: {terms: 2, types: 0, coercions: 0}
-$fFooInt3
-$fFooInt3 = I# 24#
-
--- RHS size: {terms: 8, types: 0, coercions: 0}
-$fFooInt2
-$fFooInt2 =
-  SrcLoc
-    $fFooInt8
-    $fFooInt7
-    $fFooInt6
-    $fFooInt5
-    $fFooInt4
-    $fFooInt5
-    $fFooInt3
+$fFooInt7 = unpackCString# $fFooInt8
 
 -- RHS size: {terms: 2, types: 0, coercions: 0}
 $fFooInt9
-$fFooInt9 = unpackCString# "error"#
+$fFooInt9 = unpackCString# $fFooInt10
+
+-- RHS size: {terms: 2, types: 0, coercions: 0}
+$fFooInt11
+$fFooInt11 = unpackCString# $fFooInt12
+
+-- RHS size: {terms: 2, types: 0, coercions: 0}
+$fFooInt6
+$fFooInt6 = I# 6#
+
+-- RHS size: {terms: 2, types: 0, coercions: 0}
+$fFooInt5
+$fFooInt5 = I# 13#
+
+-- RHS size: {terms: 2, types: 0, coercions: 0}
+$fFooInt4
+$fFooInt4 = I# 24#
+
+-- RHS size: {terms: 8, types: 0, coercions: 0}
+$fFooInt3
+$fFooInt3 =
+  SrcLoc
+    $fFooInt11
+    $fFooInt9
+    $fFooInt7
+    $fFooInt6
+    $fFooInt5
+    $fFooInt6
+    $fFooInt4
+
+-- RHS size: {terms: 1, types: 0, coercions: 0}
+$fFooInt14
+$fFooInt14 = "error"#
+
+-- RHS size: {terms: 2, types: 0, coercions: 0}
+$fFooInt13
+$fFooInt13 = unpackCString# $fFooInt14
+
+-- RHS size: {terms: 1, types: 0, coercions: 0}
+$fFooInt2
+$fFooInt2 = "foo"#
 
 -- RHS size: {terms: 2, types: 0, coercions: 0}
 $fFooInt1
-$fFooInt1 = unpackCString# "foo"#
+$fFooInt1 = unpackCString# $fFooInt2
 
 -- RHS size: {terms: 4, types: 0, coercions: 0}
-lvl_r1Qh
-lvl_r1Qh = PushCallStack $fFooInt9 $fFooInt2 EmptyCallStack
+lvl_r1So
+lvl_r1So = PushCallStack $fFooInt13 $fFooInt3 EmptyCallStack
 
 -- RHS size: {terms: 3, types: 2, coercions: 4}
-lvl1_r1Qi
-lvl1_r1Qi = error (lvl_r1Qh `cast` ...) $fFooInt1
+lvl1_r1Sp
+lvl1_r1Sp = error (lvl_r1So `cast` ...) $fFooInt1
 
 -- RHS size: {terms: 10, types: 4, coercions: 0}
 $fFooInt_$cfoo
 $fFooInt_$cfoo =
   \ eta_B1 ->
-    case eta_B1 of wild_Xu { I# ds_d1O5 ->
-    case ds_d1O5 of {
-      __DEFAULT -> wild_Xu;
-      0# -> lvl1_r1Qi
+    case eta_B1 of wild_Xy { I# ds_d1PR ->
+    case ds_d1PR of {
+      __DEFAULT -> wild_Xy;
+      0# -> lvl1_r1Sp
     }
     }
 
@@ -111,7 +139,7 @@ $fFooInt = $fFooInt_$cfoo `cast` ...
 [2 of 2] Compiling T10844           ( T10844.hs, T10844.o )
 
 ==================== Tidy Core ====================
-Result size of Tidy Core = {terms: 48, types: 35, coercions: 7}
+Result size of Tidy Core = {terms: 52, types: 37, coercions: 7}
 
 -- RHS size: {terms: 2, types: 0, coercions: 0}
 n
@@ -119,17 +147,17 @@ n = I# 0#
 
 -- RHS size: {terms: 4, types: 0, coercions: 0}
 main3
-main3 = PushCallStack $fFooInt9 $fFooInt2 EmptyCallStack
+main3 = PushCallStack $fFooInt13 $fFooInt3 EmptyCallStack
 
 -- RHS size: {terms: 20, types: 17, coercions: 4}
 main2
 main2 =
-  case n of { I# ds1_d1O5 ->
-  case ds1_d1O5 of ds2_X1Oa {
+  case n of { I# ds1_d1PR ->
+  case ds1_d1PR of ds2_X1PW {
     __DEFAULT ->
-      case $wshowSignedInt 0# ds2_X1Oa [] of
-      { (# ww5_a2Cc, ww6_a2Cd #) ->
-      : ww5_a2Cc ww6_a2Cd
+      case $wshowSignedInt 0# ds2_X1PW [] of
+      { (# ww5_a2Cl, ww6_a2Cm #) ->
+      : ww5_a2Cl ww6_a2Cm
       };
     0# -> case error (main3 `cast` ...) $fFooInt1 of wild1_00 { }
   }
@@ -137,23 +165,31 @@ main2 =
 
 -- RHS size: {terms: 6, types: 2, coercions: 0}
 main1
-main1 = \ eta_a2eU -> hPutStr2 stdout main2 True eta_a2eU
+main1 = \ eta_a2ce -> hPutStr2 stdout main2 True eta_a2ce
 
 -- RHS size: {terms: 1, types: 0, coercions: 3}
 main
 main = main1 `cast` ...
 
+-- RHS size: {terms: 1, types: 0, coercions: 0}
+$trModule4
+$trModule4 = "main"#
+
 -- RHS size: {terms: 2, types: 0, coercions: 0}
+$trModule3
+$trModule3 = TrNameS $trModule4
+
+-- RHS size: {terms: 1, types: 0, coercions: 0}
 $trModule2
-$trModule2 = TrNameS "main"#
+$trModule2 = "T10844"#
 
 -- RHS size: {terms: 2, types: 0, coercions: 0}
 $trModule1
-$trModule1 = TrNameS "T10844"#
+$trModule1 = TrNameS $trModule2
 
 -- RHS size: {terms: 3, types: 0, coercions: 0}
 $trModule
-$trModule = Module $trModule2 $trModule1
+$trModule = Module $trModule3 $trModule1
 
 
 
