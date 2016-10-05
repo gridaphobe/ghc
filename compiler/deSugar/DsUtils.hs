@@ -596,11 +596,12 @@ bindExprAtTopLevel expr = do
       -> return expr
     Just var -> do
       top_binds <- liftIO $ readIORef var
-      case find (cheapEqExpr expr . snd) top_binds of
-       Just (id, _) -> return (Var id)
-       Nothing      -> do id <- newSysLocalDs (exprType expr)
-                          liftIO $ modifyIORef var ((id, expr) :)
-                          return (Var id)
+      -- case find (cheapEqExpr expr . snd) top_binds of
+      --  Just (id, _) -> return (Var id)
+      --  Nothing      -> do
+      id <- newSysLocalDs (exprType expr)
+      liftIO $ modifyIORef var ((id, expr) :)
+      return (Var id)
 
 
 {-

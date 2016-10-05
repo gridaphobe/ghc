@@ -982,7 +982,7 @@ builtinRules :: [CoreRule]
 builtinRules
   = [BuiltinRule { ru_name = fsLit "AppendLitString",
                    ru_fn = unpackCStringFoldrName,
-                   ru_nargs = 4, ru_try = \_ _ _ -> match_append_lit },
+                   ru_nargs = 4, ru_try = \_ env _ -> match_append_lit env },
      BuiltinRule { ru_name = fsLit "EqString", ru_fn = eqStringName,
                    ru_nargs = 2, ru_try = \dflags _ _ -> match_eq_string dflags },
      BuiltinRule { ru_name = fsLit "Inline", ru_fn = inlineIdName,
@@ -1128,24 +1128,26 @@ builtinIntegerRules =
 --      unpackFoldrCString# "foo" c (unpackFoldrCString# "baz" c n)
 --      =  unpackFoldrCString# "foobaz" c n
 
-match_append_lit :: [Expr CoreBndr] -> Maybe (Expr CoreBndr)
-match_append_lit [Type ty1,
-                    Lit (MachStr s1),
-                    c1,
-                    Var unpk `App` Type ty2
-                             `App` Lit (MachStr s2)
-                             `App` c2
-                             `App` n
-                   ]
-  | unpk `hasKey` unpackCStringFoldrIdKey &&
-    c1 `cheapEqExpr` c2
+match_append_lit :: InScopeEnv -> [Expr CoreBndr] -> Maybe (Expr CoreBndr)
+match_append_lit env [Type ty1,
+                      l1,
+                      c1,
+                      Var unpk `App` Type ty2
+                               `App` l2
+                               `App` c2
+                               `App` n
+                     ]
+  | unpk `hasKey` unpackCStringFoldrIdKey
+  , c1 `cheapEqExpr` c2
+  , Just (MachStr s1) <- exprIsLiteral_maybe env l1
+  , Just (MachStr s2) <- exprIsLiteral_maybe env l2
   = ASSERT( ty1 `eqType` ty2 )
     Just (Var unpk `App` Type ty1
                    `App` Lit (MachStr (s1 `BS.append` s2))
                    `App` c1
                    `App` n)
 
-match_append_lit _ = Nothing
+match_append_lit _ _ = Nothing
 
 ---------------------------------------------------
 -- The rule is this:
