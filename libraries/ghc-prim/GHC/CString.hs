@@ -60,7 +60,7 @@ to match unpackCString#,
 -}
 
 unpackCString# :: Addr# -> [Char]
-{-# NOINLINE unpackCString# #-}
+{-# NOINLINE CONLIKE unpackCString# #-}
 unpackCString# addr
   = unpack 0#
   where

@@ -96,3 +96,8 @@ test('T12944', normal, compile, [''])
 test('T12950', normal, compile, [''])
 test('T13043', normal, compile, [''])
 test('T13215', normal, compile, [''])
+test('T10844',
+     [only_ways(['optasm']),
+      extra_clean(['T10844a.hi', 'T10844a.o'])],
+     multimod_compile,
+     ['T10844', '-ddump-simpl -dsuppress-uniques'])
