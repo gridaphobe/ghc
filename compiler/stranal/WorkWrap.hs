@@ -198,6 +198,42 @@ unfolding to the *worker*.  So we will get something like this:
 How do we "transfer the unfolding"? Easy: by using the old one, wrapped
 in work_fn! See CoreUnfold.mkWorkerUnfolding.
 
+Note [Worker-wrapper for NOINLINE functions]
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+We used to disable worker/wrapper for NOINLINE things,
+but it turns out this can cause unnecessary reboxing of
+values. Consider
+
+  {-# NOINLINE f #-}
+  f (x,y) = error (show x)
+
+  g True  p = f p
+  g False p = snd p + 1
+
+the strictness analysis will discover f is strict, and g,
+but because f has no wrapper, the worker for g will rebox
+the thing. So we get
+
+  f (x,y) = error (show x)
+
+  $wg b x y = let p = (x,y)  -- Yikes! Reboxing!
+              in case b of
+                True  -> f p
+                False -> y + 1
+
+  g b p = case p of (x,y) -> $wg b x y
+
+Now, in this case the reboxing will float into the
+True branch, an so the allocation will only happen
+on the error path. But it won't float inwards if
+there are multiple branches that call (f p), so the
+reboxing will happen on every call of g. Disaster.
+
+Solution: do worker/wrapper even on NOINLINE things;
+but move the NOINLINE pragma to the worker.
+
+(See Trac #13143 for a real-world example.)
+
 Note [Activation for INLINABLE worker]
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 Follows on from Note [Worker-wrapper for INLINABLE functions]
@@ -283,11 +319,7 @@ tryWW   :: DynFlags
                                         -- if two, then a worker and a
                                         -- wrapper.
 tryWW dflags fam_envs is_rec fn_id rhs
-  | isNeverActive inline_act
-        -- No point in worker/wrappering if the thing is never inlined!
-        -- Because the no-inline prag will prevent the wrapper ever
-        -- being inlined at a call site.
-  = return [ (new_fn_id, rhs) ]
+  -- See Note [Worker-wrapper for NOINLINE functions]
 
   | Just stable_unf <- certainlyWillInline dflags fn_info
   = return [ (fn_id `setIdUnfolding` stable_unf, rhs) ]
