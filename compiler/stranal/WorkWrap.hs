@@ -216,7 +216,7 @@ the strictness analysis will discover f and g are strict, but because f
 has no wrapper, the worker for g will rebox p. So we get
 
   $wg x y p# =
-    let p = I# p in  -- Yikes! Reboxing!
+    let p = I# p# in  -- Yikes! Reboxing!
     case x of
       False ->
         case y of
