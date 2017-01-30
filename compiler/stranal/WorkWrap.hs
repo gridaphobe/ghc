@@ -205,23 +205,31 @@ but it turns out this can cause unnecessary reboxing of
 values. Consider
 
   {-# NOINLINE f #-}
-  f (x,y) = error (show x)
+  f :: Int -> a
+  f x = error (show x)
 
-  g True  p = f p
-  g False p = snd p + 1
+  g :: Bool -> Bool -> Int -> Int
+  g True  True  p = f p
+  g False True  p = p + 1
+  g b     False p = g b True p
 
-the strictness analysis will discover f is strict, and g,
+the strictness analysis will discover f and g are strict,
 but because f has no wrapper, the worker for g will rebox
-the thing. So we get
+p. So we get
 
-  f (x,y) = error (show x)
+  $wg x y p# =
+    let p = I# p in  -- Yikes! Reboxing!
+    case x of
+      False ->
+        case y of
+          False -> $wg False True p#
+          True -> +# p# 1#
+      True ->
+        case y of
+          False -> $wg True True p#
+          True -> case f p of { }
 
-  $wg b x y = let p = (x,y)  -- Yikes! Reboxing!
-              in case b of
-                True  -> f p
-                False -> y + 1
-
-  g b p = case p of (x,y) -> $wg b x y
+  g x y p = case p of (I# p#) -> $wg x y p#
 
 Now, in this case the reboxing will float into the
 True branch, an so the allocation will only happen
