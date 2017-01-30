@@ -342,7 +342,6 @@ tryWW dflags fam_envs is_rec fn_id rhs
 
   where
     fn_info      = idInfo fn_id
-    inline_act   = inlinePragmaActivation (inlinePragInfo fn_info)
     (wrap_dmds, res_info) = splitStrictSig (strictnessInfo fn_info)
 
     new_fn_id = zapIdUsedOnceInfo (zapIdUsageEnvInfo fn_id)
