@@ -200,9 +200,8 @@ in work_fn! See CoreUnfold.mkWorkerUnfolding.
 
 Note [Worker-wrapper for NOINLINE functions]
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-We used to disable worker/wrapper for NOINLINE things,
-but it turns out this can cause unnecessary reboxing of
-values. Consider
+We used to disable worker/wrapper for NOINLINE things, but it turns out
+this can cause unnecessary reboxing of values. Consider
 
   {-# NOINLINE f #-}
   f :: Int -> a
@@ -213,9 +212,8 @@ values. Consider
   g False True  p = p + 1
   g b     False p = g b True p
 
-the strictness analysis will discover f and g are strict,
-but because f has no wrapper, the worker for g will rebox
-p. So we get
+the strictness analysis will discover f and g are strict, but because f
+has no wrapper, the worker for g will rebox p. So we get
 
   $wg x y p# =
     let p = I# p in  -- Yikes! Reboxing!
@@ -231,14 +229,13 @@ p. So we get
 
   g x y p = case p of (I# p#) -> $wg x y p#
 
-Now, in this case the reboxing will float into the
-True branch, an so the allocation will only happen
-on the error path. But it won't float inwards if
-there are multiple branches that call (f p), so the
-reboxing will happen on every call of g. Disaster.
+Now, in this case the reboxing will float into the True branch, an so
+the allocation will only happen on the error path. But it won't float
+inwards if there are multiple branches that call (f p), so the reboxing
+will happen on every call of g. Disaster.
 
-Solution: do worker/wrapper even on NOINLINE things;
-but move the NOINLINE pragma to the worker.
+Solution: do worker/wrapper even on NOINLINE things; but move the
+NOINLINE pragma to the worker.
 
 (See Trac #13143 for a real-world example.)
 
