@@ -260,4 +260,4 @@ test('T13025',
      normal,
      run_command,
      ['$MAKE -s --no-print-directory T13025'])
-
+test('T13143', normal, compile, ['-O -ddump-simpl -dsuppress-uniques'])
