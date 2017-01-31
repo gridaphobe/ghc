@@ -403,10 +403,14 @@ splitFun dflags fam_envs fn_id fn_info wrap_dmds res_info rhs
       Just (work_demands, wrap_fn, work_fn) -> do
         work_uniq <- getUniqueM
         let work_rhs = work_fn rhs
+            work_act = case inl_inline inl_prag of
+              -- See Note [Worker-wrapper for NOINLINE functions]
+              NoInline -> NeverActive
+              inl      -> wrap_act
             work_prag = InlinePragma { inl_src = SourceText "{-# INLINE"
                                      , inl_inline = inl_inline inl_prag
                                      , inl_sat    = Nothing
-                                     , inl_act    = wrap_act
+                                     , inl_act    = work_act
                                      , inl_rule   = FunLike }
               -- idl_inline: copy from fn_id; see Note [Worker-wrapper for INLINABLE functions]
               -- idl_act: see Note [Activation for INLINABLE workers]
