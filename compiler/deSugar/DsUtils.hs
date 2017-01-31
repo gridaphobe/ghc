@@ -25,7 +25,7 @@ module DsUtils (
         wrapBind, wrapBinds,
 
         mkErrorAppDs, mkCoreAppDs, mkCoreAppsDs, mkCastDs,
-        mkStringExprDs, mkStringExprFSDs,
+        mkStringExprAtTopLevel, mkStringExprFSAtTopLevel,
         bindExprAtTopLevel,
 
         seqVar,
@@ -82,7 +82,6 @@ import qualified GHC.LanguageExtensions as LangExt
 import TcEvidence
 
 import Control.Monad    ( zipWithM )
-import Data.List        ( find )
 
 {-
 ************************************************************************
@@ -573,12 +572,12 @@ mkCastDs e co | isReflCo co = e
               | otherwise   = Cast e co
 
 -- | Like 'mkStringExpr' except it makes the string a new top-level binder.
-mkStringExprDs :: String -> DsM CoreExpr
-mkStringExprDs = mkStringExprFSDs . fsLit
+mkStringExprAtTopLevel :: String -> DsM CoreExpr
+mkStringExprAtTopLevel = mkStringExprFSAtTopLevel . fsLit
 
 -- | Like 'mkStringExprFS' except it makes the string a new top-level binder.
-mkStringExprFSDs :: FastString -> DsM CoreExpr
-mkStringExprFSDs str = do
+mkStringExprFSAtTopLevel :: FastString -> DsM CoreExpr
+mkStringExprFSAtTopLevel str = do
   str_expr <- mkStringExprFS str
   bindExprAtTopLevel str_expr
 
@@ -593,15 +592,11 @@ bindExprAtTopLevel :: CoreExpr -> DsM CoreExpr
 bindExprAtTopLevel expr = do
   top_binds_var_maybe <- ds_top_binds <$> getGblEnv
   case top_binds_var_maybe of
-    Nothing
-      -> return expr
+    Nothing  -> return expr
     Just var -> do
-      top_binds <- liftIO $ readIORef var
-      case find (cheapEqExpr expr . snd) top_binds of
-       Just (id, _) -> return (Var id)
-       Nothing      -> do id <- newSysLocalDs (exprType expr)
-                          liftIO $ modifyIORef var ((id, expr) :)
-                          return (Var id)
+      id <- newSysLocalDs (exprType expr)
+      liftIO $ modifyIORef var ((id, expr) :)
+      return (Var id)
 
 
 {-

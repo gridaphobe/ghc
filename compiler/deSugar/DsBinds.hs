@@ -1151,7 +1151,7 @@ dsEvTerm (EvId v)           = return (Var v)
 dsEvTerm (EvCallStack cs)   = dsEvCallStack cs
 dsEvTerm (EvTypeable ty ev) = dsEvTypeable ty ev
 dsEvTerm (EvLit (EvNum n))  = mkNaturalExpr n
-dsEvTerm (EvLit (EvStr s))  = mkStringExprFSDs s
+dsEvTerm (EvLit (EvStr s))  = mkStringExprFSAtTopLevel s
 
 dsEvTerm (EvCast tm co)
   = do { tm' <- dsEvTerm tm
@@ -1323,9 +1323,9 @@ dsEvCallStack cs = do
   srcLocDataCon <- dsLookupDataCon srcLocDataConName
   let mkSrcLoc l = bindExprAtTopLevel =<<
         liftM (mkCoreConApps srcLocDataCon)
-              (sequence [ mkStringExprFSDs (unitIdFS $ moduleUnitId m)
-                        , mkStringExprFSDs (moduleNameFS $ moduleName m)
-                        , mkStringExprFSDs (srcSpanFile l)
+              (sequence [ mkStringExprFSAtTopLevel (unitIdFS $ moduleUnitId m)
+                        , mkStringExprFSAtTopLevel (moduleNameFS $ moduleName m)
+                        , mkStringExprFSAtTopLevel (srcSpanFile l)
                         , return $ mkIntExprInt df (srcSpanStartLine l)
                         , return $ mkIntExprInt df (srcSpanStartCol l)
                         , return $ mkIntExprInt df (srcSpanEndLine l)
@@ -1339,7 +1339,7 @@ dsEvCallStack cs = do
         mkCoreApps (Var pushCSVar) [mkCoreTup [name, loc], rest]
 
   let mkPush name loc tm = do
-        nameExpr <- mkStringExprFSDs name
+        nameExpr <- mkStringExprFSAtTopLevel name
         locExpr <- mkSrcLoc loc
         case tm of
           EvCallStack EvCsEmpty -> return (pushCS nameExpr locExpr emptyCS)

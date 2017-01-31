@@ -83,7 +83,7 @@ dsLit (HsFloatPrim    f) = return (Lit (MachFloat (fl_value f)))
 dsLit (HsDoublePrim   d) = return (Lit (MachDouble (fl_value d)))
 
 dsLit (HsChar _ c)       = return (mkCharExpr c)
-dsLit (HsString _ str)   = mkStringExprFSDs str
+dsLit (HsString _ str)   = mkStringExprFSAtTopLevel str
 dsLit (HsInteger _ i _)  = mkIntegerExpr i
 dsLit (HsInt _ i)        = do dflags <- getDynFlags
                               return (mkIntExpr dflags i)
@@ -366,7 +366,7 @@ matchLiterals (var:vars) ty sub_groups
         = do { -- We now have to convert back to FastString. Perhaps there
                -- should be separate MachBytes and MachStr constructors?
                let s'  = mkFastStringByteString s
-             ; lit    <- mkStringExprFSDs s'
+             ; lit    <- mkStringExprFSAtTopLevel s'
              ; let pred = mkApps (Var eq_str) [Var var, lit]
              ; return (mkGuardedMatchResult pred mr) }
     wrap_str_guard _ (l, _) = pprPanic "matchLiterals/wrap_str_guard" (ppr l)
