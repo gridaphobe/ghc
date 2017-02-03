@@ -428,7 +428,7 @@ splitFun dflags fam_envs fn_id fn_info wrap_dmds res_info rhs
             work_act = case work_inline of
               -- See Note [Activation for workers]
               NoInline -> inl_act inl_prag
-              inl      -> wrap_act
+              _        -> wrap_act
             work_prag = InlinePragma { inl_src = SourceText "{-# INLINE"
                                      , inl_inline = work_inline
                                      , inl_sat    = Nothing
