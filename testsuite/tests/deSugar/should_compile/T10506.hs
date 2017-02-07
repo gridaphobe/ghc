@@ -1,4 +1,3 @@
-{-# OPTIONS_GHC -ftick-everything -ddump-ticked #-}
 module T10506 where
 
 -- we should have a tick for the occurrence of `+`

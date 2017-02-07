@@ -354,11 +354,14 @@ deSugar hsc_env
         ; endPassIO hsc_env print_unqual CoreDesugar final_pgm rules_for_imps
 #endif
         ; (ds_binds, ds_rules_for_imps, ds_vects)
-            <- simpleOptPgm dflags mod final_pgm rules_for_imps vects0
-                         -- The simpleOptPgm gets rid of type
-                         -- bindings plus any stupid dead code
-
-        ; endPassIO hsc_env print_unqual CoreDesugarOpt ds_binds ds_rules_for_imps
+            <- if gopt Opt_NoDesugarOpt dflags
+               then return (final_pgm, rules_for_imps, vects0)
+               else do (ds_binds, ds_rules_for_imps, ds_vects)
+                         <- simpleOptPgm dflags mod final_pgm rules_for_imps vects0
+                            -- The simpleOptPgm gets rid of type
+                            -- bindings plus any stupid dead code
+                       endPassIO hsc_env print_unqual CoreDesugarOpt ds_binds ds_rules_for_imps
+                       return (ds_binds, ds_rules_for_imps, ds_vects)
 
         ; let used_names = mkUsedNames tcg_env
         ; deps <- mkDependencies tcg_env

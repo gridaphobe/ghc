@@ -513,6 +513,7 @@ data GeneralFlag
    | Opt_OptimalApplicativeDo
    | Opt_VersionMacros
    | Opt_TickEverything
+   | Opt_NoDesugarOpt
 
    -- PreInlining is on by default. The option is there just to see how
    -- bad things get if you turn it off!
@@ -3684,6 +3685,7 @@ fFlagsDeps = [
   flagSpec "static-argument-transformation"   Opt_StaticArgumentTransformation,
   flagSpec "strictness"                       Opt_Strictness,
   flagSpec "tick-everything"                  Opt_TickEverything,
+  flagSpec "no-desugar-opt"                   Opt_NoDesugarOpt,
   flagSpec "use-rpaths"                       Opt_RPath,
   flagSpec "write-interface"                  Opt_WriteInterface,
   flagSpec "unbox-small-strict-fields"        Opt_UnboxSmallStrictFields,

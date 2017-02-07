@@ -1,74 +1,287 @@
-AbsBinds [] []
-  {Exports: [foo <= foo_apS
-               <>]
-   Exported types: foo :: Integer
-                   [LclId, Str=DmdType]
-   Binds: -- ticks = [src<T10506.hs:(17,1)-(19,23)>]
-          foo_apS
-            = src<T10506.hs:(17,7)-(18,36)> let
-                                              AbsBinds [] []
-                                                {Exports: [x_apK <= x_az9
-                                                             <>]
-                                                 Exported types: x_apK :: Integer
-                                                                 [LclId, Str=DmdType]
-                                                 Binds: -- ticks = [src<T10506.hs:17:11-15>]
-                                                        x_az9 = src<T10506.hs:17:15> 1}
-                                            in
-                                              src<T10506.hs:(17,20)-(18,36)> case
-                                                                                 src<T10506.hs:17:25-36> src<T10506.hs:17:25-28> Just
-                                                                                                           (src<T10506.hs:17:30-36> (src<T10506.hs:17:31-35> src<T10506.hs:17:33> (+)
-                                                                                                                                                               src<T10506.hs:17:31> x_apK
-                                                                                                                                                               src<T10506.hs:17:35> y_apJ))
-                                                                             of {
-                                                                               Just z_apL
-                                                                                 -> src<T10506.hs:18:32-36> src<T10506.hs:18:34> (+)
-                                                                                                              src<T10506.hs:18:32> z_apL
-                                                                                                              src<T10506.hs:18:36> 5 }
-            where
-                AbsBinds [] []
-                  {Exports: [y_apJ <= y_apV
-                               <>]
-                   Exported types: y_apJ :: Integer
-                                   [LclId, Str=DmdType]
-                   Binds: Just y_apV
-                            = src<T10506.hs:19:18-23> src<T10506.hs:19:18-21> Just
-                                                        (src<T10506.hs:19:23> 4)}}
-AbsBinds [] []
-  {Exports: [plus1 <= plus1_azB
-               <>]
-   Exported types: plus1 :: Integer -> Integer
-                   [LclId, Str=DmdType]
-   Binds: -- ticks = [src<T10506.hs:8:1-12>]
-          plus1_azB
-            = src<T10506.hs:8:9-12> (src<T10506.hs:8:10-11> ( \ x_ -> src<T10506.hs:8:10> (+) x_
-                                                                src<T10506.hs:8:11> 1))}
-AbsBinds [a_azT] [$dNum_azY]
-  {Exports: [plus <= plus_azP
-               <>]
-   Exported types: plus
-                     :: forall a_azT. Num a_azT => a_azT -> a_azT -> a_azT
-                   [LclId, Str=DmdType]
-   Binds: -- ticks = [src<T10506.hs:5:1-16>]
-          plus_azP x_aoz y_aoA
-            = src<T10506.hs:5:12-16> src<T10506.hs:5:14> (+)
-                                       src<T10506.hs:5:12> x_aoz src<T10506.hs:5:16> y_aoA}
-AbsBinds [] []
-  {Exports: [plus2 <= plus2_aA8
-               <>]
-   Exported types: plus2 :: Integer -> Integer
-                   [LclId, Str=DmdType]
-   Binds: -- ticks = [src<T10506.hs:11:1-14>]
-          plus2_aA8
-            = src<T10506.hs:11:9-14> src<T10506.hs:11:9-12> plus
-                                       (src<T10506.hs:11:14> 2)}
-AbsBinds [] []
-  {Exports: [three <= three_aAm
-               <>]
-   Exported types: three :: Integer
-                   [LclId, Str=DmdType]
-   Binds: -- ticks = [src<T10506.hs:14:1-18>]
-          three_aAm
-            = src<T10506.hs:14:9-18> src<T10506.hs:14:11-16> plus
-                                       src<T10506.hs:14:9> 1 src<T10506.hs:14:18> 2}
-$trModule = Module (TrNameS "main"#) (TrNameS "T10506"#)
+
+==================== Desugar (before optimization) ====================
+Result size of Desugar (before optimization)
+  = {terms: 116, types: 97, coercions: 0, joins: 0/28}
+
+Rec {
+-- RHS size: {terms: 5, types: 0, coercions: 0, joins: 0/0}
+T10506.$trModule :: GHC.Types.Module
+[LclIdX]
+T10506.$trModule =
+  GHC.Types.Module
+    (GHC.Types.TrNameS "main"#) (GHC.Types.TrNameS "T10506"#)
+
+-- RHS size: {terms: 59, types: 47, coercions: 0, joins: 0/15}
+foo :: Integer
+[LclIdX]
+foo =
+  let {
+    $dNum :: Num Integer
+    [LclId]
+    $dNum = GHC.Num.$fNumInteger } in
+  let {
+    $dNum :: Num Integer
+    [LclId]
+    $dNum = $dNum } in
+  let {
+    $dNum :: Num Integer
+    [LclId]
+    $dNum = $dNum } in
+  letrec {
+    foo :: Integer
+    [LclId]
+    foo =
+      src<T10506.hs:(16,1)-(18,23)>
+      letrec {
+        y :: Integer
+        [LclId]
+        y =
+          let {
+            $dNum :: Num Integer
+            [LclId]
+            $dNum = $dNum } in
+          letrec {
+            ds :: (Integer)
+            [LclId]
+            ds =
+              let {
+                fail :: GHC.Prim.Void# -> (Integer)
+                [LclId]
+                fail =
+                  \ (ds [OS=OneShot] :: GHC.Prim.Void#) ->
+                    Control.Exception.Base.irrefutPatError
+                      @ 'GHC.Types.LiftedRep @ (Integer) "T10506.hs:18:9-23|Just y"# } in
+              let {
+                ds :: Maybe Integer
+                [LclId]
+                ds =
+                  src<T10506.hs:18:9-23>
+                  src<T10506.hs:18:18-23>
+                  (src<T10506.hs:18:18-21> GHC.Base.Just @ Integer)
+                    (src<T10506.hs:18:23> 4) } in
+              case ds of wild {
+                __DEFAULT -> fail GHC.Prim.void#;
+                Just y -> (y)
+              };
+            y :: Integer
+            [LclId]
+            y = src<T10506.hs:18:9-23> case ds of ds { (y) -> y }; } in
+          y; } in
+      src<T10506.hs:(16,7)-(17,36)>
+      letrec {
+        x :: Integer
+        [LclId]
+        x =
+          let {
+            $dNum :: Num Integer
+            [LclId]
+            $dNum = $dNum } in
+          letrec {
+            x :: Integer
+            [LclId]
+            x = src<T10506.hs:16:11-15> src<T10506.hs:16:15> 1; } in
+          x; } in
+      src<T10506.hs:(16,20)-(17,36)>
+      let {
+        ds :: Maybe Integer
+        [LclId]
+        ds =
+          src<T10506.hs:16:25-36>
+          (src<T10506.hs:16:25-28> GHC.Base.Just @ Integer)
+            (src<T10506.hs:16:30-36>
+             src<T10506.hs:16:31-35>
+             (src<T10506.hs:16:33> + @ Integer $dNum)
+               (src<T10506.hs:16:31> x) (src<T10506.hs:16:35> y)) } in
+      let {
+        fail :: GHC.Prim.Void# -> Integer
+        [LclId]
+        fail =
+          \ (ds [OS=OneShot] :: GHC.Prim.Void#) ->
+            Control.Exception.Base.patError
+              @ 'GHC.Types.LiftedRep
+              @ Integer
+              "T10506.hs:(16,20)-(17,36)|case"# } in
+      case ds of wild {
+        __DEFAULT -> fail GHC.Prim.void#;
+        Just z ->
+          src<T10506.hs:17:32-36>
+          (src<T10506.hs:17:34> + @ Integer $dNum)
+            (src<T10506.hs:17:32> z) (src<T10506.hs:17:36> 5)
+      }; } in
+  foo
+
+-- RHS size: {terms: 13, types: 9, coercions: 0, joins: 0/4}
+plus1 :: Integer -> Integer
+[LclIdX]
+plus1 =
+  let {
+    $dNum :: Num Integer
+    [LclId]
+    $dNum = GHC.Num.$fNumInteger } in
+  let {
+    $dNum :: Num Integer
+    [LclId]
+    $dNum = $dNum } in
+  letrec {
+    plus1 :: Integer -> Integer
+    [LclId]
+    plus1 =
+      src<T10506.hs:7:1-12>
+      src<T10506.hs:7:9-12>
+      src<T10506.hs:7:10-11>
+      let {
+        ds :: Integer
+        [LclId]
+        ds = src<T10506.hs:7:11> 1 } in
+      \ (ds :: Integer) ->
+        (src<T10506.hs:7:10> + @ Integer $dNum) ds ds; } in
+  plus1
+
+-- RHS size: {terms: 12, types: 12, coercions: 0, joins: 0/2}
+plus :: forall a. Num a => a -> a -> a
+[LclIdX]
+plus =
+  \ (@ a) ($dNum :: Num a) ->
+    let {
+      $dNum :: Num a
+      [LclId]
+      $dNum = $dNum } in
+    letrec {
+      plus :: a -> a -> a
+      [LclId]
+      plus =
+        \ (x :: a) (y :: a) ->
+          src<T10506.hs:4:1-16>
+          src<T10506.hs:4:12-16>
+          (src<T10506.hs:4:14> + @ a $dNum)
+            (src<T10506.hs:4:12> x) (src<T10506.hs:4:16> y); } in
+    plus
+
+-- RHS size: {terms: 9, types: 7, coercions: 0, joins: 0/3}
+plus2 :: Integer -> Integer
+[LclIdX]
+plus2 =
+  let {
+    $dNum :: Num Integer
+    [LclId]
+    $dNum = GHC.Num.$fNumInteger } in
+  let {
+    $dNum :: Num Integer
+    [LclId]
+    $dNum = $dNum } in
+  letrec {
+    plus2 :: Integer -> Integer
+    [LclId]
+    plus2 =
+      src<T10506.hs:10:1-14>
+      src<T10506.hs:10:9-14>
+      (src<T10506.hs:10:9-12> plus @ Integer $dNum)
+        (src<T10506.hs:10:14> 2); } in
+  plus2
+
+-- RHS size: {terms: 12, types: 8, coercions: 0, joins: 0/4}
+three :: Integer
+[LclIdX]
+three =
+  let {
+    $dNum :: Num Integer
+    [LclId]
+    $dNum = GHC.Num.$fNumInteger } in
+  let {
+    $dNum :: Num Integer
+    [LclId]
+    $dNum = $dNum } in
+  let {
+    $dNum :: Num Integer
+    [LclId]
+    $dNum = $dNum } in
+  letrec {
+    three :: Integer
+    [LclId]
+    three =
+      src<T10506.hs:13:1-18>
+      src<T10506.hs:13:9-18>
+      (src<T10506.hs:13:11-16> plus @ Integer $dNum)
+        (src<T10506.hs:13:9> 1) (src<T10506.hs:13:18> 2); } in
+  three
+end Rec }
+
+
+
+
+==================== Desugar (after optimization) ====================
+Result size of Desugar (after optimization)
+  = {terms: 44, types: 30, coercions: 0, joins: 0/3}
+
+-- RHS size: {terms: 8, types: 7, coercions: 0, joins: 0/0}
+plus :: forall a. Num a => a -> a -> a
+[LclIdX]
+plus =
+  \ (@ a) ($dNum :: Num a) (x :: a) (y :: a) ->
+    src<T10506.hs:4:1-16>
+    + @ a $dNum (src<T10506.hs:4:12> x) (src<T10506.hs:4:16> y)
+
+-- RHS size: {terms: 3, types: 1, coercions: 0, joins: 0/0}
+plus2 :: Integer -> Integer
+[LclIdX]
+plus2 =
+  src<T10506.hs:10:1-14>
+  plus @ Integer GHC.Num.$fNumInteger (src<T10506.hs:10:14> 2)
+
+-- RHS size: {terms: 4, types: 1, coercions: 0, joins: 0/0}
+three :: Integer
+[LclIdX]
+three =
+  src<T10506.hs:13:1-18>
+  plus
+    @ Integer
+    GHC.Num.$fNumInteger
+    (src<T10506.hs:13:9> 1)
+    (src<T10506.hs:13:18> 2)
+
+-- RHS size: {terms: 7, types: 3, coercions: 0, joins: 0/1}
+plus1 :: Integer -> Integer
+[LclIdX]
+plus1 =
+  src<T10506.hs:7:1-12>
+  let {
+    ds :: Integer
+    [LclId]
+    ds = src<T10506.hs:7:11> 1 } in
+  \ (ds :: Integer) ->
+    src<T10506.hs:7:10> + @ Integer GHC.Num.$fNumInteger ds ds
+
+-- RHS size: {terms: 11, types: 4, coercions: 0, joins: 0/2}
+foo :: Integer
+[LclIdX]
+foo =
+  src<T10506.hs:(16,1)-(18,23)>
+  let {
+    y :: Integer
+    [LclId]
+    y = src<T10506.hs:18:9-23> src<T10506.hs:18:23> 4 } in
+  src<T10506.hs:(16,7)-(17,36)>
+  let {
+    x :: Integer
+    [LclId]
+    x = src<T10506.hs:16:11-15> src<T10506.hs:16:15> 1 } in
+  src<T10506.hs:(16,20)-(17,36)>
+  + @ Integer
+    GHC.Num.$fNumInteger
+    (src<T10506.hs:17:32>
+     src<T10506.hs:16:30-36>
+     + @ Integer
+       GHC.Num.$fNumInteger
+       (src<T10506.hs:16:31> x)
+       (src<T10506.hs:16:35> y))
+    (src<T10506.hs:17:36> 5)
+
+-- RHS size: {terms: 5, types: 0, coercions: 0, joins: 0/0}
+T10506.$trModule :: GHC.Types.Module
+[LclIdX]
+T10506.$trModule =
+  GHC.Types.Module
+    (GHC.Types.TrNameS "main"#) (GHC.Types.TrNameS "T10506"#)
+
+
 

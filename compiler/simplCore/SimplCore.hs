@@ -23,6 +23,7 @@ import CoreStats        ( coreBindsSize, coreBindsStats, exprSize )
 import CoreUtils        ( mkTicks, stripTicksTop )
 import CoreLint         ( endPass, lintPassResult, dumpPassResult,
                           lintAnnots )
+import CoreSubst        ( simpleOptPgm )
 import Simplify         ( simplTopBinds, simplExpr, simplRules )
 import SimplUtils       ( simplEnvForGHCi, activeRule )
 import SimplEnv
@@ -133,11 +134,14 @@ getCoreToDo dflags
     eta_expand_on = gopt Opt_DoLambdaEtaExpansion         dflags
     ww_on         = gopt Opt_WorkerWrapper                dflags
     static_ptrs   = xopt LangExt.StaticPointers           dflags
+    desugar_opt   = gopt Opt_NoDesugarOpt                 dflags
 
     maybe_rule_check phase = runMaybe rule_check (CoreDoRuleCheck phase)
 
     maybe_strictness_before phase
       = runWhen (phase `elem` strictnessBefore dflags) CoreDoStrictness
+
+    maybe_desugar_opt = runWhen desugar_opt CoreDesugarOpt
 
     base_mode = SimplMode { sm_phase      = panic "base_mode"
                           , sm_names      = []
@@ -218,7 +222,7 @@ getCoreToDo dflags
           }
         ]
 
-    core_todo =
+    core_todo = maybe_desugar_opt :
      if opt_level == 0 then
        [ vectorisation,
          static_ptrs_float_outwards,
@@ -467,7 +471,17 @@ doCorePass (CoreDoPasses passes)        = runCorePasses passes
 doCorePass (CoreDoPluginPass _ pass) = {-# SCC "Plugin" #-} pass
 #endif
 
+doCorePass CoreDesugarOpt            = {-# SCC "DesugarOpt" #-} desugarOpt
+
 doCorePass pass = pprPanic "doCorePass" (ppr pass)
+
+desugarOpt :: ModGuts -> CoreM ModGuts
+desugarOpt mg = do
+  dflags <- getDynFlags
+  (binds, rules, vects) <- liftIO $
+    simpleOptPgm dflags (mg_module mg)
+      (mg_binds mg) (mg_rules mg) (mg_vect_decls mg)
+  return (mg {mg_binds = binds, mg_rules = rules, mg_vect_decls = vects})
 
 {-
 ************************************************************************
