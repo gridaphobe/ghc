@@ -1462,7 +1462,11 @@ exprIsConApp_maybe (in_scope, id_unf) expr
 
         | (fun `hasKey` unpackCStringIdKey)
          || (fun `hasKey` unpackCStringUtf8IdKey)
-        , [Lit (MachStr str)] <- args
+        , [arg] <- args
+        , Just (MachStr str)
+            -- We would like to see string literals as well as variables
+            -- bound to string literals!
+            <- exprIsLiteral_maybe (in_scope, id_unf) arg
         = dealWithStringLiteral fun str co
         where
           unfolding = id_unf fun
