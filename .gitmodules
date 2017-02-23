@@ -105,7 +105,8 @@
 	branch = ghc-head
 [submodule "nofib"]
 	path = nofib
-	url = ../nofib.git
+        #url = ../nofib.git
+	url = git://github.com/gridaphobe/nofib.git
 	ignore = untracked
 [submodule "utils/hsc2hs"]
 	path = utils/hsc2hs
