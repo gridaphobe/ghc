@@ -6,7 +6,7 @@ Result size of Tidy Core
 
 -- RHS size: {terms: 3, types: 4, coercions: 2, joins: 0/0}
 foo
-foo = \ @ a_arX v_B1 -> v_B1 `cast` <Co:2>
+foo = \ @ a v -> v `cast` <Co:2>
 
 -- RHS size: {terms: 1, types: 0, coercions: 0, joins: 0/0}
 T10844a.$trModule4
@@ -30,17 +30,17 @@ T10844a.$trModule
   = GHC.Types.Module T10844a.$trModule3 T10844a.$trModule1
 
 -- RHS size: {terms: 2, types: 0, coercions: 0, joins: 0/0}
-krep_r2hS
-krep_r2hS = GHC.Types.KindRepTYPE GHC.Types.LiftedRep
+krep
+krep = GHC.Types.KindRepTYPE GHC.Types.LiftedRep
 
 -- RHS size: {terms: 3, types: 1, coercions: 0, joins: 0/0}
-krep1_r2hT
-krep1_r2hT
+krep1
+krep1
   = GHC.Types.KindRepTyConApp GHC.Types.$tcConstraint GHC.Types.[]
 
 -- RHS size: {terms: 3, types: 0, coercions: 0, joins: 0/0}
 T10844a.$tcFoo1
-T10844a.$tcFoo1 = GHC.Types.KindRepFun krep_r2hS krep1_r2hT
+T10844a.$tcFoo1 = GHC.Types.KindRepFun krep krep1
 
 -- RHS size: {terms: 1, types: 0, coercions: 0, joins: 0/0}
 T10844a.$tcFoo3
@@ -62,24 +62,24 @@ T10844a.$tcFoo
       T10844a.$tcFoo1
 
 -- RHS size: {terms: 2, types: 0, coercions: 0, joins: 0/0}
-krep2_r2hU
-krep2_r2hU = GHC.Types.KindRepVar 0#
+krep2
+krep2 = GHC.Types.KindRepVar 0#
 
 -- RHS size: {terms: 3, types: 0, coercions: 0, joins: 0/0}
-krep3_r2hV
-krep3_r2hV = GHC.Types.KindRepFun krep2_r2hU krep2_r2hU
+krep3
+krep3 = GHC.Types.KindRepFun krep2 krep2
 
 -- RHS size: {terms: 3, types: 2, coercions: 0, joins: 0/0}
-krep4_r2hW
-krep4_r2hW = GHC.Types.: krep2_r2hU GHC.Types.[]
+krep4
+krep4 = GHC.Types.: krep2 GHC.Types.[]
 
 -- RHS size: {terms: 3, types: 0, coercions: 0, joins: 0/0}
-krep5_r2hX
-krep5_r2hX = GHC.Types.KindRepTyConApp T10844a.$tcFoo krep4_r2hW
+krep5
+krep5 = GHC.Types.KindRepTyConApp T10844a.$tcFoo krep4
 
 -- RHS size: {terms: 3, types: 0, coercions: 0, joins: 0/0}
 T10844a.$tc'C:Foo1
-T10844a.$tc'C:Foo1 = GHC.Types.KindRepFun krep3_r2hV krep5_r2hX
+T10844a.$tc'C:Foo1 = GHC.Types.KindRepFun krep3 krep5
 
 -- RHS size: {terms: 1, types: 0, coercions: 0, joins: 0/0}
 T10844a.$tc'C:Foo3
@@ -165,23 +165,23 @@ T10844a.$fFooInt1
 T10844a.$fFooInt1 = GHC.CString.unpackCString# T10844a.$fFooInt2
 
 -- RHS size: {terms: 4, types: 0, coercions: 0, joins: 0/0}
-lvl_r2hY
-lvl_r2hY
+lvl
+lvl
   = GHC.Stack.Types.PushCallStack
       T10844a.$fFooInt13 T10844a.$fFooInt3 GHC.Stack.Types.EmptyCallStack
 
 -- RHS size: {terms: 3, types: 2, coercions: 4, joins: 0/0}
-lvl1_r2hZ
-lvl1_r2hZ = error (lvl_r2hY `cast` <Co:4>) T10844a.$fFooInt1
+lvl1
+lvl1 = error (lvl `cast` <Co:4>) T10844a.$fFooInt1
 
 -- RHS size: {terms: 10, types: 4, coercions: 0, joins: 0/0}
 T10844a.$fFooInt_$cfoo
 T10844a.$fFooInt_$cfoo
-  = \ eta_B1 ->
-      case eta_B1 of wild_XK { GHC.Types.I# ds_d2f5 ->
-      case ds_d2f5 of {
-        __DEFAULT -> wild_XK;
-        0# -> lvl1_r2hZ
+  = \ eta ->
+      case eta of wild { GHC.Types.I# ds ->
+      case ds of {
+        __DEFAULT -> wild;
+        0# -> lvl1
       }
       }
 
@@ -202,35 +202,35 @@ n
 n = GHC.Types.I# 0#
 
 -- RHS size: {terms: 4, types: 0, coercions: 0, joins: 0/0}
-lvl_r37M
-lvl_r37M
+lvl
+lvl
   = GHC.Stack.Types.PushCallStack
       T10844a.$fFooInt13 T10844a.$fFooInt3 GHC.Stack.Types.EmptyCallStack
 
 -- RHS size: {terms: 3, types: 2, coercions: 4, joins: 0/0}
 T10844.main3
-T10844.main3 = error (lvl_r37M `cast` <Co:4>) T10844a.$fFooInt1
+T10844.main3 = error (lvl `cast` <Co:4>) T10844a.$fFooInt1
 
 -- RHS size: {terms: 18, types: 15, coercions: 0, joins: 0/0}
 T10844.main2
 T10844.main2
-  = case n of { GHC.Types.I# ds1_d2f5 ->
-    case ds1_d2f5 of ds2_X2fa {
+  = case n of { GHC.Types.I# ds1 ->
+    case ds1 of ds2 {
       __DEFAULT ->
-        case GHC.Show.$wshowSignedInt 0# ds2_X2fa GHC.Types.[] of
-        { (# ww5_a36s, ww6_a36t #) ->
-        GHC.Types.: ww5_a36s ww6_a36t
+        case GHC.Show.$wshowSignedInt 0# ds2 GHC.Types.[] of
+        { (# ww5, ww6 #) ->
+        GHC.Types.: ww5 ww6
         };
-      0# -> case T10844.main3 of wild1_00 { }
+      0# -> case T10844.main3 of wild1 { }
     }
     }
 
 -- RHS size: {terms: 6, types: 2, coercions: 0, joins: 0/0}
 T10844.main1
 T10844.main1
-  = \ eta_a2Di ->
+  = \ eta ->
       GHC.IO.Handle.Text.hPutStr2
-        GHC.IO.Handle.FD.stdout T10844.main2 GHC.Types.True eta_a2Di
+        GHC.IO.Handle.FD.stdout T10844.main2 GHC.Types.True eta
 
 -- RHS size: {terms: 1, types: 0, coercions: 3, joins: 0/0}
 main
