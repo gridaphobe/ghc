@@ -127,6 +127,7 @@ deSugar hsc_env
         ; (msgs, ds_top_binds, mb_res)
             <- initDs hsc_env mod rdr_env type_env
                       fam_inst_env complete_matches $
+                            withTopBinds $
                        do { ds_ev_binds <- dsEvBinds ev_binds
                           ; core_prs <- dsTopLHsBinds binds_cvr
                           ; (spec_prs, spec_rules) <- dsImpSpecs imp_specs
@@ -143,7 +144,7 @@ deSugar hsc_env
 
         ; case mb_res of {
            Nothing -> return (msgs, Nothing) ;
-           Just (ds_ev_binds, all_prs, all_rules, vects0, ds_fords) ->
+           Just ((ds_ev_binds, all_prs, all_rules, vects0, ds_fords), ds_top_binds) ->
 
      do {       -- Add export flags to bindings
           keep_alive <- readIORef keep_var

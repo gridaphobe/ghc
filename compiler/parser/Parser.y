@@ -667,7 +667,7 @@ signature :: { Located (HsModule RdrName) }
                 ams (L loc (HsModule (Just $3) $5 (fst $ snd $7)
                               (snd $ snd $7) $4 $1)
                     )
-                    ([mj AnnModule $2, mj AnnWhere $6] ++ fst $7) }
+                    ([mj AnnSignature $2, mj AnnWhere $6] ++ fst $7) }
 
 module :: { Located (HsModule RdrName) }
        : maybedocheader 'module' modid maybemodwarning maybeexports 'where' body
@@ -2275,7 +2275,7 @@ sigdecl :: { LHsDecl RdrName }
         | '{-# SCC' qvar STRING '#-}'
           {% do { scc <- getSCC $3
                 ; let str_lit = StringLiteral (getSTRINGs $3) scc
-                ; ams (sLL $1 $> (SigD (SCCFunSig (getSCC_PRAGs $1) $2 (Just str_lit))))
+                ; ams (sLL $1 $> (SigD (SCCFunSig (getSCC_PRAGs $1) $2 (Just ( sL1 $3 str_lit)))))
                       [mo $1, mc $4] } }
 
         | '{-# SPECIALISE' activation qvar '::' sigtypes1 '#-}'
@@ -2959,9 +2959,13 @@ name_boolformula :: { LBooleanFormula (Located RdrName) }
                               >> return (sLL $1 $> (Or [$1,$3])) }
 
 name_boolformula_and :: { LBooleanFormula (Located RdrName) }
-        : name_boolformula_atom                             { $1 }
-        | name_boolformula_atom ',' name_boolformula_and
-                  {% aa $1 (AnnComma,$2) >> return (sLL $1 $> (And [$1,$3])) }
+        : name_boolformula_and_list
+                  { sLL (head $1) (last $1) (And ($1)) }
+
+name_boolformula_and_list :: { [LBooleanFormula (Located RdrName)] }
+        : name_boolformula_atom                               { [$1] }
+        | name_boolformula_atom ',' name_boolformula_and_list
+            {% aa $1 (AnnComma, $2) >> return ($1 : $3) }
 
 name_boolformula_atom :: { LBooleanFormula (Located RdrName) }
         : '(' name_boolformula ')'  {% ams (sLL $1 $> (Parens $2)) [mop $1,mcp $3] }

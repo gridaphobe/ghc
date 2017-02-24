@@ -406,8 +406,18 @@ mkCompleteMatchMap cms = foldl' insertMatch emptyUFM cms
 -- "some header: " literal, which can lead to a sizeable increase in
 -- binary size.
 --
--- To avoid this, we give the desugarer the ability to add new top-level
--- bindings, which are stored in the ds_top_binds field of the DsGblEnv.
+-- But why is this not already solved by FloatOut (which does indeed
+-- float such constants to the top)? The issue is that by the time
+-- FloatOut runs, myError has already been assigned a stable unfolding
+-- that captures the string. FloatOut won't rewrite the unfolding
+-- because GHC promises to inline exactly the code the user wrote. Thus,
+-- even though we *have* floated the constant out, we are still forced
+-- to duplicate it when myError is inlined into another module, ugh!
+--
+-- Rather than changing FloatOut, we give the desugarer the ability to
+-- add new top-level bindings (stored in the new ds_top_binds field of
+-- the DsGblEnv), and pre-emptively float string literals before the
+-- unfoldings are produced.
 --
 -- We call the desugarer in two contexts: compiling an entire module, and
 -- compiling and individual expression (e.g. for ghci). In the context of
