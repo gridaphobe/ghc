@@ -124,10 +124,9 @@ deSugar hsc_env
                               then addTicksToBinds hsc_env mod mod_loc
                                        export_set (typeEnvTyCons type_env) binds
                               else return (binds, hpcInfo, Nothing)
-        ; (msgs, mb_res)
+        ; (msgs, ds_top_binds, mb_res)
             <- initDs hsc_env mod rdr_env type_env
                       fam_inst_env complete_matches $
-                            withTopBinds $
                        do { ds_ev_binds <- dsEvBinds ev_binds
                           ; core_prs <- dsTopLHsBinds binds_cvr
                           ; (spec_prs, spec_rules) <- dsImpSpecs imp_specs
@@ -144,7 +143,7 @@ deSugar hsc_env
 
         ; case mb_res of {
            Nothing -> return (msgs, Nothing) ;
-           Just ((ds_ev_binds, all_prs, all_rules, vects0, ds_fords), ds_top_binds) ->
+           Just (ds_ev_binds, all_prs, all_rules, vects0, ds_fords) ->
 
      do {       -- Add export flags to bindings
           keep_alive <- readIORef keep_var
