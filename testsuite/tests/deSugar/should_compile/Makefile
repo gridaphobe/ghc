@@ -18,7 +18,7 @@ T5252Take2:
 T10844:
 	$(RM) -f T10844.hi  T10844.o
 	$(RM) -f T10844a.hi T10844a.o
-	# check that the string "T10844a" appears in the simplified core
+	# check that the string "foo" appears in the simplified core
 	# of T10844a, but *not* in T10844
-	'$(TEST_HC)' $(TEST_HC_OPTS) -O -c T10844a.hs -ddump-simpl | grep '"T10844a"' | wc -l
-	'$(TEST_HC)' $(TEST_HC_OPTS) -O -c T10844.hs  -ddump-simpl | grep '"T10844a"' | wc -l
+	'$(TEST_HC)' $(TEST_HC_OPTS) -O -c T10844a.hs -ddump-simpl | grep '"foo"' | wc -l
+	'$(TEST_HC)' $(TEST_HC_OPTS) -O -c T10844.hs  -ddump-simpl | grep '"foo"' | wc -l
