@@ -100,7 +100,6 @@ import BasicTypes       hiding ( SuccessFlag(..) )
 import Unique
 import Util             hiding ( eqListBy )
 import FastString
-import FastStringEnv
 import Maybes
 import Binary
 import Fingerprint
@@ -501,7 +500,7 @@ addFingerprints hsc_env mb_old_fingerprint iface0 new_decls
                      , not (isHoleModule semantic_mod) = global_hash_fn name
                      | otherwise = return (snd (lookupOccEnv local_env (getOccName name)
                            `orElse` pprPanic "urk! lookup local fingerprint"
-                                       (ppr name)))
+                                       (ppr name $$ ppr local_env)))
                 -- This panic indicates that we got the dependency
                 -- analysis wrong, because we needed a fingerprint for
                 -- an entity that wasn't in the environment.  To debug
@@ -1574,7 +1573,7 @@ tyConToIfaceDecl env tycon
                   ifCType   = tyConCType tycon,
                   ifRoles   = tyConRoles tycon,
                   ifCtxt    = tidyToIfaceContext tc_env1 (tyConStupidTheta tycon),
-                  ifCons    = ifaceConDecls (algTyConRhs tycon) (algTcFields tycon),
+                  ifCons    = ifaceConDecls (algTyConRhs tycon),
                   ifGadtSyntax = isGadtSyntaxTyCon tycon,
                   ifParent  = parent })
 
@@ -1589,7 +1588,7 @@ tyConToIfaceDecl env tycon
                   ifCType      = Nothing,
                   ifRoles      = tyConRoles tycon,
                   ifCtxt       = [],
-                  ifCons       = IfDataTyCon [] False [],
+                  ifCons       = IfDataTyCon [],
                   ifGadtSyntax = False,
                   ifParent     = IfNoParent })
   where
@@ -1623,11 +1622,11 @@ tyConToIfaceDecl env tycon
 
 
 
-    ifaceConDecls (NewTyCon { data_con = con })    flds = IfNewTyCon  (ifaceConDecl con) (ifaceOverloaded flds) (ifaceFields flds)
-    ifaceConDecls (DataTyCon { data_cons = cons }) flds = IfDataTyCon (map ifaceConDecl cons) (ifaceOverloaded flds) (ifaceFields flds)
-    ifaceConDecls (TupleTyCon { data_con = con })  _    = IfDataTyCon [ifaceConDecl con] False []
-    ifaceConDecls (SumTyCon { data_cons = cons })  flds = IfDataTyCon (map ifaceConDecl cons) (ifaceOverloaded flds) (ifaceFields flds)
-    ifaceConDecls (AbstractTyCon distinct)         _    = IfAbstractTyCon distinct
+    ifaceConDecls (NewTyCon { data_con = con })    = IfNewTyCon  (ifaceConDecl con)
+    ifaceConDecls (DataTyCon { data_cons = cons }) = IfDataTyCon (map ifaceConDecl cons)
+    ifaceConDecls (TupleTyCon { data_con = con })  = IfDataTyCon [ifaceConDecl con]
+    ifaceConDecls (SumTyCon { data_cons = cons })  = IfDataTyCon (map ifaceConDecl cons)
+    ifaceConDecls (AbstractTyCon distinct)         = IfAbstractTyCon distinct
         -- The AbstractTyCon case happens when a TyCon has been trimmed
         -- during tidying.
         -- Furthermore, tyThingToIfaceDecl is also used in TcRnDriver
@@ -1643,7 +1642,7 @@ tyConToIfaceDecl env tycon
                     ifConEqSpec  = map (to_eq_spec . eqSpecPair) eq_spec,
                     ifConCtxt    = tidyToIfaceContext con_env2 theta,
                     ifConArgTys  = map (tidyToIfaceType con_env2) arg_tys,
-                    ifConFields  = map flSelector (dataConFieldLabels data_con),
+                    ifConFields  = dataConFieldLabels data_con,
                     ifConStricts = map (toIfaceBang con_env2)
                                        (dataConImplBangs data_con),
                     ifConSrcStricts = map toIfaceSrcBang
@@ -1665,11 +1664,6 @@ tyConToIfaceDecl env tycon
 
           (con_env2, ex_bndrs') = tidyTyVarBinders con_env1 ex_bndrs
           to_eq_spec (tv,ty) = (tidyTyVar con_env2 tv, tidyToIfaceType con_env2 ty)
-
-    ifaceOverloaded flds = case dFsEnvElts flds of
-                             fl:_ -> flIsOverloaded fl
-                             []   -> False
-    ifaceFields flds = map flLabel $ dFsEnvElts flds
 
 classToIfaceDecl :: TidyEnv -> Class -> (TidyEnv, IfaceDecl)
 classToIfaceDecl env clas
