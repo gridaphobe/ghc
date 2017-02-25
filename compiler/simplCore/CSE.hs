@@ -15,7 +15,6 @@ import Var              ( Var, isJoinId )
 import Id               ( Id, idType, idUnfolding, idInlineActivation
                         , zapIdOccInfo, zapIdUsageInfo )
 import CoreUtils        ( mkAltExpr
-                        , exprIsLiteralString
                         , stripTicksE, stripTicksT, mkTicks )
 import Literal          ( litIsTrivial )
 import Type             ( tyConAppArgs )
@@ -326,38 +325,8 @@ addBinding env in_id out_id rhs'
                    Lit l  -> litIsTrivial l
                    _      -> False
 
-{-
-Note [Take care with literal strings]
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-Consider this example:
-
-  x = "foo"#
-  y = "foo"#
-  ...x...y...x...y....
-
-We would normally turn this into:
-
-  x = "foo"#
-  y = x
-  ...x...x...x...x....
-
-But this breaks an invariant of Core, namely that the RHS of a top-level binding
-of type Addr# must be a string literal, not another variable. See Note
-[CoreSyn top-level string literals] in CoreSyn.
-
-For this reason, we special case top-level bindings to literal strings and leave
-the original RHS unmodified. This produces:
-
-  x = "foo"#
-  y = "foo"#
-  ...x...x...x...x....
--}
-
 tryForCSE :: Bool -> CSEnv -> InExpr -> OutExpr
-tryForCSE toplevel env expr
-  | toplevel && exprIsLiteralString expr = expr
-      -- See Note [Take care with literal strings]
+tryForCSE _toplevel env expr
   | Just e <- lookupCSEnv env expr'' = mkTicks ticks e
   | otherwise                        = expr'
     -- The varToCoreExpr is needed if we have
