@@ -1174,14 +1174,15 @@ dsEvTerm (EvSelector sel_id tys tms)
   = do { tms' <- mapM dsEvTerm tms
        ; return $ Var sel_id `mkTyApps` tys `mkApps` tms' }
 
-dsEvTerm (EvDelayedError ty msg) = return $ dsEvDelayedError ty msg
+dsEvTerm (EvDelayedError ty msg) = dsEvDelayedError ty msg
 
-dsEvDelayedError :: Type -> FastString -> CoreExpr
+dsEvDelayedError :: Type -> FastString -> DsM CoreExpr
 dsEvDelayedError ty msg
-  = Var errorId `mkTyApps` [getRuntimeRep "dsEvTerm" ty, ty] `mkApps` [litMsg]
+  = do { litMsg <- bindExprAtTopLevel (Lit (MachStr (fastStringToByteString msg)))
+       ; return $ Var errorId `mkTyApps` [getRuntimeRep "dsEvTerm" ty, ty]
+                              `mkApps`   [litMsg] }
   where
     errorId = tYPE_ERROR_ID
-    litMsg  = Lit (MachStr (fastStringToByteString msg))
 
 {-**********************************************************************
 *                                                                      *

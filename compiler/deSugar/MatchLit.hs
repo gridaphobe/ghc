@@ -73,7 +73,7 @@ See also below where we look for @DictApps@ for \tr{plusInt}, etc.
 -}
 
 dsLit :: HsLit -> DsM CoreExpr
-dsLit (HsStringPrim _ s) = return (Lit (MachStr s))
+dsLit (HsStringPrim _ s) = bindExprAtTopLevel (Lit (MachStr s))
 dsLit (HsCharPrim   _ c) = return (Lit (MachChar c))
 dsLit (HsIntPrim    _ i) = return (Lit (MachInt i))
 dsLit (HsWordPrim   _ w) = return (Lit (MachWord w))
