@@ -305,7 +305,7 @@ mkDsEnvs dflags mod rdr_env type_env fam_inst_env msg_var pmvar top_binds_var_mb
                            , ds_dph_env = emptyGlobalRdrEnv
                            , ds_parr_bi = panic "DsMonad: uninitialised ds_parr_bi"
                            , ds_complete_matches = completeMatchMap
-                           , ds_top_binds = Nothing
+                           , ds_top_binds = top_binds_var_mb
                            }
         lcl_env = DsLclEnv { dsl_meta    = emptyNameEnv
                            , dsl_loc     = real_span
