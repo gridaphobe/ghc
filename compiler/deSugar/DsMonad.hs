@@ -156,7 +156,7 @@ initDs :: HscEnv
        -> Module -> GlobalRdrEnv -> TypeEnv -> FamInstEnv
        -> [CompleteMatch]
        -> DsM a
-       -> IO (Messages, [CoreBind], Maybe a)
+       -> IO (Messages, Maybe a)
 -- Print errors and warnings, if any arise
 
 initDs hsc_env mod rdr_env type_env fam_inst_env complete_matches thing_inside
@@ -185,8 +185,7 @@ initDs hsc_env mod rdr_env type_env fam_inst_env complete_matches thing_inside
                 -- a UserError exception.  Then it should have put an error
                 -- message in msg_var, so we just discard the exception
 
-        ; top_binds <- maybe (return []) readIORef top_binds_var_mb
-        ; return (msgs, map (uncurry NonRec) top_binds, final_res)
+        ; return (msgs, final_res)
         }
   where
     -- Extend the global environment with a 'GlobalRdrEnv' containing the exported entities of

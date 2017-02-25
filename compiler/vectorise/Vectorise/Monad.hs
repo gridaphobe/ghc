@@ -56,9 +56,9 @@ initV hsc_env guts info thing_inside
   = do { dumpIfVtTrace "Incoming VectInfo" (ppr info)
 
        ; let type_env = typeEnvFromEntities ids (mg_tcs guts) (mg_fam_insts guts)
-       ; (_, _,  Just res) <- initDs hsc_env (mg_module guts)
-                                             (mg_rdr_env guts) type_env
-                                             (mg_fam_inst_env guts) [] go
+       ; (_, Just res) <- initDs hsc_env (mg_module guts)
+                                         (mg_rdr_env guts) type_env
+                                         (mg_fam_inst_env guts) [] go
 
        ; case res of
            Nothing
