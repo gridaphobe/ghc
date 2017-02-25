@@ -163,20 +163,10 @@ initDs hsc_env mod rdr_env type_env fam_inst_env complete_matches thing_inside
   = do  { msg_var <- newIORef (emptyBag, emptyBag)
         ; let all_matches = (hptCompleteSigs hsc_env) ++ complete_matches
         ; pm_iter_var <- newIORef 0
-        ; let dflags = hsc_dflags hsc_env
-        ; top_binds_var_mb <-
-            case hscTarget dflags of
-              -- Don't bind expressions at the top-level in GHCi, we aren't
-              -- inlining things anyway so there's nothing to avoid.
-              -- But binding at the top-level can increase memory residency!
-              -- (see perf/space_leaks/T4029)
-              HscInterpreted -> return Nothing
-              HscNothing     -> return Nothing
-              _              -> Just <$> newIORef []
-        ; let (ds_gbl_env, ds_lcl_env) = mkDsEnvs dflags mod rdr_env type_env
+        ; let dflags                   = hsc_dflags hsc_env
+              (ds_gbl_env, ds_lcl_env) = mkDsEnvs dflags mod rdr_env type_env
                                                   fam_inst_env msg_var
-                                                  pm_iter_var top_binds_var_mb
-                                                  all_matches
+                                                  pm_iter_var all_matches
 
         ; either_res <- initTcRnIf 'd' hsc_env ds_gbl_env ds_lcl_env $
                           loadDAP $
@@ -258,7 +248,7 @@ initDsTc thing_inside
               fam_inst_env = tcg_fam_inst_env tcg_env
               complete_matches = tcg_complete_matches tcg_env
               ds_envs  = mkDsEnvs dflags this_mod rdr_env type_env fam_inst_env
-                                  msg_var pm_iter_var Nothing complete_matches
+                                  msg_var pm_iter_var complete_matches
         ; setEnvs ds_envs thing_inside
         }
 
@@ -286,11 +276,9 @@ initTcDsForSolver thing_inside
          thing_inside }
 
 mkDsEnvs :: DynFlags -> Module -> GlobalRdrEnv -> TypeEnv -> FamInstEnv
-         -> IORef Messages -> IORef Int -> Maybe (IORef [(Id, CoreExpr)])
-         -> [CompleteMatch]
+         -> IORef Messages -> IORef Int -> [CompleteMatch]
          -> (DsGblEnv, DsLclEnv)
-mkDsEnvs dflags mod rdr_env type_env fam_inst_env msg_var pmvar top_binds_var_mb
-  complete_matches
+mkDsEnvs dflags mod rdr_env type_env fam_inst_env msg_var pmvar complete_matches
   = let if_genv = IfGblEnv { if_doc       = text "mkDsEnvs",
                              if_rec_types = Just (mod, return type_env) }
         if_lenv = mkIfLclEnv mod (text "GHC error in desugarer lookup in" <+> ppr mod)
@@ -305,7 +293,7 @@ mkDsEnvs dflags mod rdr_env type_env fam_inst_env msg_var pmvar top_binds_var_mb
                            , ds_dph_env = emptyGlobalRdrEnv
                            , ds_parr_bi = panic "DsMonad: uninitialised ds_parr_bi"
                            , ds_complete_matches = completeMatchMap
-                           , ds_top_binds = top_binds_var_mb
+                           , ds_top_binds = Nothing
                            }
         lcl_env = DsLclEnv { dsl_meta    = emptyNameEnv
                            , dsl_loc     = real_span

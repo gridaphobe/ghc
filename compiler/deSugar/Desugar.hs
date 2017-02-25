@@ -124,7 +124,7 @@ deSugar hsc_env
                               then addTicksToBinds hsc_env mod mod_loc
                                        export_set (typeEnvTyCons type_env) binds
                               else return (binds, hpcInfo, Nothing)
-        ; (msgs, ds_top_binds, mb_res)
+        ; (msgs, mb_res)
             <- initDs hsc_env mod rdr_env type_env
                       fam_inst_env complete_matches $
                             withTopBinds $
