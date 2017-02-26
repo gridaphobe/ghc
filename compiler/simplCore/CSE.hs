@@ -16,7 +16,7 @@ import Id               ( Id, idType, idUnfolding, idInlineActivation
                         , zapIdOccInfo, zapIdUsageInfo )
 import CoreUtils        ( mkAltExpr
                         , stripTicksE, stripTicksT, mkTicks )
-import Literal          ( litIsTrivial )
+import Literal          ( litIsTrivial, Literal(MachStr) )
 import Type             ( tyConAppArgs )
 import CoreSyn
 import Outputable
@@ -257,6 +257,32 @@ We could try and be careful by tracking which join points are still valid at
 each subexpression, but since join points aren't allocated or shared, there's
 less to gain by trying to CSE them.
 
+Note [Take care with literal strings]
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+When we CSE primitive strings at the top-level we have to be careful not
+to violate the Core invariants. Normally, GHC would turn
+
+  x = "foo"#
+  y = "foo"#
+  ...x...y...x...y....
+
+into
+
+  x = "foo"#
+  y = x
+  ...x...y...x...y....
+
+and then y is inlined and dropped, but this intermediate state violates
+the invariant that top-level binders cannot be unlifted unless they are
+string literals. Instead, we make GHC produce
+
+  x = "foo"#
+  y = "foo"#
+  ..x..x..x..x
+
+which maintains the invariant; `y` will simply be dropped as dead code.
+
 ************************************************************************
 *                                                                      *
 \section{Common subexpression}
@@ -268,6 +294,14 @@ cseProgram :: CoreProgram -> CoreProgram
 cseProgram binds = snd (mapAccumL (cseBind True) emptyCSEnv binds)
 
 cseBind :: Bool -> CSEnv -> CoreBind -> (CSEnv, CoreBind)
+cseBind {-toplevel-} True env (NonRec b e)
+  | Lit (MachStr _) <- e
+  = (env2, NonRec b2 e)  -- See Note [Take care with literal strings]
+  where
+    e1         = tryForCSE True env e
+    (env1, b1) = addBinder env b
+    (env2, b2) = addBinding env1 b b1 e1
+
 cseBind toplevel env (NonRec b e)
   = (env2, NonRec b2 e1)
   where
