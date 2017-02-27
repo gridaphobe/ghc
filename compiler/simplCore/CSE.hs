@@ -257,32 +257,6 @@ We could try and be careful by tracking which join points are still valid at
 each subexpression, but since join points aren't allocated or shared, there's
 less to gain by trying to CSE them.
 
-Note [Take care with literal strings]
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-When we CSE primitive strings at the top-level we have to be careful not
-to violate the Core invariants. Normally, GHC would turn
-
-  x = "foo"#
-  y = "foo"#
-  ...x...y...x...y....
-
-into
-
-  x = "foo"#
-  y = x
-  ...x...x...x...x....
-
-and then y is dropped by the simplifier, but this intermediate state violates
-the invariant that top-level binders cannot be unlifted unless they are
-string literals. Instead, we make GHC produce
-
-  x = "foo"#
-  y = "foo"#
-  ...x...x...x...x....
-
-which maintains the invariant; `y` will simply be dropped as dead code.
-
 ************************************************************************
 *                                                                      *
 \section{Common subexpression}
@@ -353,6 +327,34 @@ addBinding env in_id out_id rhs'
                    Var {} -> True
                    Lit l  -> litIsTrivial l
                    _      -> False
+
+{-
+Note [Take care with literal strings]
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Consider this example:
+
+  x = "foo"#
+  y = "foo"#
+  ...x...y...x...y....
+
+We would normally turn this into:
+
+  x = "foo"#
+  y = x
+  ...x...x...x...x....
+
+But this breaks an invariant of Core, namely that the RHS of a top-level binding
+of type Addr# must be a string literal, not another variable. See Note
+[CoreSyn top-level string literals] in CoreSyn.
+
+For this reason, we special case top-level bindings to literal strings and leave
+the original RHS unmodified. This produces:
+
+  x = "foo"#
+  y = "foo"#
+  ...x...x...x...x....
+-}
 
 tryForCSE :: Bool -> CSEnv -> InExpr -> OutExpr
 tryForCSE _toplevel env expr
