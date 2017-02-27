@@ -271,9 +271,9 @@ into
 
   x = "foo"#
   y = x
-  ...x...y...x...y....
+  ...x...x...x...x....
 
-and then y is inlined and dropped, but this intermediate state violates
+and then y is dropped by the simplifier, but this intermediate state violates
 the invariant that top-level binders cannot be unlifted unless they are
 string literals. Instead, we make GHC produce
 
