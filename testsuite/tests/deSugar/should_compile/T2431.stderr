@@ -13,39 +13,9 @@ T2431.$WRefl [InlPrag=INLINE] :: forall a. a :~: a
          Guidance=ALWAYS_IF(arity=0,unsat_ok=True,boring_ok=False)
          Tmpl= \ (@ a) ->
                  T2431.Refl @ a @ a @~ (<a>_N :: (a :: *) GHC.Prim.~# (a :: *))}]
-T2431.$WRefl =
-  \ (@ a) ->
-    T2431.Refl @ a @ a @~ (<a>_N :: (a :: *) GHC.Prim.~# (a :: *))
-
--- RHS size: {terms: 4, types: 8, coercions: 0, joins: 0/0}
-absurd :: forall a. (Int :~: Bool) -> a
-[GblId, Arity=1, Caf=NoCafRefs, Str=<L,U>x]
-absurd = \ (@ a) (x :: Int :~: Bool) -> case x of { }
-
--- RHS size: {terms: 1, types: 0, coercions: 0, joins: 0/0}
-$trModule1 :: GHC.Prim.Addr#
-[GblId, Caf=NoCafRefs]
-$trModule1 = "main"#
-
--- RHS size: {terms: 2, types: 0, coercions: 0, joins: 0/0}
-$trModule2 :: GHC.Types.TrName
-[GblId, Caf=NoCafRefs]
-$trModule2 = GHC.Types.TrNameS $trModule1
-
--- RHS size: {terms: 1, types: 0, coercions: 0, joins: 0/0}
-$trModule3 :: GHC.Prim.Addr#
-[GblId, Caf=NoCafRefs]
-$trModule3 = "T2431"#
-
--- RHS size: {terms: 2, types: 0, coercions: 0, joins: 0/0}
-$trModule4 :: GHC.Types.TrName
-[GblId, Caf=NoCafRefs]
-$trModule4 = GHC.Types.TrNameS $trModule3
-
--- RHS size: {terms: 3, types: 0, coercions: 0, joins: 0/0}
-T2431.$trModule :: GHC.Types.Module
-[GblId, Caf=NoCafRefs]
-T2431.$trModule = GHC.Types.Module $trModule2 $trModule4
+T2431.$WRefl
+  = \ (@ a) ->
+      T2431.Refl @ a @ a @~ (<a>_N :: (a :: *) GHC.Prim.~# (a :: *))
 
 -- RHS size: {terms: 2, types: 0, coercions: 0, joins: 0/0}
 krep :: GHC.Types.KindRep
@@ -72,27 +42,62 @@ krep4 :: GHC.Types.KindRep
 [GblId, Caf=NoCafRefs]
 krep4 = GHC.Types.KindRepFun krep krep3
 
+-- RHS size: {terms: 4, types: 8, coercions: 0, joins: 0/0}
+absurd :: forall a. (Int :~: Bool) -> a
+[GblId, Arity=1, Caf=NoCafRefs, Str=<L,U>x]
+absurd = \ (@ a) (x :: Int :~: Bool) -> case x of { }
+
 -- RHS size: {terms: 1, types: 0, coercions: 0, joins: 0/0}
-$tc:~:1 :: GHC.Prim.Addr#
+ds :: GHC.Prim.Addr#
 [GblId, Caf=NoCafRefs]
-$tc:~:1 = ":~:"#
+ds = "T2431"#
+
+-- RHS size: {terms: 1, types: 0, coercions: 0, joins: 0/0}
+ds1 :: GHC.Prim.Addr#
+[GblId, Caf=NoCafRefs]
+ds1 = "main"#
 
 -- RHS size: {terms: 2, types: 0, coercions: 0, joins: 0/0}
-$tc:~:2 :: GHC.Types.TrName
+$trModule1 :: GHC.Types.TrName
 [GblId, Caf=NoCafRefs]
-$tc:~:2 = GHC.Types.TrNameS $tc:~:1
+$trModule1 = GHC.Types.TrNameS ds1
+
+-- RHS size: {terms: 2, types: 0, coercions: 0, joins: 0/0}
+$trModule2 :: GHC.Types.TrName
+[GblId, Caf=NoCafRefs]
+$trModule2 = GHC.Types.TrNameS ds
+
+-- RHS size: {terms: 3, types: 0, coercions: 0, joins: 0/0}
+T2431.$trModule :: GHC.Types.Module
+[GblId, Caf=NoCafRefs]
+T2431.$trModule = GHC.Types.Module $trModule1 $trModule2
+
+-- RHS size: {terms: 1, types: 0, coercions: 0, joins: 0/0}
+ds2 :: GHC.Prim.Addr#
+[GblId, Caf=NoCafRefs]
+ds2 = "'Refl"#
+
+-- RHS size: {terms: 1, types: 0, coercions: 0, joins: 0/0}
+ds3 :: GHC.Prim.Addr#
+[GblId, Caf=NoCafRefs]
+ds3 = ":~:"#
+
+-- RHS size: {terms: 2, types: 0, coercions: 0, joins: 0/0}
+$tc:~:1 :: GHC.Types.TrName
+[GblId, Caf=NoCafRefs]
+$tc:~:1 = GHC.Types.TrNameS ds3
 
 -- RHS size: {terms: 7, types: 0, coercions: 0, joins: 0/0}
 T2431.$tc:~: :: GHC.Types.TyCon
 [GblId, Caf=NoCafRefs]
-T2431.$tc:~: =
-  GHC.Types.TyCon
-    4608886815921030019##
-    6030312177285011233##
-    T2431.$trModule
-    $tc:~:2
-    0#
-    krep4
+T2431.$tc:~:
+  = GHC.Types.TyCon
+      4608886815921030019##
+      6030312177285011233##
+      T2431.$trModule
+      $tc:~:1
+      0#
+      krep4
 
 -- RHS size: {terms: 2, types: 0, coercions: 0, joins: 0/0}
 krep5 :: GHC.Types.KindRep
@@ -107,9 +112,9 @@ krep6 = GHC.Types.KindRepVar 0#
 -- RHS size: {terms: 3, types: 2, coercions: 0, joins: 0/0}
 krep7 :: [GHC.Types.KindRep]
 [GblId, Caf=NoCafRefs]
-krep7 =
-  GHC.Types.:
-    @ GHC.Types.KindRep krep6 (GHC.Types.[] @ GHC.Types.KindRep)
+krep7
+  = GHC.Types.:
+      @ GHC.Types.KindRep krep6 (GHC.Types.[] @ GHC.Types.KindRep)
 
 -- RHS size: {terms: 3, types: 1, coercions: 0, joins: 0/0}
 krep8 :: [GHC.Types.KindRep]
@@ -121,27 +126,22 @@ krep9 :: GHC.Types.KindRep
 [GblId, Caf=NoCafRefs]
 krep9 = GHC.Types.KindRepTyConApp T2431.$tc:~: krep8
 
--- RHS size: {terms: 1, types: 0, coercions: 0, joins: 0/0}
-$tc'Refl1 :: GHC.Prim.Addr#
-[GblId, Caf=NoCafRefs]
-$tc'Refl1 = "'Refl"#
-
 -- RHS size: {terms: 2, types: 0, coercions: 0, joins: 0/0}
-$tc'Refl2 :: GHC.Types.TrName
+$tc'Refl1 :: GHC.Types.TrName
 [GblId, Caf=NoCafRefs]
-$tc'Refl2 = GHC.Types.TrNameS $tc'Refl1
+$tc'Refl1 = GHC.Types.TrNameS ds2
 
 -- RHS size: {terms: 7, types: 0, coercions: 0, joins: 0/0}
 T2431.$tc'Refl :: GHC.Types.TyCon
 [GblId, Caf=NoCafRefs]
-T2431.$tc'Refl =
-  GHC.Types.TyCon
-    2478588351447975921##
-    2684375695874497811##
-    T2431.$trModule
-    $tc'Refl2
-    1#
-    krep9
+T2431.$tc'Refl
+  = GHC.Types.TyCon
+      2478588351447975921##
+      2684375695874497811##
+      T2431.$trModule
+      $tc'Refl1
+      1#
+      krep9
 
 
 
