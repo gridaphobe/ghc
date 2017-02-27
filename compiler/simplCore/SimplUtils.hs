@@ -1057,7 +1057,6 @@ preInlineUnconditionally dflags env top_lvl bndr rhs
   | isTopLevel top_lvl && isBottomingId bndr = False -- Note [Top-level bottoming Ids]
   | not (gopt Opt_SimplPreInlining dflags)   = False
   | isCoVar bndr                             = False -- Note [Do not inline CoVars unconditionally]
-  | exprIsLiteralString rhs                  = False
   | otherwise = case idOccInfo bndr of
                   IAmDead                    -> True -- Happens in ((\x.1) v)
                   occ@OneOcc { occ_one_br = True }
@@ -1070,6 +1069,9 @@ preInlineUnconditionally dflags env top_lvl bndr rhs
              -- See Note [pre/postInlineUnconditionally in gentle mode]
     act = idInlineActivation bndr
     try_once in_lam int_cxt     -- There's one textual occurrence
+        | Lit l <- rhs
+        , not (litIsTrivial l)
+        = False
         | not in_lam = isNotTopLevel top_lvl || early_phase
         | otherwise  = int_cxt && canInlineInLam rhs
 
