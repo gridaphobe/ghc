@@ -578,15 +578,7 @@ mkStringExprAtTopLevel = mkStringExprFSAtTopLevel . fsLit
 mkStringExprFSAtTopLevel :: FastString -> DsM CoreExpr
 mkStringExprFSAtTopLevel str = do
   str_expr <- mkStringExprFS str
-  case str_expr of
-    -- Extract the string literal and bind it at the top-level too.
-    -- See Note [Adding Top-Level Bindings in the Desugarer]
-    App unpack@(Var unpack_id) str_lit
-      | unpack_id `hasKey` unpackCStringIdKey
-     || unpack_id `hasKey` unpackCStringUtf8IdKey -> do
-          str_lit_var <- bindExprAtTopLevel str_lit
-          bindExprAtTopLevel $ App unpack str_lit_var
-    _ -> return str_expr
+  bindExprAtTopLevel str_expr
 
 -- | Attempt to bind an expression at the top level.
 --

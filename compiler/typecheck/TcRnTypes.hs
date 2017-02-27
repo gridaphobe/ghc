@@ -430,13 +430,6 @@ mkCompleteMatchMap cms = foldl' insertMatch emptyUFM cms
 -- initializes the ds_top_binds field to a fresh IORef for the duration
 -- of the wrapped action, and returns a pair of the action's result and
 -- any added top-level binders.
---
--- The function DsUtils.mkStringExprFSAtTopLevel binds a string literal
--- at the top-level, but has to take care to produce binders for both
--- the primitive string literal, and the lifted string. If we only bind
--- the lifted string, e.g. `ds_str = unpackCString# "foo"#`, and ds_str
--- later takes part in a RULE firing, the primitive string "foo"# may be
--- duplicated, which is wasteful.
 
 instance ContainsModule DsGblEnv where
     extractModule = ds_mod
