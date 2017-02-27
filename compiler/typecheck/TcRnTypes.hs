@@ -408,7 +408,7 @@ mkCompleteMatchMap cms = foldl' insertMatch emptyUFM cms
 --
 -- But why is this not already solved by FloatOut (which does indeed
 -- float such constants to the top)? The issue is that by the time
--- FloatOut runs, myError has already been assigned a stable unfolding
+-- FloatOut runs, myError has already been assigned a StableUnfolding
 -- that captures the string. FloatOut won't rewrite the unfolding
 -- because GHC promises to inline exactly the code the user wrote. Thus,
 -- even though we *have* floated the constant out, we are still forced
