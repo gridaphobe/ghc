@@ -14,9 +14,9 @@ import CoreSubst
 import Var              ( Var, isJoinId )
 import Id               ( Id, idType, idUnfolding, idInlineActivation
                         , zapIdOccInfo, zapIdUsageInfo )
-import CoreUtils        ( mkAltExpr
+import CoreUtils        ( exprIsLiteralString, mkAltExpr
                         , stripTicksE, stripTicksT, mkTicks )
-import Literal          ( litIsTrivial, Literal(MachStr) )
+import Literal          ( litIsTrivial )
 import Type             ( tyConAppArgs )
 import CoreSyn
 import Outputable
@@ -279,7 +279,7 @@ string literals. Instead, we make GHC produce
 
   x = "foo"#
   y = "foo"#
-  ..x..x..x..x
+  ...x...x...x...x....
 
 which maintains the invariant; `y` will simply be dropped as dead code.
 
@@ -294,20 +294,15 @@ cseProgram :: CoreProgram -> CoreProgram
 cseProgram binds = snd (mapAccumL (cseBind True) emptyCSEnv binds)
 
 cseBind :: Bool -> CSEnv -> CoreBind -> (CSEnv, CoreBind)
-cseBind {-toplevel-} True env (NonRec b e)
-  | Lit (MachStr _) <- e
-  = (env2, NonRec b2 e)  -- See Note [Take care with literal strings]
-  where
-    e1         = tryForCSE True env e
-    (env1, b1) = addBinder env b
-    (env2, b2) = addBinding env1 b b1 e1
-
 cseBind toplevel env (NonRec b e)
-  = (env2, NonRec b2 e1)
+  = (env2, NonRec b2 e2)
   where
     e1         = tryForCSE toplevel env e
     (env1, b1) = addBinder env b
     (env2, b2) = addBinding env1 b b1 e1
+    e2  -- See Note [Take care with literal strings]
+      | toplevel && exprIsLiteralString e = e
+      | otherwise                         = e1
 
 cseBind toplevel env (Rec pairs)
   = (env2, Rec pairs')
