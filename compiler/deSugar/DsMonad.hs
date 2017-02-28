@@ -328,7 +328,7 @@ withTopBinds thing_inside
   = do ref <- liftIO (newIORef [])
        a <- updGblEnv (\env -> env { ds_top_binds = Just ref }) thing_inside
        top_binds <- liftIO (readIORef ref)
-       return (a, map (uncurry NonRec) top_binds)
+       return (a, top_binds)
 
 {-
 ************************************************************************

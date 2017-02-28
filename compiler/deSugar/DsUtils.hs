@@ -594,7 +594,7 @@ bindExprAtTopLevel expr = do
     Nothing  -> return expr
     Just var -> do
       id <- newSysLocalDs (exprType expr)
-      liftIO $ modifyIORef var ((id, expr) :)
+      liftIO $ modifyIORef var ((NonRec id expr) :)
       return (Var id)
 
 

@@ -381,7 +381,7 @@ data DsGblEnv
         , ds_parr_bi :: PArrBuiltin             -- desugarar names for '-XParallelArrays'
         , ds_complete_matches :: CompleteMatchMap
            -- Additional complete pattern matches
-        , ds_top_binds :: Maybe (IORef [(Id, CoreExpr)])
+        , ds_top_binds :: Maybe (IORef [CoreBind])
           -- extra top-level bindings added by the desugarer, e.g. string literals and callstacks
           -- see Note [Adding Top-Level Bindings in the Desugarer]
         }
