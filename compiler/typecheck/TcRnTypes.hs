@@ -426,10 +426,14 @@ mkCompleteMatchMap cms = foldl' insertMatch emptyUFM cms
 --
 -- The function DsUtils.bindExprAtTopLevel takes care of determining
 -- whether we can actually create a new binding, and returns a Var if
--- able, and the original Expr otherwise. The function DsMonad.withTopBinds
--- initializes the ds_top_binds field to a fresh IORef for the duration
--- of the wrapped action, and returns a pair of the action's result and
--- any added top-level binders.
+-- able, and the original Expr otherwise.
+--
+-- The function DsMonad.withTopBinds initializes the ds_top_binds field
+-- to a fresh IORef for the duration of the wrapped action, and returns
+-- a pair of the action's result and any added top-level binders. But it
+-- only does so if we're compiling with optimizations, otherwise we don't
+-- gain anything by pre-emptively floating things and just slow down GHC.
+-- (see T1969 for an extreme example)
 
 instance ContainsModule DsGblEnv where
     extractModule = ds_mod
